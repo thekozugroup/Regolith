@@ -12,7 +12,7 @@ set -euo pipefail
 
 PRINTER_HOST="${PRINTER_HOST:-192.168.50.179}"
 PRINTER_PASS="${PRINTER_PASS:-creality_2023}"
-SSH="sshpass -p ${PRINTER_PASS} ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10"
+SSH="sshpass -p ${PRINTER_PASS} ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=10"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 step() { printf '\n\033[36m==> %s\033[0m\n' "$*"; }
@@ -31,11 +31,26 @@ COPYFILE_DISABLE=1 tar czf /tmp/regolith-deploy.tgz -C dist .
 size=$(stat -f%z /tmp/regolith-deploy.tgz 2>/dev/null || stat -c%s /tmp/regolith-deploy.tgz)
 echo "  tarball: ${size} bytes"
 
-step "Stage to printer"
-$SSH "root@${PRINTER_HOST}" 'rm -rf /usr/data/fluidd.next && mkdir /usr/data/fluidd.next' \
-  || fail "could not create stage dir"
-cat /tmp/regolith-deploy.tgz | $SSH "root@${PRINTER_HOST}" 'tar xzf - -C /usr/data/fluidd.next' \
-  || fail "extract failed"
+step "Push tarball"
+# Two-step (file then extract) is more resilient than streamed tar — busy
+# printers under print + camera load drop SSH mid-stream too often.
+$SSH "root@${PRINTER_HOST}" 'rm -f /usr/data/regolith-deploy.tgz' \
+  || fail "could not clear remote tarball"
+cat /tmp/regolith-deploy.tgz | $SSH "root@${PRINTER_HOST}" 'cat > /usr/data/regolith-deploy.tgz' \
+  || fail "tarball upload failed"
+remote_size=$($SSH "root@${PRINTER_HOST}" 'wc -c < /usr/data/regolith-deploy.tgz')
+local_size=$(stat -f%z /tmp/regolith-deploy.tgz 2>/dev/null || stat -c%s /tmp/regolith-deploy.tgz)
+[ "$remote_size" = "$local_size" ] || fail "tarball size mismatch (local=$local_size remote=$remote_size)"
+echo "  tarball uploaded: $remote_size bytes"
+
+step "Stage extract"
+$SSH "root@${PRINTER_HOST}" '
+  set -e
+  rm -rf /usr/data/fluidd.next
+  mkdir /usr/data/fluidd.next
+  tar xzf /usr/data/regolith-deploy.tgz -C /usr/data/fluidd.next
+  rm -f /usr/data/regolith-deploy.tgz
+' || fail "extract failed"
 
 step "Verify staged files match local"
 local_files=$(find dist -type f | sort | sed 's|^dist/||')
