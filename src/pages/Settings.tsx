@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/Button";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { BackupSettings } from "@/components/BackupSettings";
+import { ProfileSettings } from "@/components/ProfileSettings";
 import { moonraker } from "@/lib/moonraker";
 import { formatBytes, formatDuration } from "@/lib/utils";
 
@@ -78,6 +79,7 @@ export function SettingsPage() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
       <ThemeSettings />
+      <ProfileSettings />
       <BackupSettings />
 
       <Card title="System" icon={<Cog />}>

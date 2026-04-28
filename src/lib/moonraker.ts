@@ -67,12 +67,17 @@ export interface PrinterState {
   fan?: { speed: number };
   // Webhooks
   webhooks?: { state: string; state_message: string };
-  // Auxiliary temperature sensors / fans
-  "temperature_fan chamber_fan"?: { temperature: number; target: number; speed: number };
-  "temperature_fan soc_fan"?: { temperature: number; target: number; speed: number };
-  "temperature_sensor mcu_temp"?: { temperature: number };
-  "temperature_sensor chamber_temp"?: { temperature: number };
-  "heater_fan hotend_fan"?: { speed: number };
+  // Auxiliary temperature sensors / fans / heater_fans — driven by the
+  // active profile, so klipper object names vary per printer. Indexed
+  // access lets a profile uploader expose sensors without code changes.
+  [klipperObject: `temperature_fan ${string}`]:
+    | { temperature: number; target: number; speed: number }
+    | undefined;
+  [k2: `temperature_sensor ${string}`]: { temperature: number } | undefined;
+  [k3: `heater_fan ${string}`]: { speed: number } | undefined;
+  [k4: `heater_generic ${string}`]:
+    | { temperature: number; target: number; power: number }
+    | undefined;
   // Motion report (live position during macros)
   motion_report?: {
     live_position: [number, number, number, number];

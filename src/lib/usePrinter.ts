@@ -1,38 +1,22 @@
 import { useEffect, useState } from "react";
 import { moonraker, type PrinterState } from "./moonraker";
-
-const ALL_FIELDS = [
-  "print_stats",
-  "idle_timeout",
-  "extruder",
-  "heater_bed",
-  "toolhead",
-  "display_status",
-  "virtual_sdcard",
-  "fan",
-  "webhooks",
-  "temperature_fan chamber_fan",
-  "temperature_fan soc_fan",
-  "temperature_sensor mcu_temp",
-  "temperature_sensor chamber_temp",
-  "heater_fan hotend_fan",
-  "gcode_move",
-  "motion_report",
-];
+import { profileFields } from "@/profiles";
+import { useProfile } from "./useProfile";
 
 export function usePrinter() {
+  const profile = useProfile();
   const [state, setState] = useState<PrinterState>(moonraker.getState());
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     moonraker.connect();
-    const unsubState = moonraker.subscribe(ALL_FIELDS, setState);
+    const unsubState = moonraker.subscribe(profileFields(profile), setState);
     const unsubConn = moonraker.onConnect(setConnected);
     return () => {
       unsubState();
       unsubConn();
     };
-  }, []);
+  }, [profile]);
 
-  return { state, connected, mr: moonraker };
+  return { state, connected, mr: moonraker, profile };
 }
