@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,13 +22,43 @@ interface Props {
   host?: string;
   /** Stuck-watchdog timeout in ms — force reload if no frame in this window. */
   stallMs?: number;
+  /** Show fullscreen toggle button. */
+  fullscreenable?: boolean;
 }
 
-export function CameraStream({ className, host, stallMs = 4000 }: Props) {
+export function CameraStream({
+  className,
+  host,
+  stallMs = 4000,
+  fullscreenable = true,
+}: Props) {
   const [generation, setGeneration] = useState(0);
   const [hasError, setHasError] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const lastFrameRef = useRef(Date.now());
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // Sync fullscreen state with browser-level fullscreen
+  useEffect(() => {
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (containerRef.current) {
+        await containerRef.current.requestFullscreen();
+      }
+    } catch {
+      // Some browsers / permissions deny; ignore
+    }
+  };
 
   // Build the direct URL — port 8080 to bypass nginx + vite proxy
   const buildUrl = (gen: number) => {
@@ -78,7 +109,7 @@ export function CameraStream({ className, host, stallMs = 4000 }: Props) {
   }, [generation, host]);
 
   return (
-    <div className={cn("relative bg-black", className)}>
+    <div ref={containerRef} className={cn("relative bg-black group", className)}>
       {hasError ? (
         <div className="absolute inset-0 flex items-center justify-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em] font-mono">
           Stream offline
@@ -94,9 +125,32 @@ export function CameraStream({ className, host, stallMs = 4000 }: Props) {
           setHasError(false);
         }}
         onError={() => setHasError(true)}
-        className="w-full h-full object-cover"
+        className={cn(
+          "w-full h-full",
+          isFullscreen ? "object-contain" : "object-cover",
+        )}
         draggable={false}
       />
+      {fullscreenable && (
+        <button
+          onClick={toggleFullscreen}
+          className={cn(
+            "absolute top-2 right-2 w-7 h-7 rounded bg-black/60 backdrop-blur-sm border border-white/10 z-10",
+            "flex items-center justify-center text-white/80 hover:text-white hover:bg-black/80",
+            "transition-opacity",
+            isFullscreen
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100",
+          )}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? (
+            <Minimize2 className="w-3.5 h-3.5" strokeWidth={2} />
+          ) : (
+            <Maximize2 className="w-3.5 h-3.5" strokeWidth={2} />
+          )}
+        </button>
+      )}
     </div>
   );
 }
