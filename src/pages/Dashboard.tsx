@@ -3,6 +3,7 @@ import { ThermalGauge } from "@/components/ThermalGauge";
 import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
 import { MissionTimeline } from "@/components/MissionTimeline";
+import { CameraStream } from "@/components/CameraStream";
 import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,24 +21,16 @@ export function Dashboard() {
         <PrinterCard />
 
         <Card title="Visual" icon={<Camera />}>
-          <div className="aspect-video bg-black rounded overflow-hidden -m-3.5 relative">
-            <img
-              src="/webcam/?action=stream"
-              alt="Live"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                const img = e.target as HTMLImageElement;
-                img.style.display = "none";
-              }}
-            />
-            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10">
+          <div className="aspect-video rounded overflow-hidden -m-3.5 relative">
+            <CameraStream className="absolute inset-0" host="192.168.50.179" />
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 z-10">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
               <span className="text-[10px] uppercase tracking-[0.1em] font-semibold">
                 Live
               </span>
             </div>
             {state.toolhead?.position && (
-              <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums">
+              <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums z-10">
                 <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
                 <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
                 <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
