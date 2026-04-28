@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Square, FileText, Activity, X } from "lucide-react";
+import { Pause, Play, Square, FileText, Activity, X, RotateCcw } from "lucide-react";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { usePrinter } from "@/lib/usePrinter";
@@ -29,6 +29,7 @@ export function MissionTimeline() {
 
   const printState = ps?.state ?? "standby";
   const isPrintingFile = printState === "printing" || printState === "paused";
+  const isComplete = printState === "complete";
   const filename = ps?.filename ?? "";
   const klipperBusy = state.idle_timeout?.state === "Printing";
   // Non-print activity: klipper busy but no print file
@@ -188,7 +189,7 @@ export function MissionTimeline() {
       title="Mission Status"
       icon={<FileText />}
       action={
-        isPrintingFile && (
+        isPrintingFile ? (
           <div className="flex gap-1">
             {printState === "printing" ? (
               <Button size="sm" variant="ghost" onClick={() => mr.pause()}>
@@ -203,7 +204,19 @@ export function MissionTimeline() {
               <Square className="w-3 h-3" /> Cancel
             </Button>
           </div>
-        )
+        ) : isComplete && filename ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              if (confirm(`Print again: ${filename}?`)) {
+                mr.startPrint(filename).catch(() => {});
+              }
+            }}
+          >
+            <RotateCcw className="w-3 h-3" /> Print again
+          </Button>
+        ) : null
       }
     >
       <div className="grid grid-cols-[120px_1fr] gap-4">

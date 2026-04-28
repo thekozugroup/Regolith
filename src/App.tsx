@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from "react-router";
 import { Sidebar } from "./components/Sidebar";
 import { AppBar } from "./components/AppBar";
+import { HealthAlerts } from "./components/HealthAlerts";
 import { useNotifications } from "./lib/useNotifications";
+import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { Dashboard } from "./pages/Dashboard";
 import { Files } from "./pages/Files";
 import { Control } from "./pages/Control";
@@ -11,10 +13,12 @@ import { SettingsPage } from "./pages/Settings";
 
 function AppShell() {
   useNotifications();
+  useKeyboardShortcuts();
   return (
     <>
       <Sidebar />
       <AppBar />
+      <HealthAlerts />
       <main className="ml-14 mt-13 min-h-[calc(100vh-3.25rem)]">
         <Routes>
           <Route path="/" element={<Dashboard />} />

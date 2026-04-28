@@ -228,7 +228,12 @@ export function Control() {
         </div>
       </Card>
 
-      <Card title="Bounds & Safety" icon={<Lock />}>
+      {/* Top-down bed visualization */}
+      <Card title="Position" icon={<Move />}>
+        <BedView state={state} safety={safety} />
+      </Card>
+
+      <Card title="Bounds & Safety" icon={<Lock />} className="sm:col-span-2">
         <div className="space-y-2 text-[12px]">
           <Row label="Klipper">
             <Pill ok={safety.klipperReady}>
@@ -279,6 +284,99 @@ export function Control() {
           </div>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function BedView({
+  state,
+  safety,
+}: {
+  state: ReturnType<typeof usePrinter>["state"];
+  safety: ReturnType<typeof getSafetyState>;
+}) {
+  const pos = state.toolhead?.position ?? [0, 0, 0, 0];
+  const livePos = state.motion_report?.live_position ?? pos;
+  const [minX, minY] = [safety.bounds.min[0], safety.bounds.min[1]];
+  const [maxX, maxY] = [safety.bounds.max[0], safety.bounds.max[1]];
+  const sizeX = maxX - minX;
+  const sizeY = maxY - minY;
+  const x = ((livePos[0] - minX) / sizeX) * 100;
+  // Y: bed-front is up in our view (= bottom of viewport)
+  const y = ((maxY - livePos[1]) / sizeY) * 100;
+  const z = livePos[2];
+  const homed = safety.fullyHomed;
+  const printing =
+    state.print_stats?.state === "printing" ||
+    state.print_stats?.state === "paused";
+
+  return (
+    <div className="space-y-3">
+      <div className="aspect-[4/3] border border-[var(--color-border-strong)] rounded-md bg-[var(--color-bg)] relative overflow-hidden">
+        {/* Origin label */}
+        <div className="absolute bottom-1 left-1 text-[8px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+          Front · 0,0
+        </div>
+        <div className="absolute top-1 right-1 text-[8px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+          {maxX.toFixed(0)},{maxY.toFixed(0)}
+        </div>
+        {/* Center crosshair */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-px h-full bg-[var(--color-elevated)]/50" />
+          <div className="absolute w-full h-px bg-[var(--color-elevated)]/50" />
+        </div>
+        {/* Toolhead marker */}
+        {homed && (
+          <div
+            className="absolute w-3 h-3 rounded-full border-2 -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-300 ease-out"
+            style={{
+              left: `${x}%`,
+              top: `${y}%`,
+              borderColor: printing
+                ? "var(--color-accent)"
+                : "var(--color-fg)",
+              backgroundColor: printing
+                ? "var(--color-accent)"
+                : "transparent",
+              boxShadow: printing
+                ? "0 0 8px rgba(249,115,22,0.6)"
+                : "none",
+            }}
+          />
+        )}
+        {!homed && (
+          <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/50 font-mono">
+            Not homed
+          </div>
+        )}
+      </div>
+      {/* Live coords */}
+      <div className="grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+            X
+          </div>
+          <div className="text-[14px] font-semibold tabular-nums font-mono">
+            {livePos[0]?.toFixed(2) ?? "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+            Y
+          </div>
+          <div className="text-[14px] font-semibold tabular-nums font-mono">
+            {livePos[1]?.toFixed(2) ?? "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+            Z
+          </div>
+          <div className="text-[14px] font-semibold tabular-nums font-mono">
+            {z?.toFixed(3) ?? "—"}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
