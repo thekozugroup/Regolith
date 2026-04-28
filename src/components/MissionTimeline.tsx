@@ -36,7 +36,13 @@ export function MissionTimeline() {
 
   const progress = sd?.progress ?? 0;
   const elapsed = ps?.print_duration ?? 0;
-  const totalEst = state.toolhead?.estimated_print_time ?? 0;
+  const klipperEst = state.toolhead?.estimated_print_time ?? 0;
+  // Compute ETA two ways and use the better one:
+  //   1. Klipper's estimate (if populated by slicer M73)
+  //   2. Linear extrapolation from elapsed / progress (works after any time)
+  const linearTotal = progress > 0.01 ? elapsed / progress : 0;
+  const totalEst =
+    klipperEst > elapsed && klipperEst < 86400 ? klipperEst : linearTotal;
   const remaining = totalEst > elapsed ? totalEst - elapsed : 0;
   const filamentMm = ps?.filament_used ?? 0;
 

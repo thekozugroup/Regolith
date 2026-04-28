@@ -55,9 +55,9 @@ export function PrinterCard() {
       .catch(() => {});
   }, []);
 
-  // Live uptime from print_stats / virtual_sdcard would be wrong; use webhooks state_message instead
   const printerState = state.webhooks?.state ?? "—";
   const printState = state.print_stats?.state ?? "—";
+  const isPrinting = printState === "printing" || printState === "paused";
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -75,7 +75,14 @@ export function PrinterCard() {
   };
 
   return (
-    <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md overflow-hidden">
+    <section
+      className={cn(
+        "bg-[var(--color-surface)] border rounded-md overflow-hidden transition-colors",
+        isPrinting
+          ? "border-[rgba(249,115,22,0.4)] shadow-[0_0_0_1px_rgba(249,115,22,0.15),0_0_24px_-8px_rgba(249,115,22,0.4)]"
+          : "border-[var(--color-border)]",
+      )}
+    >
       <div className="grid grid-cols-[160px_1fr] gap-4 p-4">
         {/* Image / icon */}
         <div className="relative group">
