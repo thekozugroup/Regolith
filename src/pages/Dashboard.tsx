@@ -9,10 +9,12 @@ import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Dashboard() {
-  const { state } = usePrinter();
+  const { state, profile } = usePrinter();
   const ext = state.extruder;
   const bed = state.heater_bed;
   const fanSpeed = state.fan?.speed ?? 0;
+  const hotend = profile.heaters.find((h) => h.klipper === "extruder");
+  const bedH = profile.heaters.find((h) => h.klipper === "heater_bed");
 
   return (
     <div className="grid grid-cols-12 gap-2 p-3">
@@ -45,19 +47,19 @@ export function Dashboard() {
         <Card title="Thermals" icon={<Flame />}>
           <div className="grid grid-cols-2 gap-2">
             <ThermalGauge
-              label="Hotend"
+              label={hotend?.label ?? "Hotend"}
               actual={ext?.temperature}
               target={ext?.target}
               power={ext?.power}
-              maxTemp={300}
+              maxTemp={hotend?.maxTemp ?? 300}
               icon={<Flame className="w-3 h-3" />}
             />
             <ThermalGauge
-              label="Bed"
+              label={bedH?.label ?? "Bed"}
               actual={bed?.temperature}
               target={bed?.target}
               power={bed?.power}
-              maxTemp={120}
+              maxTemp={bedH?.maxTemp ?? 120}
               icon={<ThermometerSun className="w-3 h-3" />}
             />
           </div>
@@ -82,34 +84,41 @@ export function Dashboard() {
               <Sparkline value={bed?.temperature ?? 0} color="var(--color-info)" />
             </div>
           </div>
-          {/* Aux thermals */}
-          <div className="mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
-            <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
-              Aux sensors
+          {/* Aux thermals — driven by active profile */}
+          {(profile.sensors.length > 0 || profile.fans.length > 0) && (
+            <div className="mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
+              <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+                Aux sensors
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                {profile.sensors.map((s) => {
+                  const live = state[s.klipper as `temperature_sensor ${string}`];
+                  return (
+                    <AuxRow
+                      key={s.klipper}
+                      label={s.label}
+                      actual={live?.temperature}
+                      warnAbove={s.warnAbove}
+                      criticalAbove={s.criticalAbove}
+                    />
+                  );
+                })}
+                {profile.fans.map((f) => {
+                  const live = state[f.klipper as `temperature_fan ${string}`];
+                  return (
+                    <AuxRow
+                      key={f.klipper}
+                      label={f.label}
+                      actual={live?.temperature}
+                      target={live?.target}
+                      speed={live?.speed}
+                      driftWarn={f.driftWarn}
+                    />
+                  );
+                })}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-              <AuxRow
-                label="Chamber"
-                actual={state["temperature_sensor chamber_temp"]?.temperature}
-              />
-              <AuxRow
-                label="MCU"
-                actual={state["temperature_sensor mcu_temp"]?.temperature}
-              />
-              <AuxRow
-                label="Chamber Fan"
-                actual={state["temperature_fan chamber_fan"]?.temperature}
-                target={state["temperature_fan chamber_fan"]?.target}
-                speed={state["temperature_fan chamber_fan"]?.speed}
-              />
-              <AuxRow
-                label="SoC Fan"
-                actual={state["temperature_fan soc_fan"]?.temperature}
-                target={state["temperature_fan soc_fan"]?.target}
-                speed={state["temperature_fan soc_fan"]?.speed}
-              />
-            </div>
-          </div>
+          )}
         </Card>
 
         <Card title="Telemetry" icon={<Wind />} className="flex-1">
@@ -182,14 +191,25 @@ function AuxRow({
   actual,
   target,
   speed,
+  warnAbove,
+  criticalAbove,
+  driftWarn,
 }: {
   label: string;
   actual?: number;
   target?: number;
   speed?: number;
+  warnAbove?: number;
+  criticalAbove?: number;
+  driftWarn?: number;
 }) {
   const active = (target ?? 0) > 0 || (speed ?? 0) > 0.01;
-  const overTarget = target != null && actual != null && actual > target;
+  const driftOver =
+    driftWarn != null && target != null && actual != null && actual - target > driftWarn;
+  const overTarget =
+    driftOver || (target != null && actual != null && actual > target && driftWarn == null);
+  const critical = criticalAbove != null && actual != null && actual >= criticalAbove;
+  const warn = !critical && warnAbove != null && actual != null && actual >= warnAbove;
   return (
     <div className="flex items-center justify-between text-[11px] py-0.5">
       <span className="text-[var(--color-fg-muted)] font-mono">{label}</span>
@@ -197,8 +217,9 @@ function AuxRow({
         <span
           className={cn(
             "font-mono font-medium",
-            overTarget && "text-[var(--color-warning)]",
-            active && !overTarget && "text-[var(--color-accent)]",
+            critical && "text-[var(--color-error)]",
+            !critical && (warn || overTarget) && "text-[var(--color-warning)]",
+            active && !overTarget && !warn && !critical && "text-[var(--color-accent)]",
           )}
         >
           {actual != null ? `${actual.toFixed(1)}°C` : "—"}

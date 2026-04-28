@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
  * persists across page reloads.
  */
 export function HealthAlerts() {
-  const { state, connected } = usePrinter();
+  const { state, connected, profile } = usePrinter();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [thermalIssue, setThermalIssue] = useState<{
     heater: string;
@@ -82,15 +82,26 @@ export function HealthAlerts() {
     });
   }
 
-  // MCU watchdog
-  const mcuTemp = state["temperature_sensor mcu_temp"]?.temperature ?? 0;
-  if (mcuTemp > 70) {
-    alerts.push({
-      id: "mcu",
-      severity: "warn",
-      message: `MCU at ${mcuTemp.toFixed(1)}°C — SoC throttling possible. Check intake fan.`,
-      icon: <AlertTriangle className="w-4 h-4" />,
-    });
+  // Sensor watchdogs — driven by profile thresholds
+  for (const sensor of profile.sensors) {
+    const live = state[sensor.klipper as `temperature_sensor ${string}`];
+    const t = live?.temperature;
+    if (t == null) continue;
+    if (sensor.criticalAbove != null && t >= sensor.criticalAbove) {
+      alerts.push({
+        id: `sensor-${sensor.klipper}`,
+        severity: "error",
+        message: `${sensor.label} at ${t.toFixed(1)}°C — critical threshold exceeded.`,
+        icon: <AlertTriangle className="w-4 h-4" />,
+      });
+    } else if (sensor.warnAbove != null && t >= sensor.warnAbove) {
+      alerts.push({
+        id: `sensor-${sensor.klipper}`,
+        severity: "warn",
+        message: `${sensor.label} at ${t.toFixed(1)}°C — running hot.`,
+        icon: <AlertTriangle className="w-4 h-4" />,
+      });
+    }
   }
 
   const visible = alerts.filter((a) => !dismissed.has(a.id));
