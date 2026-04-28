@@ -1,16 +1,21 @@
 import { AlertCircle, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
+import { useDeviceName } from "@/lib/useTheme";
 import { AppBarProgress } from "./AppBarProgress";
 
 export function AppBar() {
   const { state, connected } = usePrinter();
+  const [deviceName] = useDeviceName();
   const klipperOk = state.webhooks?.state === "ready";
   const printState = state.print_stats?.state;
 
   return (
     <header className="fixed top-0 left-14 right-0 h-14 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex items-center px-4 z-10">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        <span className="text-[14px] font-semibold tracking-tight">
+          {deviceName}
+        </span>
         {printState && printState !== "standby" && printState !== "complete" && (
           <span
             className={cn(

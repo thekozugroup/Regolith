@@ -5,6 +5,7 @@ import {
   FileText,
   Move,
   Sliders,
+  Film,
   Terminal,
   Settings,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const NAV = [
   { to: "/print", icon: FileText, label: "Files" },
   { to: "/control", icon: Move, label: "Control" },
   { to: "/tune", icon: Sliders, label: "Tune" },
+  { to: "/timelapses", icon: Film, label: "Timelapses" },
   { to: "/console", icon: Terminal, label: "Console" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

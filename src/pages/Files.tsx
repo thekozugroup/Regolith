@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { PrintDialog, type GcodeMetadata } from "@/components/PrintDialog";
+import { PrintHistory } from "@/components/PrintHistory";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
@@ -16,21 +18,6 @@ import {
   Layers,
 } from "lucide-react";
 
-interface GcodeMetadata {
-  filename: string;
-  size: number;
-  modified: number;
-  estimated_time?: number;
-  filament_total?: number;
-  filament_weight_total?: number;
-  layer_height?: number;
-  first_layer_height?: number;
-  layer_count?: number;
-  object_height?: number;
-  slicer?: string;
-  slicer_version?: string;
-  thumbnails?: { width: number; height: number; size: number; relative_path: string }[];
-}
 
 export function Files() {
   const { state } = usePrinter();
@@ -41,6 +28,7 @@ export function Files() {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<MoonrakerFile | null>(null);
   const [metadata, setMetadata] = useState<GcodeMetadata | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -79,19 +67,9 @@ export function Files() {
       )
     : files;
 
-  const printFile = async (path: string) => {
-    if (safety.isBusy) return;
-    if (
-      !confirm(
-        `Start print: ${path}?\n\nMake sure the bed is clear and any nozzle priming is complete.`,
-      )
-    )
-      return;
-    try {
-      await moonraker.startPrint(path);
-    } catch (e) {
-      alert(`Failed to start: ${(e as Error).message}`);
-    }
+  const openPrintDialog = () => {
+    if (safety.isBusy || !selected) return;
+    setDialogOpen(true);
   };
 
   return (
@@ -266,7 +244,7 @@ export function Files() {
                 variant="primary"
                 size="lg"
                 disabled={safety.isBusy}
-                onClick={() => printFile(selected.path)}
+                onClick={openPrintDialog}
                 className="w-full"
               >
                 <Play className="w-4 h-4" />
@@ -280,6 +258,21 @@ export function Files() {
           </div>
         )}
       </Card>
+
+      {/* History card spans both columns */}
+      <div className="sm:col-span-2">
+        <PrintHistory />
+      </div>
+
+      {/* Print dialog modal */}
+      {selected && (
+        <PrintDialog
+          file={selected}
+          metadata={metadata}
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Hammer,
   Activity,
@@ -104,7 +105,9 @@ export function BrandLogo({
 }: Props) {
   const [brand, setBrand] = useState<BrandConfig>(loadBrand);
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Persist + broadcast so other instances sync
@@ -178,7 +181,15 @@ export function BrandLogo({
   return (
     <span className={cn("relative inline-flex items-center", className)}>
       <button
-        onClick={() => configurable && setOpen((o) => !o)}
+        ref={triggerRef}
+        onClick={() => {
+          if (!configurable) return;
+          if (!open && triggerRef.current) {
+            const r = triggerRef.current.getBoundingClientRect();
+            setAnchor({ x: r.left, y: r.bottom + 4 });
+          }
+          setOpen((o) => !o);
+        }}
         className={cn(
           "inline-flex items-center justify-center rounded-sm transition-colors",
           configurable && "hover:bg-[rgba(249,115,22,0.08)] cursor-pointer",
@@ -198,10 +209,14 @@ export function BrandLogo({
         )}
       </button>
 
-      {open && configurable && (
+      {open && configurable && anchor && createPortal(
         <div
           ref={popoverRef}
-          className="absolute top-full left-0 mt-1 z-50 w-[260px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] rounded-md shadow-lg overflow-hidden"
+          className="fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] rounded-md shadow-2xl overflow-hidden"
+          style={{
+            left: Math.min(anchor.x, window.innerWidth - 290),
+            top: anchor.y,
+          }}
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
             <span className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-fg-muted)] font-semibold">
@@ -295,7 +310,8 @@ export function BrandLogo({
               if (f) handleUpload(f);
             }}
           />
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   );

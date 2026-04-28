@@ -8,6 +8,8 @@ import {
   Activity,
 } from "lucide-react";
 import { Button } from "@/components/Button";
+import { ThemeSettings } from "@/components/ThemeSettings";
+import { BackupSettings } from "@/components/BackupSettings";
 import { moonraker } from "@/lib/moonraker";
 import { formatBytes, formatDuration } from "@/lib/utils";
 
@@ -75,6 +77,9 @@ export function SettingsPage() {
       : 0;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+      <ThemeSettings />
+      <BackupSettings />
+
       <Card title="System" icon={<Cog />}>
         <div className="space-y-3">
           <Row label="Klipper">
