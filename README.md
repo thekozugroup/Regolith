@@ -1,97 +1,44 @@
-# Regolith
+A modern, opinionated web interface for Klipper-based 3D printers — built for ease of use, with foolproofing wired in at every step. Replaces Fluidd on a Creality K1 Max with a mission-control dashboard, calibration tooling, and explicit guard-rails that prevent accidental moves, mid-print misclicks, and out-of-bounds commands.
 
-Greenfield Moonraker frontend for the Forge K1 Max printer.
+## Screenshots
 
-A focused, essentials-only UI replacing Fluidd. View · Print · Monitor.
+![Regolith dashboard during an active print](./docs/screenshot.png)
+
+## How it works
+
+The UI is a static React SPA that talks directly to Moonraker over a single WebSocket. There is no backend service to maintain — drop the built bundle anywhere nginx can serve static files. State subscriptions are merged into immutable snapshots so React renders only what changed, and a stuck-watchdog reconnects the camera stream and WS automatically when the network blips.
+
+Every action that dispatches gcode passes through a unified safety layer first. The same module powers the Tune page (no calibration runs while a print is active), the Control page (jog buttons grey out when a target move would exceed printer bounds, would land below an unhomed axis, or would hit a 0.5 mm endstop buffer), and the Print dialog (start blocked while busy, confirms before sending). A floating health alert stack surfaces thermal-runaway, MCU overheating, and network-loss conditions without burying them in logs.
+
+Calibration tasks are exposed as one-click cards with explicit confirm modals, estimated durations, and the literal gcode preview behind a `<details>`. The print flow includes per-print toggles for adaptive bed mesh (KAMP) and timelapse recording — set once, persisted, applied via gcode variables. A Print History card surfaces the rolling Moonraker job log with success/failure pills and per-print stats so failed runs are obvious.
 
 ## Stack
 
-- **Bun** + **Vite** + **React 19** + **TypeScript**
-- **Tailwind v4** (zero-config, CSS-driven theming)
-- **Lucide icons** (Radix-style strokes, matches Fluidd custom theme)
-- **react-router** (client-side SPA)
-- **No backend** — pure static SPA, talks directly to Moonraker WebSocket
+- React 19 + TypeScript on Bun + Vite
+- Tailwind v4 with CSS-driven theming (8 accent presets, configurable device name)
+- Lucide icons in the Radix stroke aesthetic
+- Recharts for thermals, custom SVG for tachometer-style segmented gauges
+- No backend — pure static SPA against Moonraker's WebSocket + REST API
 
-## Routes
+## Status
 
-| Path | Purpose |
-|---|---|
-| `/` | Status hero + camera + thermals |
-| `/print` | File browser + one-click start |
-| `/control` | Jog, home, motors-off |
-| `/console` | Klipper console with command history |
-| `/settings` | Restart / firmware-restart / e-stop |
+Active
 
-## Dev
+---
 
-```bash
+## Local development
+
+```
 bun install
 bun dev
 ```
 
-Vite dev server at `http://localhost:5173`. Proxies `/printer`, `/server`,
-`/machine`, `/access`, `/api`, `/webcam`, `/websocket` to `http://forge.local`.
+Vite proxies `/printer`, `/server`, `/machine`, `/access`, `/api`, `/webcam`, and `/websocket` to the printer at build time.
 
-## Build + deploy
-
-```bash
-bun run build    # → ./dist/
-```
-
-Copy `dist/*` to `/usr/data/forge-ui/` on the printer, then add an nginx
-location pointing to it. Can run alongside Fluidd at a different path during
-evaluation.
-
-## Design tokens
-
-Defined in `src/index.css` via `@theme {}`:
-
-| Token | Value |
-|---|---|
-| `--color-bg` | `#09090b` zinc-950 |
-| `--color-surface` | `#18181b` zinc-900 |
-| `--color-elevated` | `#27272a` zinc-800 |
-| `--color-border` | `#27272a` |
-| `--color-border-strong` | `#3f3f46` |
-| `--color-fg` | `#fafafa` |
-| `--color-fg-muted` | `#a1a1aa` |
-| `--color-accent` | `#f97316` orange-500 |
-| `--color-accent-hover` | `#ea580c` orange-600 |
-| Radii | 0 / 4px / 6px / 8px |
-| Type scale | 10 / 11 / 12 / 13 / 15 / 18 |
-
-## Architecture
+## Deploy
 
 ```
-Browser
-  ├── Sidebar (icon nav)
-  ├── AppBar (logo, status badge, connection indicator)
-  └── Routes
-        ├── Dashboard   → live status + camera + thermals
-        ├── Files       → REST list, one-click print
-        ├── Control     → jog grid + motors
-        ├── Console     → live gcode log + command input
-        └── Settings    → system controls
-        ↓
-        moonraker.ts (WS client + REST helpers)
-        ↓
-        Moonraker /websocket  + REST endpoints
-        ↓
-        Klipper
+./deploy.sh
 ```
 
-## Not included (intentional)
-
-- Klipper config editing (use `ssh` or Fluidd for risky edits)
-- Macro creator (use Fluidd)
-- Bed mesh visualizer
-- Gcode preview
-- History stats
-- Update manager
-
-## Roadmap
-
-- [ ] Pressure advance live tuning
-- [ ] Filament profiles (PA per material)
-- [ ] Per-print timelapse
-- [ ] PWA install for tablet kiosk mode
+Atomic deploy: stages to `/usr/data/fluidd.next`, verifies file list matches the local `dist/`, swaps the previous build into `.previous`, then HTTP-checks every referenced asset before reporting success. Rollback command is printed on completion.
