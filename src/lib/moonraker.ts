@@ -13,6 +13,7 @@
 
 type SubscriptionCallback = (state: PrinterState) => void;
 type ConnectionCallback = (connected: boolean) => void;
+type GcodeLogCallback = (lines: GcodeLine[]) => void;
 
 export interface PrinterState {
   // Print state
@@ -70,6 +71,26 @@ export interface PrinterState {
   "temperature_sensor mcu_temp"?: { temperature: number };
   "temperature_sensor chamber_temp"?: { temperature: number };
   "heater_fan hotend_fan"?: { speed: number };
+  // Motion report (live position during macros)
+  motion_report?: {
+    live_position: [number, number, number, number];
+    live_velocity: number;
+    live_extruder_velocity: number;
+  };
+  // Gcode macro current state (custom macros publish via SET_GCODE_VARIABLE)
+  gcode_move?: {
+    position: [number, number, number, number];
+    gcode_position: [number, number, number, number];
+    speed: number;
+    speed_factor: number;
+  };
+}
+
+/** Lightweight in-memory log of recent gcode responses (notify_gcode_response). */
+export interface GcodeLine {
+  ts: number;
+  text: string;
+  type: "command" | "response";
 }
 
 interface RpcRequest {
@@ -106,8 +127,11 @@ export class Moonraker {
   private state: PrinterState = {};
   private subs = new Set<SubscriptionCallback>();
   private connSubs = new Set<ConnectionCallback>();
+  private gcodeLogSubs = new Set<GcodeLogCallback>();
   private subscribedFields = new Set<string>();
   private reconnectTimer: number | null = null;
+  private gcodeLog: GcodeLine[] = [];
+  private static MAX_LOG = 200;
 
   // ----- Connection lifecycle -----
   connect(): void {
@@ -194,9 +218,34 @@ export class Moonraker {
     } else if (msg.method === "notify_status_update") {
       const [diff] = msg.params as [Partial<PrinterState>];
       this.mergeState(diff);
+    } else if (msg.method === "notify_gcode_response") {
+      const [text] = msg.params as [string];
+      this.appendGcodeLine({ ts: Date.now(), text, type: "response" });
     } else if (msg.method === "notify_proc_stat_update") {
       // ignore — high frequency
     }
+  }
+
+  private appendGcodeLine(line: GcodeLine): void {
+    this.gcodeLog = [...this.gcodeLog, line].slice(-Moonraker.MAX_LOG);
+    this.gcodeLogSubs.forEach((cb) => cb(this.gcodeLog));
+  }
+
+  /** Surface a user-typed command in the log alongside klipper responses. */
+  recordCommand(text: string): void {
+    this.appendGcodeLine({ ts: Date.now(), text, type: "command" });
+  }
+
+  onGcodeLog(cb: GcodeLogCallback): () => void {
+    this.gcodeLogSubs.add(cb);
+    cb(this.gcodeLog);
+    return () => {
+      this.gcodeLogSubs.delete(cb);
+    };
+  }
+
+  getGcodeLog(): GcodeLine[] {
+    return this.gcodeLog;
   }
 
   private mergeState(diff: Partial<PrinterState>): void {

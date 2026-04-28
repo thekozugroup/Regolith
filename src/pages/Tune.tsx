@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
+import { LidarPACard } from "@/components/LidarPACard";
 import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import {
@@ -263,6 +265,16 @@ export function Tune() {
           </div>
         </div>
       </Card>
+
+      {/* Lidar PA card — K1 Max-specific lidar tuning */}
+      <div className="lg:col-span-2">
+        <LidarPACard />
+      </div>
+
+      {/* Bed mesh heatmap — read-only, safe during any state */}
+      <div className="lg:col-span-2">
+        <BedMeshHeatmap />
+      </div>
 
       {/* Sectioned actions */}
       {Object.entries(ACTIONS).map(([section, actions]) => (
