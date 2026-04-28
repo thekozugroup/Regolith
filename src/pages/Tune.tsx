@@ -5,6 +5,7 @@ import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
 import { LidarPACard } from "@/components/LidarPACard";
 import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
+import { getSafetyState } from "@/lib/safety";
 import {
   Sliders,
   Activity,
@@ -159,9 +160,8 @@ export function Tune() {
   const [pending, setPending] = useState<TuneAction | null>(null);
   const [running, setRunning] = useState<RunningAction | null>(null);
   const [pa, setPa] = useState<number | null>(null);
-  const isPrinting =
-    state.print_stats?.state === "printing" ||
-    state.print_stats?.state === "paused";
+  const safety = getSafetyState(state);
+  const isPrinting = safety.isBusy;
 
   const currentPa = state.extruder?.pressure_advance ?? 0.04;
   const displayedPa = pa ?? currentPa;
@@ -193,12 +193,21 @@ export function Tune() {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
-      {/* Banner: warn if printing */}
-      {isPrinting && (
+      {/* Banner: warn if printer is busy (any reason) */}
+      {safety.isBusy && (
         <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
           <span className="text-[var(--color-warning)] font-medium">
-            Printing in progress — calibration actions disabled.
+            {safety.busyReason ?? "Busy"} — calibration actions disabled.
+          </span>
+        </div>
+      )}
+      {!safety.klipperReady && (
+        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(239,68,68,0.10)] border border-[rgba(239,68,68,0.4)] rounded-md text-[12px]">
+          <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
+          <span className="text-[var(--color-error)] font-medium">
+            Klipper not ready ({state.webhooks?.state ?? "?"}) — fix before
+            running calibrations.
           </span>
         </div>
       )}
@@ -278,7 +287,7 @@ export function Tune() {
               <ActionRow
                 key={action.id}
                 action={action}
-                disabled={isPrinting || !!running}
+                disabled={isPrinting || !safety.klipperReady || !!running}
                 onClick={() => setPending(action)}
               />
             ))}

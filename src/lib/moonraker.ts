@@ -51,6 +51,8 @@ export interface PrinterState {
     estimated_print_time: number;
     max_velocity?: number;
     max_accel?: number;
+    axis_minimum?: [number, number, number, number];
+    axis_maximum?: [number, number, number, number];
   };
   // Display status (progress)
   display_status?: { progress: number; message: string };
