@@ -16,7 +16,7 @@ export function Dashboard() {
   return (
     <div className="grid grid-cols-12 gap-2 p-3">
       {/* LEFT — Printer card + Visual stacked */}
-      <div className="col-span-12 md:col-span-7 flex flex-col gap-2">
+      <div className="col-span-12 sm:col-span-7 flex flex-col gap-2">
         <PrinterCard />
 
         <Card title="Visual" icon={<Camera />}>
@@ -48,7 +48,7 @@ export function Dashboard() {
       </div>
 
       {/* RIGHT — Thermals + Telemetry stacked */}
-      <div className="col-span-12 md:col-span-5 flex flex-col gap-2">
+      <div className="col-span-12 sm:col-span-5 flex flex-col gap-2">
         <Card title="Thermals" icon={<Flame />}>
           <div className="grid grid-cols-2 gap-2">
             <ThermalGauge
