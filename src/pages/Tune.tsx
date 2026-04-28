@@ -274,10 +274,8 @@ export function Tune() {
         </div>
       </Card>
 
-      {/* Bed Mesh — full width since lidar card removed */}
-      <div className="sm:col-span-2">
-        <BedMeshHeatmap />
-      </div>
+      {/* Bed Mesh in one col */}
+      <BedMeshHeatmap />
 
       {/* Sectioned actions */}
       {Object.entries(ACTIONS).map(([section, actions]) => (

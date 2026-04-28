@@ -233,7 +233,7 @@ export function Control() {
         <BedView state={state} safety={safety} />
       </Card>
 
-      <Card title="Bounds & Safety" icon={<Lock />} className="sm:col-span-2">
+      <Card title="Bounds & Safety" icon={<Lock />}>
         <div className="space-y-2 text-[12px]">
           <Row label="Klipper">
             <Pill ok={safety.klipperReady}>

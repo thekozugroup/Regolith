@@ -40,32 +40,32 @@ export function Sidebar() {
   }, [isPrinting, progress, ps]);
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-14 border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col items-center py-2 z-10">
-      {/* Logo with print-progress ring + click-to-configure */}
-      <div className="w-12 h-12 flex items-center justify-center mb-2 relative">
+    <aside className="fixed left-0 top-0 bottom-0 w-14 border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col items-center z-10">
+      {/* Square 56x56 brand corner — aligns with app bar height */}
+      <div className="w-14 h-14 flex items-center justify-center relative border-b border-[var(--color-border)]">
         {isPrinting && (
           <svg
-            className="absolute inset-1 w-10 h-10 -rotate-90 pointer-events-none"
-            viewBox="0 0 40 40"
+            className="absolute inset-1.5 w-11 h-11 -rotate-90 pointer-events-none"
+            viewBox="0 0 44 44"
           >
             <circle
-              cx="20"
-              cy="20"
-              r="18"
+              cx="22"
+              cy="22"
+              r="20"
               fill="none"
               stroke="var(--color-elevated)"
               strokeWidth="2"
             />
             <circle
-              cx="20"
-              cy="20"
-              r="18"
+              cx="22"
+              cy="22"
+              r="20"
               fill="none"
               stroke="var(--color-accent)"
               strokeWidth="2"
               strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 18}
-              strokeDashoffset={(1 - progress) * 2 * Math.PI * 18}
+              strokeDasharray={2 * Math.PI * 20}
+              strokeDashoffset={(1 - progress) * 2 * Math.PI * 20}
               style={{
                 transition: "stroke-dashoffset 700ms ease",
                 filter: "drop-shadow(0 0 4px rgba(249,115,22,0.5))",
@@ -73,10 +73,10 @@ export function Sidebar() {
             />
           </svg>
         )}
-        <BrandLogo size={20} />
+        <BrandLogo size={22} />
       </div>
 
-      <div className="w-8 h-px bg-[var(--color-border)] mb-2" />
+      <div className="pt-2" />
 
       {/* Nav items */}
       <nav className="flex flex-col gap-1 flex-1">

@@ -22,7 +22,7 @@ export function Dashboard() {
 
         <Card title="Visual" icon={<Camera />}>
           <div className="aspect-video rounded overflow-hidden -m-3.5 relative">
-            <CameraStream className="absolute inset-0" host="192.168.50.179" />
+            <CameraStream className="absolute inset-0" />
             <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 z-10">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
               <span className="text-[10px] uppercase tracking-[0.1em] font-semibold">

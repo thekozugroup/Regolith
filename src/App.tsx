@@ -19,7 +19,7 @@ function AppShell() {
       <Sidebar />
       <AppBar />
       <HealthAlerts />
-      <main className="ml-14 mt-13 min-h-[calc(100vh-3.25rem)]">
+      <main className="ml-14 mt-14 min-h-[calc(100vh-3.5rem)]">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/print" element={<Files />} />

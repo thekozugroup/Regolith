@@ -50,7 +50,7 @@ export function ConsolePage() {
   };
 
   return (
-    <div className="p-3 h-[calc(100vh-3.5rem-1.5rem)]">
+    <div className="p-3 h-[calc(100vh-3.5rem)]">
       <Card
         title="Console"
         icon={<Terminal />}
