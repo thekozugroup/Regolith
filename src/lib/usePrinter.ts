@@ -16,6 +16,8 @@ const ALL_FIELDS = [
   "temperature_sensor mcu_temp",
   "temperature_sensor chamber_temp",
   "heater_fan hotend_fan",
+  "gcode_move",
+  "motion_report",
 ];
 
 export function usePrinter() {

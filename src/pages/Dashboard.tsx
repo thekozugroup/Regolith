@@ -120,19 +120,19 @@ export function Dashboard() {
               active={fanSpeed > 0}
             />
             <MetricTile
-              label="Speed"
-              value={
-                state.toolhead?.max_velocity
-                  ? `${state.toolhead.max_velocity.toFixed(0)} mm/s`
-                  : "—"
+              label="Speed Factor"
+              value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`}
+              warn={
+                state.gcode_move?.speed_factor != null &&
+                state.gcode_move.speed_factor !== 1
               }
             />
             <MetricTile
-              label="Accel"
-              value={
-                state.toolhead?.max_accel
-                  ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k`
-                  : "—"
+              label="Flow Factor"
+              value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`}
+              warn={
+                state.gcode_move?.extrude_factor != null &&
+                state.gcode_move.extrude_factor !== 1
               }
             />
             <MetricTile
@@ -140,12 +140,21 @@ export function Dashboard() {
               value={ext?.pressure_advance?.toFixed(4) ?? "—"}
             />
             <MetricTile
-              label="Position X"
-              value={state.toolhead?.position?.[0]?.toFixed(2) ?? "—"}
+              label="Live Vel."
+              value={
+                state.motion_report?.live_velocity != null
+                  ? `${state.motion_report.live_velocity.toFixed(0)} mm/s`
+                  : "—"
+              }
+              active={(state.motion_report?.live_velocity ?? 0) > 1}
             />
             <MetricTile
-              label="Position Y"
-              value={state.toolhead?.position?.[1]?.toFixed(2) ?? "—"}
+              label="Max Accel"
+              value={
+                state.toolhead?.max_accel
+                  ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k`
+                  : "—"
+              }
             />
             <MetricTile
               label="Position Z"
@@ -213,13 +222,22 @@ function MetricTile({
   label,
   value,
   active,
+  warn,
 }: {
   label: string;
   value: string;
   active?: boolean;
+  warn?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between py-1.5 px-2 rounded-sm bg-[var(--color-elevated)]/40 border border-[var(--color-border)]">
+    <div
+      className={cn(
+        "flex items-center justify-between py-1.5 px-2 rounded-sm bg-[var(--color-elevated)]/40 border",
+        warn
+          ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.06)]"
+          : "border-[var(--color-border)]",
+      )}
+    >
       <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </span>
@@ -227,6 +245,7 @@ function MetricTile({
         className={cn(
           "text-[13px] font-semibold tabular-nums font-mono",
           active && "text-[var(--color-accent)]",
+          warn && "text-[var(--color-warning)]",
         )}
       >
         {value}

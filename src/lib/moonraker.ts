@@ -85,6 +85,8 @@ export interface PrinterState {
     gcode_position: [number, number, number, number];
     speed: number;
     speed_factor: number;
+    extrude_factor?: number;
+    homing_origin?: [number, number, number, number];
   };
 }
 
