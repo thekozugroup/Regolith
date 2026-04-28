@@ -1,7 +1,8 @@
-import { Hammer, AlertCircle, Wifi, WifiOff } from "lucide-react";
+import { AlertCircle, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 import { AppBarProgress } from "./AppBarProgress";
+import { BrandLogo } from "./BrandLogo";
 
 export function AppBar() {
   const { state, connected } = usePrinter();
@@ -11,11 +12,8 @@ export function AppBar() {
   return (
     <header className="fixed top-0 left-14 right-0 h-13 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex items-center px-4 z-10 relative">
       {/* Logo + brand */}
-      <div className="flex items-center gap-2">
-        <Hammer
-          className="w-4 h-4 text-[var(--color-accent)]"
-          strokeWidth={2}
-        />
+      <div className="flex items-center gap-1">
+        <BrandLogo size={16} />
         <span className="text-[13px] font-semibold tracking-tight">
           Forge
         </span>

@@ -7,8 +7,8 @@ import {
   Sliders,
   Terminal,
   Settings,
-  Hammer,
 } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 
@@ -41,11 +41,11 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-14 border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col items-center py-2 z-10">
-      {/* Logo with print-progress ring */}
-      <div className="w-12 h-12 flex items-center justify-center mb-2 group relative">
+      {/* Logo with print-progress ring + click-to-configure */}
+      <div className="w-12 h-12 flex items-center justify-center mb-2 relative">
         {isPrinting && (
           <svg
-            className="absolute inset-1 w-10 h-10 -rotate-90"
+            className="absolute inset-1 w-10 h-10 -rotate-90 pointer-events-none"
             viewBox="0 0 40 40"
           >
             <circle
@@ -73,10 +73,7 @@ export function Sidebar() {
             />
           </svg>
         )}
-        <Hammer
-          className="w-5 h-5 text-[var(--color-accent)] transition-transform group-hover:rotate-12 relative z-10"
-          strokeWidth={2}
-        />
+        <BrandLogo size={20} />
       </div>
 
       <div className="w-8 h-px bg-[var(--color-border)] mb-2" />

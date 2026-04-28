@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
-import { LidarPACard } from "@/components/LidarPACard";
 import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
@@ -275,9 +274,10 @@ export function Tune() {
         </div>
       </Card>
 
-      {/* Lidar PA + Bed Mesh — one column each */}
-      <LidarPACard />
-      <BedMeshHeatmap />
+      {/* Bed Mesh — full width since lidar card removed */}
+      <div className="sm:col-span-2">
+        <BedMeshHeatmap />
+      </div>
 
       {/* Sectioned actions */}
       {Object.entries(ACTIONS).map(([section, actions]) => (
