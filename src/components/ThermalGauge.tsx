@@ -34,6 +34,8 @@ export function ThermalGauge({
   const active = t > 0;
   const reached = active && Math.abs(a - t) < 2;
   const overTarget = active && a > t + 5;
+  // Heating: target set, actual still climbing (>2°C below)
+  const heating = active && a < t - 2;
 
   // Geometry — semicircle anchored near bottom
   const W = 220;
@@ -133,6 +135,12 @@ export function ThermalGauge({
 
   return (
     <div className="flex flex-col items-center group select-none">
+      <style>{`
+        @keyframes thermalPulse {
+          0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
+          50% { opacity: 0.55; filter: drop-shadow(0 0 10px currentColor); }
+        }
+      `}</style>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {/* Outer ticks */}
         {tickElements}
@@ -153,6 +161,12 @@ export function ThermalGauge({
                   filter: lit && active
                     ? `drop-shadow(0 0 2px ${color})`
                     : undefined,
+                  // Pulse the leading edge when heating up
+                  animation:
+                    heating && lit && i === filledSegs - 1
+                      ? "thermalPulse 1.4s ease-in-out infinite"
+                      : undefined,
+                  color,
                 }}
               />
             );
@@ -263,12 +277,15 @@ export function ThermalGauge({
                 ? "HOT"
                 : reached
                   ? "OK"
-                  : active
-                    ? "RMP"
-                    : "STBY"
+                  : heating
+                    ? "RMP↑"
+                    : active
+                      ? "RMP"
+                      : "STBY"
             }
             active={active}
             warning={overTarget}
+            heating={heating}
           />
         </div>
       </div>
@@ -281,11 +298,13 @@ function Indicator({
   value,
   active,
   warning,
+  heating,
 }: {
   label: string;
   value: string;
   active?: boolean;
   warning?: boolean;
+  heating?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -297,6 +316,7 @@ function Indicator({
           "font-bold",
           warning && "text-[var(--color-warning)]",
           active && !warning && "text-[var(--color-accent)]",
+          heating && "animate-pulse",
           !active && "text-[var(--color-fg)]",
         )}
       >

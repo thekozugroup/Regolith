@@ -1,6 +1,7 @@
 import { Hammer, AlertCircle, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
+import { AppBarProgress } from "./AppBarProgress";
 
 export function AppBar() {
   const { state, connected } = usePrinter();
@@ -8,7 +9,7 @@ export function AppBar() {
   const printState = state.print_stats?.state;
 
   return (
-    <header className="fixed top-0 left-14 right-0 h-13 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex items-center px-4 z-10">
+    <header className="fixed top-0 left-14 right-0 h-13 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex items-center px-4 z-10 relative">
       {/* Logo + brand */}
       <div className="flex items-center gap-2">
         <Hammer
@@ -59,6 +60,7 @@ export function AppBar() {
           )}
         </div>
       </div>
+      <AppBarProgress />
     </header>
   );
 }
