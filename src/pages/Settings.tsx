@@ -167,8 +167,7 @@ export function SettingsPage() {
             </span>
           </Row>
           <div className="text-[11px] text-[var(--color-fg-muted)] pt-2 border-t border-[var(--color-border)] mt-2">
-            Greenfield Moonraker frontend. React 19 + Tailwind v4 + shadcn
-            aesthetic. Source:{" "}
+            Source:{" "}
             <a
               href="https://github.com/thekozugroup/Regolith"
               target="_blank"
