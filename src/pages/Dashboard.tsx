@@ -15,38 +15,40 @@ export function Dashboard() {
 
   return (
     <div className="grid grid-cols-12 gap-2 p-3">
-      {/* LEFT — Visual (camera), spans rows */}
-      <Card title="Visual" icon={<Camera />} className="col-span-12 lg:col-span-7">
-        <div className="aspect-video bg-black rounded overflow-hidden -m-3.5 relative">
-          <img
-            src="/webcam/?action=stream"
-            alt="Live"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              const img = e.target as HTMLImageElement;
-              img.style.display = "none";
-            }}
-          />
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-[10px] uppercase tracking-[0.1em] font-semibold">
-              Live
-            </span>
-          </div>
-          {state.toolhead?.position && (
-            <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums">
-              <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
-              <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
-              <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* RIGHT — Printer card + Thermals + Telemetry stacked */}
-      <div className="col-span-12 lg:col-span-5 flex flex-col gap-2">
+      {/* LEFT — Printer card + Visual stacked */}
+      <div className="col-span-12 lg:col-span-7 flex flex-col gap-2">
         <PrinterCard />
 
+        <Card title="Visual" icon={<Camera />}>
+          <div className="aspect-video bg-black rounded overflow-hidden -m-3.5 relative">
+            <img
+              src="/webcam/?action=stream"
+              alt="Live"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                img.style.display = "none";
+              }}
+            />
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-[10px] uppercase tracking-[0.1em] font-semibold">
+                Live
+              </span>
+            </div>
+            {state.toolhead?.position && (
+              <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums">
+                <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
+                <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
+                <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* RIGHT — Thermals + Telemetry stacked */}
+      <div className="col-span-12 lg:col-span-5 flex flex-col gap-2">
         <Card title="Thermals" icon={<Flame />}>
           <div className="grid grid-cols-2 gap-2">
             <ThermalGauge
