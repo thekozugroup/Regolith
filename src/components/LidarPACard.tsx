@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import {
@@ -53,6 +53,35 @@ export function LidarPACard() {
   });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<
+    "checking" | "online" | "offline"
+  >("checking");
+
+  // Probe port 9999 reachability on mount
+  useEffect(() => {
+    const ws = new WebSocket(`ws://${location.hostname}:9999`);
+    const timer = setTimeout(() => {
+      setBridgeStatus("offline");
+      ws.close();
+    }, 2500);
+    ws.onopen = () => {
+      clearTimeout(timer);
+      setBridgeStatus("online");
+      ws.close();
+    };
+    ws.onerror = () => {
+      clearTimeout(timer);
+      setBridgeStatus("offline");
+    };
+    return () => {
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        /* noop */
+      }
+    };
+  }, []);
 
   const updateFlag = (k: keyof LidarFlags, v: 0 | 1) => {
     const next = { ...flags, [k]: v };
@@ -120,6 +149,32 @@ export function LidarPACard() {
       }
     >
       <div className="space-y-3">
+        {/* Bridge status banner */}
+        {bridgeStatus === "offline" && (
+          <div className="flex items-start gap-2 p-2 bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.25)] rounded-sm">
+            <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+            <div className="text-[11px] leading-relaxed">
+              <span className="text-[var(--color-warning)] font-semibold">
+                Bridge offline:
+              </span>{" "}
+              Creality's port 9999 control bridge isn't running on this
+              firmware (we removed the Creality web stack). The lidar hardware
+              itself still works during prints if the slicer enables it. These
+              toggles persist locally for reference but won't apply remotely.
+            </div>
+          </div>
+        )}
+        {bridgeStatus === "online" && (
+          <div className="flex items-start gap-2 p-2 bg-[rgba(16,185,129,0.06)] border border-[rgba(16,185,129,0.25)] rounded-sm">
+            <Info className="w-4 h-4 text-[var(--color-success)] shrink-0 mt-0.5" />
+            <div className="text-[11px] leading-relaxed">
+              <span className="text-[var(--color-success)] font-semibold">
+                Bridge online.
+              </span>{" "}
+              Settings will be applied to the printer's AI middleware.
+            </div>
+          </div>
+        )}
         <div className="flex items-start gap-2 p-2 bg-[rgba(59,130,246,0.06)] border border-[rgba(59,130,246,0.2)] rounded-sm">
           <Info className="w-4 h-4 text-[var(--color-info)] shrink-0 mt-0.5" />
           <div className="text-[11px] leading-relaxed">
@@ -178,8 +233,14 @@ export function LidarPACard() {
         )}
 
         <div className="flex items-center gap-2 pt-1">
-          <Button size="sm" variant="primary" onClick={apply} disabled={busy}>
-            <Eye className="w-3 h-3" /> Apply to Printer
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={apply}
+            disabled={busy || bridgeStatus !== "online"}
+          >
+            <Eye className="w-3 h-3" />{" "}
+            {bridgeStatus === "online" ? "Apply to Printer" : "Bridge offline"}
           </Button>
           <Button size="sm" variant="ghost" onClick={reset} disabled={busy}>
             Reset all

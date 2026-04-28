@@ -267,14 +267,12 @@ export function Tune() {
         </div>
       </Card>
 
-      {/* Lidar PA + Bed Mesh — fit one column each in 2-col grid */}
+      {/* Lidar PA + Bed Mesh — one column each */}
       <LidarPACard />
       <BedMeshHeatmap />
 
-      {/* Auto Flatten — iterative guided bed leveling, full width */}
-      <div className="sm:col-span-2">
-        <AutoFlattenCard />
-      </div>
+      {/* Auto Flatten — iterative bed mesh convergence */}
+      <AutoFlattenCard />
 
       {/* Sectioned actions */}
       {Object.entries(ACTIONS).map(([section, actions]) => (
