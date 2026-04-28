@@ -224,7 +224,23 @@ export function Tune() {
         </div>
       )}
 
-      {/* Pressure Advance — special interactive card */}
+      {/* Sectioned actions first */}
+      {Object.entries(ACTIONS).map(([section, actions]) => (
+        <Card key={section} title={section} icon={SECTION_ICONS[section]}>
+          <div className="space-y-2">
+            {actions.map((action) => (
+              <ActionRow
+                key={action.id}
+                action={action}
+                disabled={isPrinting || !safety.klipperReady || !!running}
+                onClick={() => setPending(action)}
+              />
+            ))}
+          </div>
+        </Card>
+      ))}
+
+      {/* Pressure Advance — interactive card, bottom */}
       <Card title="Pressure Advance" icon={<Sliders />}>
         <div className="space-y-2">
           <div className="text-[12px] text-[var(--color-fg-muted)]">
@@ -274,24 +290,8 @@ export function Tune() {
         </div>
       </Card>
 
-      {/* Bed Mesh in one col */}
+      {/* Bed Mesh — bottom right next to Pressure Advance */}
       <BedMeshHeatmap />
-
-      {/* Sectioned actions */}
-      {Object.entries(ACTIONS).map(([section, actions]) => (
-        <Card key={section} title={section} icon={SECTION_ICONS[section]}>
-          <div className="space-y-2">
-            {actions.map((action) => (
-              <ActionRow
-                key={action.id}
-                action={action}
-                disabled={isPrinting || !safety.klipperReady || !!running}
-                onClick={() => setPending(action)}
-              />
-            ))}
-          </div>
-        </Card>
-      ))}
 
       {/* Confirm modal */}
       {pending && (
