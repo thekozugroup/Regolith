@@ -27,7 +27,7 @@ export function Control() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
       <Card title="Toolhead" icon={<Move />}>
         <div className="space-y-3">
           {/* Position display */}

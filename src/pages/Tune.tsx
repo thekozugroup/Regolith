@@ -192,10 +192,10 @@ export function Tune() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
       {/* Banner: warn if printing */}
       {isPrinting && (
-        <div className="lg:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
           <span className="text-[var(--color-warning)] font-medium">
             Printing in progress — calibration actions disabled.
@@ -205,7 +205,7 @@ export function Tune() {
 
       {/* Live action toast */}
       {running && (
-        <div className="lg:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(249,115,22,0.10)] border border-[rgba(249,115,22,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(249,115,22,0.10)] border border-[rgba(249,115,22,0.4)] rounded-md text-[12px]">
           <Activity className="w-4 h-4 text-[var(--color-accent)] shrink-0 animate-pulse" />
           <span className="text-[var(--color-accent)] font-medium flex-1">
             Running: {running.title}
@@ -267,12 +267,12 @@ export function Tune() {
       </Card>
 
       {/* Lidar PA card — K1 Max-specific lidar tuning */}
-      <div className="lg:col-span-2">
+      <div className="md:col-span-2">
         <LidarPACard />
       </div>
 
       {/* Bed mesh heatmap — read-only, safe during any state */}
-      <div className="lg:col-span-2">
+      <div className="md:col-span-2">
         <BedMeshHeatmap />
       </div>
 

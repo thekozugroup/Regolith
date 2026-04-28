@@ -24,8 +24,8 @@ export function Files() {
   }, []);
 
   return (
-    <div className="p-3">
-      <Card title="Files" icon={<FileText />}>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-3">
+      <Card title="Files" icon={<FileText />} className="md:col-span-2">
         {loading && (
           <div className="text-[12px] text-[var(--color-fg-muted)] py-4 text-center uppercase tracking-[0.1em]">
             Loading…
