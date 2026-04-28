@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink } from "react-router";
 import {
   LayoutDashboard,
@@ -9,6 +10,7 @@ import {
   Hammer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePrinter } from "@/lib/usePrinter";
 
 const NAV = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -20,12 +22,59 @@ const NAV = [
 ];
 
 export function Sidebar() {
+  const { state } = usePrinter();
+  const ps = state.print_stats?.state;
+  const progress = state.virtual_sdcard?.progress ?? 0;
+  const isPrinting = ps === "printing" || ps === "paused";
+
+  // Pulse the document title + favicon when a print is active so a
+  // background tab still surfaces progress at a glance.
+  useEffect(() => {
+    if (!isPrinting) {
+      document.title = "Forge";
+      return;
+    }
+    const pct = (progress * 100).toFixed(0);
+    document.title =
+      ps === "paused" ? `⏸ ${pct}% · Forge` : `▶ ${pct}% · Forge`;
+  }, [isPrinting, progress, ps]);
+
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-14 border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col items-center py-2 z-10">
-      {/* Logo */}
-      <div className="w-12 h-12 flex items-center justify-center mb-2 group">
+      {/* Logo with print-progress ring */}
+      <div className="w-12 h-12 flex items-center justify-center mb-2 group relative">
+        {isPrinting && (
+          <svg
+            className="absolute inset-1 w-10 h-10 -rotate-90"
+            viewBox="0 0 40 40"
+          >
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              fill="none"
+              stroke="var(--color-elevated)"
+              strokeWidth="2"
+            />
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              fill="none"
+              stroke="var(--color-accent)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 18}
+              strokeDashoffset={(1 - progress) * 2 * Math.PI * 18}
+              style={{
+                transition: "stroke-dashoffset 700ms ease",
+                filter: "drop-shadow(0 0 4px rgba(249,115,22,0.5))",
+              }}
+            />
+          </svg>
+        )}
         <Hammer
-          className="w-6 h-6 text-[var(--color-accent)] transition-transform group-hover:rotate-12"
+          className="w-5 h-5 text-[var(--color-accent)] transition-transform group-hover:rotate-12 relative z-10"
           strokeWidth={2}
         />
       </div>
