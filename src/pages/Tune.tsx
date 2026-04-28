@@ -3,7 +3,6 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
 import { LidarPACard } from "@/components/LidarPACard";
-import { AutoFlattenCard } from "@/components/AutoFlattenCard";
 import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import {
@@ -270,9 +269,6 @@ export function Tune() {
       {/* Lidar PA + Bed Mesh — one column each */}
       <LidarPACard />
       <BedMeshHeatmap />
-
-      {/* Auto Flatten — iterative bed mesh convergence */}
-      <AutoFlattenCard />
 
       {/* Sectioned actions */}
       {Object.entries(ACTIONS).map(([section, actions]) => (
