@@ -251,6 +251,10 @@ for (const viewport of [
     for (const path of ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"]) {
       await page.goto(path);
       await expectLayoutIntegrity(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`basic-${path === "/" ? "home" : path.slice(1)}.png`),
+        fullPage: true,
+      });
     }
     await page.goto("/console");
     await expect(page.getByRole("heading", { name: "Expert tool hidden" })).toBeVisible();
@@ -263,9 +267,13 @@ for (const viewport of [
     await expect(page.getByText("Live", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("expert-home.png"), fullPage: true });
 
-    for (const path of ["/", "/tune", "/console", "/settings"]) {
+    for (const path of ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"]) {
       await page.goto(path);
       await expectLayoutIntegrity(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`expert-${path === "/" ? "home" : path.slice(1)}.png`),
+        fullPage: true,
+      });
     }
     isolation.assertSafe();
   });
