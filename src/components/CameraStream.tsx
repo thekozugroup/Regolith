@@ -7,8 +7,6 @@ interface Props {
   className?: string;
   /** Override hostname; defaults to current page host (works on tailnet + LAN). */
   host?: string;
-  /** Stuck-watchdog timeout in ms — force reload if no frame arrives. */
-  stallMs?: number;
   /** Stop automatic network churn after this many retries. */
   maxAutomaticRetries?: number;
   /** Show fullscreen toggle button. */
@@ -28,7 +26,6 @@ const STATUS_LABELS: Record<CameraStatus, string> = {
 export function CameraStream({
   className,
   host,
-  stallMs = 4000,
   maxAutomaticRetries = 5,
   fullscreenable = true,
 }: Props) {
@@ -36,7 +33,6 @@ export function CameraStream({
   const [status, setStatus] = useState<CameraStatus>("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastFrameRef = useRef(Date.now());
   const retryAttemptRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
   const statusRef = useRef<CameraStatus>("connecting");
@@ -66,7 +62,6 @@ export function CameraStream({
     updateStatus("retrying");
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
-      lastFrameRef.current = Date.now();
       updateStatus("connecting");
       setGeneration((current) => current + 1);
     }, cameraRetryDelay(attempt));
@@ -75,7 +70,6 @@ export function CameraStream({
   const retryNow = useCallback(() => {
     clearRetryTimer();
     retryAttemptRef.current = 0;
-    lastFrameRef.current = Date.now();
     updateStatus("connecting");
     setGeneration((current) => current + 1);
   }, [clearRetryTimer, updateStatus]);
@@ -87,18 +81,6 @@ export function CameraStream({
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
-
-  useEffect(() => {
-    const watchdog = window.setInterval(() => {
-      if (
-        statusRef.current === "live" &&
-        Date.now() - lastFrameRef.current > stallMs
-      ) {
-        scheduleRetry();
-      }
-    }, 1000);
-    return () => clearInterval(watchdog);
-  }, [scheduleRetry, stallMs]);
 
   useEffect(() => clearRetryTimer, [clearRetryTimer]);
 
@@ -149,7 +131,6 @@ export function CameraStream({
         onLoad={() => {
           clearRetryTimer();
           retryAttemptRef.current = 0;
-          lastFrameRef.current = Date.now();
           updateStatus("live");
         }}
         onError={scheduleRetry}
@@ -175,25 +156,39 @@ export function CameraStream({
         />
         {STATUS_LABELS[status]}
       </div>
-      {fullscreenable && available && (
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          aria-label={isFullscreen ? "Exit camera fullscreen" : "Open camera fullscreen"}
+      {available && (
+        <div
           className={cn(
-            "absolute right-2 top-2 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm",
-            "transition-opacity hover:bg-black/85 hover:text-white",
+            "absolute right-2 top-2 z-10 flex gap-1.5 transition-opacity",
             isFullscreen
               ? "opacity-100"
-              : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100",
+              : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100",
           )}
         >
-          {isFullscreen ? (
-            <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />
-          ) : (
-            <Maximize2 className="h-3.5 w-3.5" strokeWidth={2} />
+          <button
+            type="button"
+            onClick={retryNow}
+            aria-label="Refresh camera stream"
+            title="Refresh camera"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
+          >
+            <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+          {fullscreenable && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit camera fullscreen" : "Open camera fullscreen"}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
+            >
+              {isFullscreen ? (
+                <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" strokeWidth={2} />
+              )}
+            </button>
           )}
-        </button>
+        </div>
       )}
     </div>
   );

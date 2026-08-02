@@ -6,7 +6,7 @@ A modern, opinionated web interface for Klipper-based 3D printers — built for 
 
 ## How it works
 
-The UI is a static React SPA that talks directly to Moonraker over a single WebSocket. There is no backend service to maintain — drop the built bundle anywhere nginx can serve static files. State subscriptions are merged into immutable snapshots so React renders only what changed, and a stuck-watchdog reconnects the camera stream and WS automatically when the network blips.
+The UI is a static React SPA that talks directly to Moonraker over a single WebSocket. There is no backend service to maintain — drop the built bundle anywhere nginx can serve static files. State subscriptions are merged into immutable snapshots so React renders only what changed. WebSocket recovery uses bounded backoff. The camera retries only after a real stream error, avoiding false MJPEG reconnect loops, and always offers a manual refresh control.
 
 Printer actions use a shared typed safety boundary with current-state checks, duplicate prevention, and clear errors. Print start re-checks state after confirmation and again after setup. Control blocks unhomed, busy, or out-of-bounds moves with a 0.5 mm endstop buffer. Expert Console access stays available, but hardware-changing and unknown commands are classified and confirmed. Tune macros and pressure-advance writes use the same live-state runner and duplicate lock.
 
@@ -106,7 +106,7 @@ The command installs locked local dependencies, runs lint and all tests, builds,
 
 1. Uploads a release archive and verifies byte size plus SHA-256.
 2. Extracts to `/usr/data/fluidd.next` and compares its complete file list with local `dist/`.
-3. Creates a timestamped verified backup under `/usr/data/regolith-backups`.
+3. Creates and verifies a timestamped backup under `/usr/data/regolith-backups`, then retains the newest five verified archives. A malformed archive blocks deployment before the live UI changes.
 4. Atomically moves the current UI to `/usr/data/fluidd.previous` and activates the staged UI.
 5. HTTP-checks the HTML and every referenced asset.
 6. Automatically swaps the previous UI back and verifies recovery if any post-swap check fails.
@@ -129,6 +129,17 @@ Rollback is also idle-gated and HTTP-verified:
 ```
 
 This swaps `/usr/data/fluidd` and `/usr/data/fluidd.previous`, so the operation remains reversible. If the selected previous slot fails HTTP verification, the script restores the original slot and verifies recovery.
+
+## Browser regression testing
+
+The repository includes printer-isolated Playwright coverage:
+
+```sh
+bunx playwright install chromium
+bun run test:e2e
+```
+
+The suite serves a synthetic idle K1 state, intercepts every printer API and WebSocket request, blocks external traffic, and fails if the UI attempts a printer write. It covers Basic and Expert modes at phone and desktop widths, card/layout integrity, minimum touch targets, healthy-camera stability, manual camera refresh, and stale-update recovery. It never requires or contacts a real printer.
 
 ## Software updates and recovery
 

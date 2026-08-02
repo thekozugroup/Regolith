@@ -59,7 +59,7 @@ export function Timelapses() {
     `/server/files/timelapse/${encodeURIComponent(file.path)}`;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
       <Card
         title="Timelapses"
         icon={<Film />}

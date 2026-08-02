@@ -130,7 +130,13 @@ if [[ "$command_text" == *'cd /usr/data/fluidd.next'* ]]; then
 fi
 if [[ "$command_text" == *'fluidd-before-'* ]]; then
   printf 'WRITE_BACKUP\n' >> "$MOCK_LOG"
-  printf 'backup=/usr/data/regolith-backups/fluidd-before-mock.tgz size=1024 sha256=mock files=2\n'
+  if [[ "$command_text" == *'retention_keep=5'* ]]; then
+    printf 'WRITE_RETENTION\n' >> "$MOCK_LOG"
+  fi
+  if [ "${MOCK_SCENARIO:-idle}" = "backup_invalid" ]; then
+    exit 1
+  fi
+  printf 'backup=/usr/data/regolith-backups/fluidd-before-mock.tgz size=1024 sha256=mock files=2 retained=5 pruned=0\n'
   exit 0
 fi
 if [[ "$command_text" == *'REGOLITH_SWAP_OK'* ]]; then
@@ -250,11 +256,24 @@ prepare_case success
 invoke idle || fail_test "successful deployment path"
 grep -q '^WRITE_SWAP$' "$LOG_FILE" || fail_test "success path performed atomic swap"
 grep -q '^WRITE_BACKUP$' "$LOG_FILE" || fail_test "success path created backup"
+grep -q '^WRITE_RETENTION$' "$LOG_FILE" || fail_test "success path enforced retention"
 if grep -q '^WRITE_ROLLBACK$' "$LOG_FILE"; then
   fail_test "success path rolled back"
 fi
 grep -q 'Deploy verified:' "$OUTPUT_FILE" || fail_test "success path verified HTTP"
 pass_test "verified deployment succeeds"
+
+prepare_case invalid-backup
+if invoke backup_invalid; then
+  fail_test "invalid backup set must block deployment"
+fi
+grep -q '^WRITE_BACKUP$' "$LOG_FILE" || fail_test "invalid-backup path attempted a new backup"
+if grep -q '^WRITE_SWAP$' "$LOG_FILE"; then
+  fail_test "invalid backup set reached live swap"
+fi
+grep -q 'Could not create and verify persistent backup' "$OUTPUT_FILE" \
+  || fail_test "invalid backup error is clear"
+pass_test "invalid backup set blocks swap before retention"
 
 prepare_case http-failure
 if invoke http_fail; then

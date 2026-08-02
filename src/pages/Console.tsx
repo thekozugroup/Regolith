@@ -91,7 +91,7 @@ export function ConsolePage() {
     : { allowed: false, reason: "Enter a command." };
 
   return (
-    <div className="p-3 h-[calc(100dvh-3.5rem-5rem)] md:h-[calc(100dvh-3.5rem)]">
+    <div className="h-[calc(100dvh-3.5rem-5rem)] p-3 sm:p-4 md:h-[calc(100dvh-3.5rem)]">
       <Card
         title="Console"
         icon={<Terminal />}

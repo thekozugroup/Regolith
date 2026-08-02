@@ -20,9 +20,9 @@ export function Dashboard() {
   const bedH = profile.heaters.find((h) => h.klipper === "heater_bed");
 
   return (
-    <div className="grid grid-cols-12 gap-2 p-3">
+    <div className="grid grid-cols-12 gap-3 p-3 sm:p-4">
       {/* LEFT — Printer card + Visual stacked, fills available height */}
-      <div className="col-span-12 sm:col-span-7 flex flex-col gap-2 min-h-full">
+      <div className="col-span-12 sm:col-span-7 flex min-h-full flex-col gap-3">
         <PrinterCard />
 
         <Card title="Visual" icon={<Camera />}>
@@ -40,7 +40,7 @@ export function Dashboard() {
       </div>
 
       {/* RIGHT — Thermals + Telemetry stacked, fills available height */}
-      <div className="col-span-12 sm:col-span-5 flex flex-col gap-2 min-h-full">
+      <div className="col-span-12 sm:col-span-5 flex min-h-full flex-col gap-3">
         <Card title="Thermals" icon={<Flame />}>
           <div className="grid grid-cols-2 gap-2">
             <ThermalGauge
@@ -252,7 +252,7 @@ function MetricTile({
   return (
     <div
       className={cn(
-        "flex items-center justify-between py-1.5 px-2 rounded-sm bg-[var(--color-elevated)]/40 border",
+        "flex items-center justify-between rounded-lg border bg-[var(--color-elevated)]/40 px-2 py-1.5",
         warn
           ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.06)]"
           : "border-[var(--color-border)]",

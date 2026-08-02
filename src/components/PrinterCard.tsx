@@ -80,7 +80,7 @@ export function PrinterCard() {
   return (
     <section
       className={cn(
-        "bg-[var(--color-surface)] border rounded-md overflow-hidden transition-colors",
+        "overflow-hidden rounded-xl border bg-[var(--color-surface)] transition-colors",
         isPrinting
           ? "border-[rgba(249,115,22,0.4)] shadow-[0_0_0_1px_rgba(249,115,22,0.15),0_0_24px_-8px_rgba(249,115,22,0.4)]"
           : "border-[var(--color-border)]",
@@ -91,7 +91,7 @@ export function PrinterCard() {
         <div className="relative group">
           <div
             className={cn(
-              "aspect-square rounded-md border border-[var(--color-border)] flex items-center justify-center overflow-hidden",
+              "flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-[var(--color-border)]",
               image
                 ? "bg-black"
                 : "bg-gradient-to-br from-[var(--color-elevated)] to-[var(--color-bg)]",
@@ -111,7 +111,7 @@ export function PrinterCard() {
             )}
           </div>
           {/* Upload overlay */}
-          {isExpert && <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+          {isExpert && <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-lg bg-black/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               onClick={() => fileRef.current?.click()}
               className="flex min-h-11 min-w-11 items-center gap-1 rounded-lg bg-[var(--color-accent)] px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"

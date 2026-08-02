@@ -314,19 +314,50 @@ remote_files="$(remote 'cd /usr/data/fluidd.next && find . -type f -print | sed 
 [ "$remote_files" = "$local_files" ] || fail "Staged file list differs from local dist. Live UI was not changed."
 ok "Staged file list matches local dist"
 
-step "Create persistent known-good backup"
+step "Create persistent known-good backup and enforce retention"
 backup_result="$(remote '
   set -eu
+  retention_keep=5
   mkdir -p /usr/data/regolith-backups
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   backup="/usr/data/regolith-backups/fluidd-before-${stamp}.tgz"
+  test ! -e "$backup"
   tar -czf "$backup" -C /usr/data fluidd
   size=$(wc -c < "$backup" | tr -d "[:space:]")
   hash=$(sha256sum "$backup" | awk "{print \$1}")
   count=$(tar -tzf "$backup" | wc -l | tr -d "[:space:]")
   test "$size" -gt 0
   test "$count" -gt 0
-  printf "backup=%s size=%s sha256=%s files=%s\n" "$backup" "$size" "$hash" "$count"
+  backups=$(find /usr/data/regolith-backups -type f -name "fluidd-before-*.tgz" | LC_ALL=C sort -r)
+  test -n "$backups"
+  total=0
+  new_rank=0
+  to_prune=""
+  for candidate in $backups; do
+    test -s "$candidate"
+    tar -tzf "$candidate" >/dev/null
+    total=$((total + 1))
+    if [ "$candidate" = "$backup" ]; then
+      new_rank=$total
+    fi
+    if [ "$total" -gt "$retention_keep" ]; then
+      to_prune="$to_prune $candidate"
+    fi
+  done
+  test "$new_rank" -ge 1
+  test "$new_rank" -le "$retention_keep"
+  pruned=0
+  for candidate in $to_prune; do
+    test "$candidate" != "$backup"
+    rm -f "$candidate"
+    test ! -e "$candidate"
+    pruned=$((pruned + 1))
+  done
+  retained=$((total - pruned))
+  test "$retained" -ge 1
+  test "$retained" -le "$retention_keep"
+  printf "backup=%s size=%s sha256=%s files=%s retained=%s pruned=%s\n" \
+    "$backup" "$size" "$hash" "$count" "$retained" "$pruned"
 ')" || fail "Could not create and verify persistent backup. Live UI was not changed."
 ok "$backup_result"
 

@@ -28,3 +28,5 @@ dist-ssr
 .a5c/runs/
 .a5c/package-lock.json
 .playwright-cli/
+playwright-report/
+test-results/

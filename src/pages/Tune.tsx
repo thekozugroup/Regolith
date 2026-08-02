@@ -236,7 +236,7 @@ export function Tune() {
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
         <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">

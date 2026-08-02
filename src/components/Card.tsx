@@ -20,7 +20,7 @@ export function Card({
     <section
       aria-labelledby={titleId}
       className={cn(
-        "overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]",
+        "overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]",
         className
       )}
     >
