@@ -6,9 +6,9 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
-- Accessibility hardening and UI hierarchy polish are complete locally and ready for an atomic main-branch commit.
-- Exact-current lint, 15 safety/accessibility tests, and production build pass. Build reports one non-blocking existing bundle-size warning (712 kB minified JS).
-- No live printer, SSH, deployment, G-code, motion, heat, restart, or configuration action occurred in this implementation effect.
+- UI safety, accessibility, responsive hierarchy, and interaction polish are committed on main.
+- Delivery hardening is complete locally: key-first authentication, fail-closed idle preflight, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
+- No live printer, SSH, deployment, G-code, motion, heat, restart, or configuration action occurred in this delivery effect.
 - Live K1 Max state and installed UI path remain unverified because the earlier read-only `forge.local` lookup did not resolve.
 
 ## Safety boundaries
@@ -45,7 +45,7 @@ bun run test
 bun run build
 ```
 
-All four commands pass. Live browser and printer validation belong to later guarded effects. Do not click printer-affecting controls during visual QA.
+All four commands pass. `bun run test` includes mocked deployment integration coverage. Live browser and printer validation belong to later guarded effects. Do not click printer-affecting controls during visual QA.
 
 Read-only local Chrome inspection covered 390x844 and 1280x900:
 
@@ -57,9 +57,12 @@ Read-only local Chrome inspection covered 390x844 and 1280x900:
 
 ## Deployment and rollback
 
-- Current `deploy.sh` is not yet approved for live use. Baseline audit found embedded credential defaults, disabled host-key verification, and no automatic rollback after a failed static-asset swap.
-- Do not deploy until the delivery-hardening effect removes those risks, proves printer-idle preflight, creates a verified backup, and arms automatic rollback.
-- Update survival is not yet proven. Planned direction: keep recovery metadata and known-good static assets under verified persistent `/usr/data` paths, then document evidence-based restore steps.
+- `deploy.sh` contains no password or fixed-IP default. It prefers SSH keys, optionally accepts a silent prompt or `PRINTER_PASSWORD` through `sshpass -e`, validates host input, and uses `StrictHostKeyChecking=accept-new`.
+- `--preflight` is read-only and refuses busy, paused, active virtual-SD, Klipper-not-ready, incomplete/unknown, low-space, or missing-tool states.
+- Deployment runs locked dependency install, lint, all tests, and build before upload. It verifies archive size, SHA-256, staged file list, and a timestamped persistent backup before swapping fixed `/usr/data` slots.
+- Every post-swap failure triggers automatic slot rollback and HTTP recovery verification. `--rollback` is idle-gated, reversible, and HTTP-verified.
+- `/usr/data/fluidd.previous` and `/usr/data/regolith-backups` improve update recovery. Survival remains best-effort because firmware can erase `/usr/data`, replace routing, or change Moonraker.
+- Mocked shell tests cover bad-host rejection, busy and unknown-state refusal without writes, read-only preflight, successful verified deploy, failed-HTTP automatic rollback/recovery, manual rollback, and insecure SSH/secret patterns.
 
 ## User-owned files
 
@@ -71,5 +74,5 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 ## Next steps
 
 1. Move Tune macro dispatch into the shared typed runner without weakening expert workflows.
-2. Harden installer/deploy/rollback/update survival before any live write. Remove the existing committed default password and unsafe host-key bypass.
-3. Perform read-only printer preflight; deploy static assets only after idle and rollback proof.
+2. Perform live read-only `./deploy.sh --preflight`; independently verify K1 Max state, persistent paths, current UI, backup capacity, and nginx routing.
+3. Deploy static assets only after idle state and rollback prerequisites are proven live, then inspect desktop and 390px UI without activating printer controls.
