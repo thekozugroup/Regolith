@@ -57,7 +57,7 @@ interface Isolation {
 
 async function isolateFromPrinter(
   page: Page,
-  options: { cameraMode?: "ok" | "error" } = {},
+  options: { cameraMode?: "ok" | "error"; subscriptionDelayMs?: number } = {},
 ): Promise<Isolation> {
   const escaped: string[] = [];
   const writes: string[] = [];
@@ -73,16 +73,26 @@ async function isolateFromPrinter(
       };
       if (request.method) rpcMethods.push(request.method);
       if (request.id != null) {
-        socket.send(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            result:
-              request.method === "printer.objects.subscribe"
-                ? { status: IDLE_STATE }
-                : {},
-          }),
-        );
+        const reply = () => {
+          socket.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result:
+                request.method === "printer.objects.subscribe"
+                  ? { status: IDLE_STATE }
+                  : {},
+            }),
+          );
+        };
+        if (
+          request.method === "printer.objects.subscribe" &&
+          options.subscriptionDelayMs
+        ) {
+          setTimeout(reply, options.subscriptionDelayMs);
+        } else {
+          reply();
+        }
       }
     });
   });
@@ -273,6 +283,16 @@ test("healthy camera remains live without forced reconnect churn", async ({ page
   await page.getByRole("button", { name: "Refresh camera stream" }).click();
   await expect.poll(isolation.cameraRequests).toBe(2);
   await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  isolation.assertSafe();
+});
+
+test("unknown telemetry stays neutral while the printer connects", async ({ page }) => {
+  const isolation = await isolateFromPrinter(page, { subscriptionDelayMs: 1_500 });
+  await page.goto("/");
+  await expect(page.getByText("Connecting to printer…")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Hotend temperature unavailable" })).toBeVisible();
+  await expect(page.getByText(/Klipper \?/)).toHaveCount(0);
+  await expect(page.getByText("ready · standby", { exact: true })).toBeVisible();
   isolation.assertSafe();
 });
 

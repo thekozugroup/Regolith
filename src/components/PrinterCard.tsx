@@ -58,8 +58,8 @@ export function PrinterCard() {
       .catch(() => {});
   }, []);
 
-  const printerState = state.webhooks?.state ?? "—";
-  const printState = state.print_stats?.state ?? "—";
+  const printerState = state.webhooks?.state;
+  const printState = state.print_stats?.state;
   const isPrinting = printState === "printing" || printState === "paused";
 
   const handleFile = (file: File) => {
@@ -158,7 +158,9 @@ export function PrinterCard() {
             <div className="flex items-center gap-2 mt-1">
               <StatusDot state={printerState} />
               <span className="text-[11px] text-[var(--color-fg-muted)] uppercase tracking-[0.08em]">
-                {printerState} · {printState}
+                {printerState && printState
+                  ? `${printerState} · ${printState}`
+                  : "Connecting to printer…"}
               </span>
             </div>
           </div>
@@ -197,7 +199,7 @@ function Stat({ label, value }: { label: string; value: string | undefined }) {
   );
 }
 
-function StatusDot({ state }: { state: string }) {
+function StatusDot({ state }: { state: string | undefined }) {
   const ok = state === "ready";
   return (
     <span
@@ -205,7 +207,9 @@ function StatusDot({ state }: { state: string }) {
         "w-1.5 h-1.5 rounded-full",
         ok
           ? "bg-[var(--color-success)] shadow-[0_0_6px_rgba(16,185,129,0.5)]"
-          : "bg-[var(--color-error)]",
+          : state
+            ? "bg-[var(--color-error)]"
+            : "bg-[var(--color-fg-muted)]",
       )}
     />
   );

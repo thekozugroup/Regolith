@@ -19,7 +19,7 @@ export function AppBar() {
   const { state, connected } = usePrinter();
   const [deviceName] = useDeviceName();
   const location = useLocation();
-  const klipperOk = state.webhooks?.state === "ready";
+  const klipperState = state.webhooks?.state;
   const printState = state.print_stats?.state;
 
   return (
@@ -53,10 +53,10 @@ export function AppBar() {
 
       {/* Connection indicator */}
       <div className="flex items-center gap-3">
-        {!klipperOk && (
+        {klipperState && klipperState !== "ready" && (
           <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-error)]">
             <AlertCircle className="w-3.5 h-3.5" strokeWidth={2} />
-            <span className="font-medium">Klipper {state.webhooks?.state ?? "?"}</span>
+            <span className="font-medium">Klipper {klipperState}</span>
           </div>
         )}
         <div

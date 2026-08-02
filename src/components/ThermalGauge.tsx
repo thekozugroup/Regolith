@@ -29,7 +29,8 @@ export function ThermalGauge({
   maxTemp = 280,
   icon,
 }: ThermalGaugeProps) {
-  const a = actual ?? 0;
+  const hasActual = actual != null && Number.isFinite(actual);
+  const a = hasActual ? actual : 0;
   const t = target ?? 0;
   const active = t > 0;
   const reached = active && Math.abs(a - t) < 2;
@@ -144,7 +145,11 @@ export function ThermalGauge({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`${label} ${a.toFixed(1)} degrees Celsius${active ? `, target ${t.toFixed(0)} degrees` : ", target off"}`}
+        aria-label={
+          hasActual
+            ? `${label} ${a.toFixed(1)} degrees Celsius${active ? `, target ${t.toFixed(0)} degrees` : ", target off"}`
+            : `${label} temperature unavailable`
+        }
         className="h-auto w-full max-w-[220px]"
       >
         {/* Outer ticks */}
@@ -234,7 +239,7 @@ export function ThermalGauge({
             letterSpacing: "-0.02em",
           }}
         >
-          {a.toFixed(1)}
+          {hasActual ? a.toFixed(1) : "—"}
         </text>
         <text
           x={cx}
@@ -265,7 +270,7 @@ export function ThermalGauge({
         <div className="grid w-full grid-cols-3 gap-1 text-[9px] tabular-nums">
           <Indicator
             label="TGT"
-            value={active ? `${t.toFixed(0)}°` : "OFF"}
+            value={target == null ? "—" : active ? `${t.toFixed(0)}°` : "OFF"}
             active={active}
           />
           <Indicator
@@ -276,7 +281,9 @@ export function ThermalGauge({
           <Indicator
             label="STA"
             value={
-              overTarget
+              !hasActual
+                ? "WAIT"
+                : overTarget
                 ? "HOT"
                 : reached
                   ? "OK"
