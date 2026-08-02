@@ -1,11 +1,14 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ModalSurface } from "@/components/ModalSurface";
 import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
-import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
+import {
+  runPrinterAction,
+  type ActionConfirmation,
+} from "@/lib/printerActions";
 import {
   Sliders,
   Activity,
@@ -156,10 +159,12 @@ interface RunningAction {
 }
 
 export function Tune() {
-  const { state, mr } = usePrinter();
+  const { state, connected } = usePrinter();
   const [pending, setPending] = useState<TuneAction | null>(null);
   const [running, setRunning] = useState<RunningAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pa, setPa] = useState<number | null>(null);
+  const actionBusyRef = useRef(false);
   const pressureAdvanceId = useId();
   const pressureAdvanceHintId = useId();
   const safety = getSafetyState(state);
@@ -169,28 +174,65 @@ export function Tune() {
   const displayedPa = pa ?? currentPa;
 
   const runAction = async (action: TuneAction) => {
+    if (actionBusyRef.current) return;
+    actionBusyRef.current = true;
     setRunning({ id: action.id, title: action.title, startedAt: Date.now() });
     setPending(null);
+    setActionError(null);
     try {
-      await mr.runGcode(action.gcode);
-      // Wait for klipper to finish (poll idle_timeout)
-      await waitForIdle();
-      if (action.followup) {
-        await mr.runGcode(action.followup);
-      }
-    } catch (e) {
-      console.error("Action failed", e);
+      await runPrinterAction(
+        {
+          type: "tune-command",
+          title: action.title,
+          command: [action.gcode, action.followup].filter(Boolean).join("\n"),
+          confirmation: action.confirm,
+        },
+        {
+          // Confirmation already occurred in the accessible Tune modal. The
+          // shared runner still awaits this callback, then re-checks live state.
+          confirm: () => true,
+        },
+      );
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Tune action failed. Printer returned an unknown error.",
+      );
     } finally {
+      actionBusyRef.current = false;
       setRunning(null);
     }
   };
 
   const applyPa = async (save: boolean) => {
-    await mr.runGcode(`SET_PRESSURE_ADVANCE ADVANCE=${displayedPa.toFixed(4)}`);
-    if (save) {
-      await mr.runGcode("SAVE_CONFIG");
+    if (actionBusyRef.current) return;
+    actionBusyRef.current = true;
+    setRunning({
+      id: "pressure_advance",
+      title: save ? "Save Pressure Advance" : "Apply Pressure Advance",
+      startedAt: Date.now(),
+    });
+    setActionError(null);
+    try {
+      const result = await runPrinterAction(
+        { type: "set-pressure-advance", value: displayedPa, save },
+        {
+          confirm: (details: ActionConfirmation) =>
+            window.confirm(`${details.title}\n\n${details.message}`),
+        },
+      );
+      if (result.executed) setPa(null);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Pressure advance change failed. Printer returned an unknown error.",
+      );
+    } finally {
+      actionBusyRef.current = false;
+      setRunning(null);
     }
-    setPa(null);
   };
 
   return (
@@ -211,6 +253,14 @@ export function Tune() {
             Klipper not ready ({state.webhooks?.state ?? "?"}) — fix before
             running calibrations.
           </span>
+        </div>
+      )}
+      {actionError && (
+        <div
+          role="alert"
+          className="sm:col-span-2 rounded-lg border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
+        >
+          {actionError}
         </div>
       )}
 
@@ -235,7 +285,7 @@ export function Tune() {
               <ActionRow
                 key={action.id}
                 action={action}
-                disabled={isPrinting || !safety.klipperReady || !!running}
+                disabled={!connected || isPrinting || !safety.klipperReady || !!running}
                 onClick={() => setPending(action)}
               />
             ))}
@@ -264,7 +314,7 @@ export function Tune() {
               aria-describedby={pressureAdvanceHintId}
               aria-valuetext={`${displayedPa.toFixed(4)} seconds`}
               className="min-h-11 flex-1 accent-[var(--color-accent)]"
-              disabled={isPrinting}
+              disabled={!connected || isPrinting || !safety.klipperReady || !!running}
             />
             <output
               htmlFor={pressureAdvanceId}
@@ -277,7 +327,7 @@ export function Tune() {
           <div className="flex gap-2 pt-1">
             <Button
               size="sm"
-              disabled={isPrinting || pa === null}
+              disabled={!connected || isPrinting || !safety.klipperReady || !!running || pa === null}
               onClick={() => applyPa(false)}
             >
               Apply
@@ -285,13 +335,13 @@ export function Tune() {
             <Button
               size="sm"
               variant="primary"
-              disabled={isPrinting || pa === null}
+              disabled={!connected || isPrinting || !safety.klipperReady || !!running || pa === null}
               onClick={() => applyPa(true)}
             >
               Apply & Save
             </Button>
             {pa !== null && (
-              <Button size="sm" variant="ghost" onClick={() => setPa(null)}>
+              <Button size="sm" variant="ghost" disabled={!!running} onClick={() => setPa(null)}>
                 Reset
               </Button>
             )}
@@ -426,13 +476,4 @@ function ConfirmModal({
         </footer>
     </ModalSurface>
   );
-}
-
-async function waitForIdle(maxMs = 30 * 60 * 1000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 4000));
-    const s = moonraker.getState();
-    if (s.idle_timeout?.state !== "Printing") return;
-  }
 }

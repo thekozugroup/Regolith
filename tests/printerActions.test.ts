@@ -150,6 +150,70 @@ describe("printer action safety", () => {
     release();
     await first;
   });
+
+  test("blocks a Tune macro when printer becomes busy during confirmation", async () => {
+    const fake = client();
+    const run = createPrinterActionRunner(fake);
+    await expect(
+      run(
+        {
+          type: "tune-command",
+          title: "Calibrate Bed Mesh",
+          command: "G28\nBED_MESH_CALIBRATE PROFILE=default",
+          confirmation: "This homes and probes the bed grid.",
+        },
+        {
+          confirm: () => {
+            fake.state = readyState({ idle_timeout: { state: "Printing" } });
+            return true;
+          },
+        },
+      ),
+    ).rejects.toThrow("Printer state changed");
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("locks Tune dispatch and sends follow-up in one ordered script", async () => {
+    const fake = client();
+    let release = () => {};
+    fake.runGcode = (script) => {
+      fake.calls.push(`gcode:${script}`);
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const run = createPrinterActionRunner(fake);
+    const action = {
+      type: "tune-command" as const,
+      title: "Auto Calibrate",
+      command: "G28\nSHAPER_CALIBRATE\nSAVE_CONFIG",
+      confirmation: "This homes the printer and runs a frequency sweep.",
+    };
+    const first = run(action, { confirm: () => true });
+    await expect(run(action, { confirm: () => true })).rejects.toMatchObject({
+      code: "duplicate",
+    });
+    expect(fake.calls).toEqual(["gcode:G28\nSHAPER_CALIBRATE\nSAVE_CONFIG"]);
+    release();
+    await first;
+  });
+
+  test("validates and idle-gates pressure advance changes", async () => {
+    expect(
+      guardPrinterAction(readyState(), true, {
+        type: "set-pressure-advance",
+        value: 0.25,
+        save: false,
+      }).allowed,
+    ).toBe(false);
+    expect(
+      guardPrinterAction(
+        readyState({ print_stats: { state: "printing" } }),
+        true,
+        { type: "set-pressure-advance", value: 0.04, save: true },
+      ).allowed,
+    ).toBe(false);
+  });
 });
 
 describe("expert console classification", () => {

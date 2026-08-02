@@ -13,6 +13,13 @@ export type PrinterAction =
   | { type: "restart-klipper" }
   | { type: "firmware-restart" }
   | { type: "console-gcode"; command: string }
+  | {
+      type: "tune-command";
+      title: string;
+      command: string;
+      confirmation: string;
+    }
+  | { type: "set-pressure-advance"; value: number; save: boolean }
   | { type: "jog"; axis: Axis; delta: number }
   | { type: "home"; axis: "all" | "z" }
   | { type: "disable-motors" };
@@ -164,6 +171,14 @@ function validFilename(filename: string): boolean {
   return !filename.split("/").includes("..");
 }
 
+function validTuneCommand(command: string): boolean {
+  return (
+    command.trim().length > 0 &&
+    command.length <= 4096 &&
+    !command.includes("\0")
+  );
+}
+
 function isPrintActive(state: PrinterState): boolean {
   const printState = state.print_stats?.state;
   return printState === "printing" || printState === "paused";
@@ -239,6 +254,35 @@ export function guardPrinterAction(
         };
       }
     }
+    case "tune-command":
+      if (!validTuneCommand(action.command)) {
+        return { allowed: false, reason: "Tune command is invalid." };
+      }
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Resolve its status first." };
+      }
+      return safety.isBusy || isPrintActive(state)
+        ? {
+            allowed: false,
+            reason: `${safety.busyReason ?? "Printer is busy"}. Tuning is blocked.`,
+          }
+        : { allowed: true };
+    case "set-pressure-advance":
+      if (!Number.isFinite(action.value) || action.value < 0 || action.value > 0.2) {
+        return {
+          allowed: false,
+          reason: "Pressure advance must be between 0 and 0.2 seconds.",
+        };
+      }
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Resolve its status first." };
+      }
+      return safety.isBusy || isPrintActive(state)
+        ? {
+            allowed: false,
+            reason: `${safety.busyReason ?? "Printer is busy"}. Pressure advance changes are blocked.`,
+          }
+        : { allowed: true };
     case "jog":
       return canJog(state, safety, action.axis, action.delta);
     case "home":
@@ -315,6 +359,23 @@ export function getActionConfirmation(
         confirmLabel: "Run command",
       };
     }
+    case "tune-command":
+      return {
+        risk: "critical",
+        title: `Run ${action.title}?`,
+        message: action.confirmation,
+        confirmLabel: `Run ${action.title}`,
+      };
+    case "set-pressure-advance":
+      return action.save
+        ? {
+            risk: "caution",
+            title: "Apply and save pressure advance?",
+            message:
+              "This applies the new value, writes it to printer configuration, and restarts Klipper. Printing must remain idle.",
+            confirmLabel: "Apply and save",
+          }
+        : null;
     default:
       return null;
   }
@@ -338,6 +399,9 @@ function actionKey(action: PrinterAction): string {
       return "printer-motion";
     case "console-gcode":
       return "console-gcode";
+    case "tune-command":
+    case "set-pressure-advance":
+      return "printer-tune";
     default:
       return action.type;
   }
@@ -444,6 +508,16 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
             break;
           case "console-gcode":
             await client.runGcode(normalizeConsoleCommand(action.command));
+            break;
+          case "tune-command":
+            await client.runGcode(action.command.trim());
+            break;
+          case "set-pressure-advance":
+            await client.runGcode(
+              `SET_PRESSURE_ADVANCE ADVANCE=${action.value.toFixed(4)}${
+                action.save ? "\nSAVE_CONFIG" : ""
+              }`,
+            );
             break;
           case "jog":
             await client.runGcode(
