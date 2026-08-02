@@ -74,11 +74,12 @@ export function Files() {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
       {/* File list */}
       <Card
         title="Files"
         icon={<FileText />}
+        className="md:col-span-3 lg:col-span-5"
         action={
           <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
             <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
@@ -125,17 +126,17 @@ export function Files() {
           </div>
         )}
 
-        <ul className="divide-y divide-[rgba(63,63,70,0.4)] max-h-[60vh] overflow-y-auto -mx-3.5">
+        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto -mx-[clamp(0.75rem,1.4vw,1.25rem)]">
           {filtered.map((f) => (
             <li key={f.path}>
               <button
                 type="button"
                 aria-pressed={selected?.path === f.path}
                 className={cn(
-                  "w-full min-h-11 flex items-center gap-3 py-2 px-3.5 text-left transition-colors",
+                  "w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[clamp(0.75rem,1.4vw,1.25rem)] text-left transition-colors",
                   selected?.path === f.path
-                    ? "bg-[rgba(249,115,22,0.10)]"
-                    : "hover:bg-[rgba(249,115,22,0.04)]",
+                    ? "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)]"
+                    : "hover:bg-[var(--color-elevated)]",
                 )}
                 onClick={() => setSelected(f)}
               >
@@ -164,7 +165,7 @@ export function Files() {
       </Card>
 
       {/* Detail panel */}
-      <Card title="Details" icon={<HardDrive />}>
+      <Card title="Details" icon={<HardDrive />} className="md:col-span-5 lg:col-span-7">
         {!selected ? (
           <div className="py-12 text-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em]">
             Select a file to preview
@@ -281,7 +282,7 @@ export function Files() {
       </Card>
 
       {/* History card spans both columns */}
-      <div className="sm:col-span-2">
+      <div className="md:col-span-8 lg:col-span-12">
         <PrintHistory />
       </div>
 

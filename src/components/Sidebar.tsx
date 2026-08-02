@@ -60,35 +60,15 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="app-chrome fixed left-0 top-0 bottom-0 hidden w-52 border-r border-[var(--color-border)] md:flex flex-col z-20">
-        <div className="h-14 px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
-          <div className="relative w-9 h-9 flex items-center justify-center">
-            {isPrinting && (
-              <svg
-                className="absolute inset-0 w-9 h-9 -rotate-90 pointer-events-none"
-                viewBox="0 0 36 36"
-                aria-hidden="true"
-              >
-                <circle cx="18" cy="18" r="16" fill="none" stroke="var(--color-elevated)" strokeWidth="2" />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="16"
-                  fill="none"
-                  stroke="var(--color-accent)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 16}
-                  strokeDashoffset={(1 - progress) * 2 * Math.PI * 16}
-                  className="transition-[stroke-dashoffset] duration-700"
-                />
-              </svg>
-            )}
+      <aside className="app-chrome fixed left-0 top-0 bottom-0 z-20 hidden w-56 flex-col border-r border-[var(--color-border)] md:flex">
+        <div className="h-[60px] px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
+          <div className="relative flex h-9 w-9 items-center justify-center border border-[var(--color-border)] bg-[var(--color-elevated)]">
             <BrandLogo size={20} />
+            {isPrinting && <span aria-label={`Print ${Math.round(progress * 100)} percent`} className="absolute -bottom-px -left-px h-0.5 bg-[var(--color-accent)]" style={{ width: `${progress * 100}%` }} />}
           </div>
           <div>
             <div className="text-[15px] font-semibold tracking-tight">Regolith</div>
-            <div className="text-[11px] text-[var(--color-fg-muted)]">Printer control</div>
+            <div className="text-[11px] text-[var(--color-fg-muted)]">Instrument panel</div>
           </div>
         </div>
 
@@ -100,9 +80,9 @@ export function Sidebar() {
               end={to === "/"}
               className={({ isActive }) =>
                 cn(
-                  "relative min-h-11 px-3 flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors",
-                  "hover:bg-[rgba(249,115,22,0.06)]",
-                  isActive && "bg-[rgba(249,115,22,0.10)] text-[var(--color-accent)]",
+                  "relative min-h-11 border-l-2 border-transparent px-3 flex items-center gap-3 text-[13px] font-medium transition-colors",
+                  "hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]",
+                  isActive && "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)] text-[var(--color-fg)]",
                   !isActive && "text-[var(--color-fg-muted)]",
                 )
               }
@@ -141,9 +121,9 @@ export function Sidebar() {
                   to={to}
                   className={({ isActive }) =>
                     cn(
-                      "min-h-14 px-3 flex items-center gap-3 rounded-xl text-[13px] font-medium",
+                      "min-h-14 border-l-2 border-transparent px-3 flex items-center gap-3 text-[13px] font-medium",
                       isActive
-                        ? "bg-[rgba(249,115,22,0.10)] text-[var(--color-accent)]"
+                        ? "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)] text-[var(--color-fg)]"
                         : "text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]",
                     )
                   }

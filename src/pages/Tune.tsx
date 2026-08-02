@@ -236,10 +236,10 @@ export function Tune() {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-3">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
-        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
           <span className="text-[var(--color-warning)] font-medium">
             {safety.busyReason ?? "Busy"} — calibration actions disabled.
@@ -247,7 +247,7 @@ export function Tune() {
         </div>
       )}
       {!safety.klipperReady && (
-        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(239,68,68,0.10)] border border-[rgba(239,68,68,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
           <span className="text-[var(--color-error)] font-medium">
             Klipper not ready ({state.webhooks?.state ?? "?"}) — fix before
@@ -258,7 +258,7 @@ export function Tune() {
       {actionError && (
         <div
           role="alert"
-          className="sm:col-span-2 rounded-lg border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
+          className="md:col-span-2 lg:col-span-3 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
         >
           {actionError}
         </div>
@@ -266,8 +266,8 @@ export function Tune() {
 
       {/* Live action toast */}
       {running && (
-        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(249,115,22,0.10)] border border-[rgba(249,115,22,0.4)] rounded-md text-[12px]">
-          <Activity className="w-4 h-4 text-[var(--color-accent)] shrink-0 animate-pulse" />
+        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.10)] px-3 py-2 text-[12px]">
+          <Activity className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
           <span className="text-[var(--color-accent)] font-medium flex-1">
             Running: {running.title}
           </span>

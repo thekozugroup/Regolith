@@ -172,16 +172,14 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
         />
       </div>
 
-      {/* Color scale */}
+      {/* Discrete legend keeps the scale readable. */}
       <div className="flex items-center gap-2 text-[10px] tabular-nums text-[var(--color-fg-muted)]">
         <span>{min.toFixed(2)}</span>
-        <div
-          className="flex-1 h-1.5 rounded-sm"
-          style={{
-            background:
-              "linear-gradient(90deg, rgb(59,130,246), rgb(39,39,42), rgb(249,115,22))",
-          }}
-        />
+        <div aria-hidden="true" className="flex h-1.5 flex-1 overflow-hidden">
+          <span className="flex-1 bg-[var(--color-info)]" />
+          <span className="flex-1 bg-[var(--color-elevated)]" />
+          <span className="flex-1 bg-[var(--color-accent)]" />
+        </div>
         <span>{max.toFixed(2)}</span>
       </div>
     </div>

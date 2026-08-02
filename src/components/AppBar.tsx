@@ -23,7 +23,7 @@ export function AppBar() {
   const printState = state.print_stats?.state;
 
   return (
-    <header className="app-chrome fixed top-0 left-0 right-0 h-14 border-b border-[var(--color-border)] flex items-center px-4 z-20 md:left-52">
+    <header className="app-chrome fixed top-0 left-0 right-0 z-20 flex h-[60px] items-center border-b border-[var(--color-border)] px-[clamp(0.75rem,2vw,1.5rem)] md:left-56">
       <div className="flex items-center gap-3">
         <h1 className="max-w-[42vw] truncate text-[17px] font-semibold tracking-tight sm:max-w-none">
           {ROUTE_TITLES[location.pathname] ?? "Regolith"}
@@ -35,7 +35,7 @@ export function AppBar() {
         {printState && printState !== "standby" && printState !== "complete" && (
           <span
             className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-semibold tracking-[0.1em] uppercase border",
+              "flex items-center gap-1.5 border px-2 py-1 text-[10px] font-semibold tracking-[0.08em] uppercase",
               printState === "printing" &&
                 "text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]",
               printState === "paused" &&
@@ -44,7 +44,7 @@ export function AppBar() {
                 "text-[var(--color-error)] bg-[rgba(239,68,68,0.10)] border-[rgba(239,68,68,0.3)]"
             )}
           >
-            {printState}
+            <span aria-hidden="true" className="status-lamp" />{printState}
           </span>
         )}
       </div>

@@ -91,7 +91,7 @@ export function ConsolePage() {
     : { allowed: false, reason: "Enter a command." };
 
   return (
-    <div className="h-[calc(100dvh-3.5rem-5rem)] p-3 sm:p-4 md:h-[calc(100dvh-3.5rem)]">
+    <div className="h-[calc(100dvh-60px-5rem)] p-[clamp(0.75rem,2vw,1.5rem)] md:h-[calc(100dvh-60px)]">
       <Card
         title="Console"
         icon={<Terminal />}
@@ -107,7 +107,7 @@ export function ConsolePage() {
           </Button>
         }
       >
-        <div className="mb-3 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg)] p-3">
+        <div className="mb-3 border border-[var(--color-border-strong)] bg-[var(--color-bg)] p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-2 min-w-0">
               <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-warning)]" />
@@ -136,7 +136,7 @@ export function ConsolePage() {
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto bg-black -mx-3.5 -mt-3.5 px-3 py-2 font-mono text-[12px] leading-relaxed border-y border-[var(--color-border)] min-h-[200px]"
+          className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] -mt-[clamp(0.75rem,1.4vw,1.25rem)] min-h-[200px] flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
         >
           {lines.length === 0 && (
             <div className="text-[var(--color-fg-muted)] italic">
@@ -166,7 +166,7 @@ export function ConsolePage() {
         </div>
 
         {/* Status / autoscroll toggle */}
-        <div className="flex items-center justify-between text-[10px] text-[var(--color-fg-muted)] uppercase tracking-[0.1em] py-1.5 -mx-3.5 px-3.5 border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
+        <div className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[clamp(0.75rem,1.4vw,1.25rem)] py-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
           <span>{lines.length} lines</span>
           <button
             type="button"
@@ -179,10 +179,10 @@ export function ConsolePage() {
           >
             <span
               className={cn(
-                "w-1.5 h-1.5 rounded-full",
+                "status-lamp",
                 autoScroll
-                  ? "bg-[var(--color-accent)]"
-                  : "bg-[var(--color-fg-muted)]/30",
+                  ? "text-[var(--color-accent)]"
+                  : "text-[var(--color-fg-muted)]/30",
               )}
             />
             Autoscroll

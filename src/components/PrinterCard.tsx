@@ -80,21 +80,21 @@ export function PrinterCard() {
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-xl border bg-[var(--color-surface)] transition-colors",
+        "instrument-panel overflow-hidden transition-colors",
         isPrinting
-          ? "border-[rgba(249,115,22,0.4)] shadow-[0_0_0_1px_rgba(249,115,22,0.15),0_0_24px_-8px_rgba(249,115,22,0.4)]"
-          : "border-[var(--color-border)]",
+          ? "border-[color-mix(in_oklch,var(--color-accent)_62%,var(--color-border))]"
+          : "",
       )}
     >
-      <div className="grid grid-cols-[112px_1fr] gap-4 p-4 sm:grid-cols-[160px_1fr]">
+      <div className="grid grid-cols-[76px_1fr] gap-4 p-[clamp(0.75rem,1.4vw,1.25rem)] sm:grid-cols-[112px_1fr]">
         {/* Image / icon */}
         <div className="relative group">
           <div
             className={cn(
-              "flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-[var(--color-border)]",
+              "flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-border)] bg-[var(--color-elevated)]",
               image
                 ? "bg-black"
-                : "bg-gradient-to-br from-[var(--color-elevated)] to-[var(--color-bg)]",
+                : "",
             )}
           >
             {image ? (
@@ -105,13 +105,13 @@ export function PrinterCard() {
               />
             ) : (
               <Printer
-                className="w-16 h-16 text-[var(--color-accent)]/60"
+                className="h-10 w-10 text-[var(--color-accent)] sm:h-14 sm:w-14"
                 strokeWidth={1.25}
               />
             )}
           </div>
           {/* Upload overlay */}
-          {isExpert && <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-lg bg-black/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {isExpert && <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/72 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               onClick={() => fileRef.current?.click()}
               className="flex min-h-11 min-w-11 items-center gap-1 rounded-lg bg-[var(--color-accent)] px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
@@ -144,20 +144,20 @@ export function PrinterCard() {
         {/* Stats column */}
         <div className="flex flex-col justify-between">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-fg-muted)] font-semibold">
-              Printer
+            <div className="instrument-label">
+              Readiness
             </div>
-            <div className="flex items-baseline gap-3 mt-0.5">
-              <h2 className="text-[22px] font-semibold tracking-tight">
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <h2 className="text-[clamp(1.125rem,2vw,1.5rem)] font-semibold tracking-[-0.03em]">
                 {meta.hostname ?? "Forge"}
               </h2>
-              <span className="text-[12px] text-[var(--color-fg-muted)] font-mono">
+              <span className="instrument-value text-[11px] text-[var(--color-fg-muted)]">
                 {meta.model ?? "Creality K1 Max"}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="mt-2 flex items-center gap-2">
               <StatusDot state={printerState} />
-              <span className="text-[11px] text-[var(--color-fg-muted)] uppercase tracking-[0.08em]">
+              <span className="text-[12px] text-[var(--color-fg-muted)]">
                 {printerState && printState
                   ? `${printerState} · ${printState}`
                   : "Connecting to printer…"}
@@ -165,7 +165,7 @@ export function PrinterCard() {
             </div>
           </div>
 
-          {isExpert && <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4 text-[11px] tabular-nums">
+          {isExpert && <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-[var(--color-border)] pt-3 text-[11px] tabular-nums sm:grid-cols-4">
             <Stat label="Hostname" value={meta.hostname} />
             <Stat label="OS" value={meta.firmware} />
             <Stat
@@ -186,11 +186,11 @@ export function PrinterCard() {
 function Stat({ label, value }: { label: string; value: string | undefined }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="instrument-label text-[9px]">
         {label}
       </div>
       <div
-        className="text-[12px] font-medium font-mono mt-0.5 truncate"
+        className="instrument-value mt-0.5 truncate text-[12px] font-medium"
         title={value ?? "—"}
       >
         {value ?? "—"}
@@ -204,12 +204,12 @@ function StatusDot({ state }: { state: string | undefined }) {
   return (
     <span
       className={cn(
-        "w-1.5 h-1.5 rounded-full",
+        "status-lamp",
         ok
-          ? "bg-[var(--color-success)] shadow-[0_0_6px_rgba(16,185,129,0.5)]"
+          ? "text-[var(--color-success)]"
           : state
-            ? "bg-[var(--color-error)]"
-            : "bg-[var(--color-fg-muted)]",
+            ? "text-[var(--color-error)]"
+            : "text-[var(--color-fg-muted)]",
       )}
     />
   );

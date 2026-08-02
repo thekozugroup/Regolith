@@ -40,7 +40,7 @@ function RouteLoading() {
       className="flex min-h-[40dvh] items-center justify-center p-6 text-[13px] text-[var(--color-fg-muted)]"
     >
       <span className="inline-flex items-center gap-2">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-accent)]" />
+        <span aria-hidden="true" className="status-lamp text-[var(--color-accent)]" />
         Loading view…
       </span>
     </div>
@@ -82,7 +82,7 @@ function AppShell() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mt-14 min-h-[calc(100dvh-3.5rem)] pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-52 md:pb-0"
+        className="mt-[60px] min-h-[calc(100dvh-60px)] pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-56 md:pb-0"
       >
         <RouteErrorBoundary key={location.pathname}>
           <Suspense fallback={<RouteLoading />}>

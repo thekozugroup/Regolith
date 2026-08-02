@@ -10,17 +10,7 @@ export interface ThermalGaugeProps {
   icon?: ReactNode;
 }
 
-/**
- * Retrofuturistic segmented thermal gauge.
- *
- * Inspired by Apollo-era LED bar instruments:
- *   - Discrete trapezoidal segments along a 180° arc
- *   - Lit segments = filled value (with subtle glow)
- *   - Color tiers: cool / warm / hot / over-target
- *   - Target marker = a single bright bar across the arc
- *   - Center: monospace value, "°C" mil-spec label
- *   - Chunky outer bezel ticks at 0/25/50/75/100%
- */
+/** A rectangular, readable thermal instrument; no decorative gauge geometry. */
 export function ThermalGauge({
   label,
   actual,
@@ -30,308 +20,56 @@ export function ThermalGauge({
   icon,
 }: ThermalGaugeProps) {
   const hasActual = actual != null && Number.isFinite(actual);
-  const a = hasActual ? actual : 0;
-  const t = target ?? 0;
-  const active = t > 0;
-  const reached = active && Math.abs(a - t) < 2;
-  const overTarget = active && a > t + 5;
-  // Heating: target set, actual still climbing (>2°C below)
-  const heating = active && a < t - 2;
-
-  // Geometry — semicircle anchored near bottom
-  const W = 220;
-  const H = 130;
-  const cx = W / 2;
-  const cy = 110;
-  const radius = 84;
-  const segmentDepth = 14; // radial thickness of each segment
-  const innerRadius = radius - segmentDepth;
-
-  // 28 trapezoidal segments across 180°
-  const segCount = 28;
-  const arcSpan = 180;
-  const startAngle = -90; // left tip
-  const segGap = 0.6; // degrees of gap between segments
-
-  const polar = (angle: number, r: number) => {
-    const rad = ((angle - 90) * Math.PI) / 180;
-    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
-  };
-
-  const valToFraction = (v: number) =>
-    Math.max(0, Math.min(1, v / maxTemp));
-  const filledSegs = Math.round(valToFraction(a) * segCount);
-  const targetSeg = active ? Math.round(valToFraction(t) * segCount) : -1;
-
-  // Color tiers (segment-level, ramps from cool → hot)
-  const segColor = (i: number): string => {
-    if (i >= segCount) return "var(--color-fg-muted)";
-    const frac = i / segCount;
-    if (overTarget && i >= filledSegs - 1) return "var(--color-warning)";
-    if (reached && active) return "var(--color-success)";
-    if (!active) return "var(--color-fg-muted)";
-    if (frac < 0.4) return "var(--color-info)"; // cool blue
-    if (frac < 0.7) return "var(--color-accent)"; // orange
-    return "var(--color-warning)"; // amber/red zone
-  };
-
-  const segments = Array.from({ length: segCount }, (_, i) => {
-    const a1 = startAngle + (arcSpan * i) / segCount + segGap / 2;
-    const a2 = startAngle + (arcSpan * (i + 1)) / segCount - segGap / 2;
-    const [x1o, y1o] = polar(a1, radius);
-    const [x2o, y2o] = polar(a2, radius);
-    const [x2i, y2i] = polar(a2, innerRadius);
-    const [x1i, y1i] = polar(a1, innerRadius);
-
-    const path = `
-      M ${x1o.toFixed(2)} ${y1o.toFixed(2)}
-      A ${radius} ${radius} 0 0 1 ${x2o.toFixed(2)} ${y2o.toFixed(2)}
-      L ${x2i.toFixed(2)} ${y2i.toFixed(2)}
-      A ${innerRadius} ${innerRadius} 0 0 0 ${x1i.toFixed(2)} ${y1i.toFixed(2)}
-      Z
-    `;
-    return { path, i };
-  });
-
-  // Major ticks at 5 positions OUTSIDE the bar
-  const majorAngles = [0, 25, 50, 75, 100];
-  const tickElements = majorAngles.map((pct, idx) => {
-    const angle = startAngle + (arcSpan * pct) / 100;
-    const [x1, y1] = polar(angle, radius + 4);
-    const [x2, y2] = polar(angle, radius + 11);
-    return (
-      <line
-        key={idx}
-        x1={x1}
-        y1={y1}
-        x2={x2}
-        y2={y2}
-        stroke="var(--color-border-strong)"
-        strokeWidth={1.4}
-      />
-    );
-  });
-
-  // Min/max labels
-  const [minX, minY] = polar(startAngle, radius + 18);
-  const [maxX, maxY] = polar(startAngle + arcSpan, radius + 18);
-
-  // Target marker — short radial line crossing the bar
-  const targetMarker = (() => {
-    if (targetSeg < 0) return null;
-    const angle = startAngle + (arcSpan * targetSeg) / segCount;
-    const [x1, y1] = polar(angle, innerRadius - 3);
-    const [x2, y2] = polar(angle, radius + 3);
-    return (
-      <line
-        x1={x1}
-        y1={y1}
-        x2={x2}
-        y2={y2}
-        stroke="var(--color-fg)"
-        strokeWidth={2}
-      />
-    );
-  })();
+  const value = hasActual ? actual : 0;
+  const setpoint = target ?? 0;
+  const active = setpoint > 0;
+  const heating = active && value < setpoint - 2;
+  const stable = active && Math.abs(value - setpoint) < 2;
+  const overTarget = active && value > setpoint + 5;
+  const percent = Math.max(0, Math.min(100, (value / maxTemp) * 100));
+  const status = overTarget ? "Above target" : stable ? "Stable" : heating ? "Heating" : active ? "Regulating" : "Standby";
+  const stateColor = overTarget
+    ? "var(--color-error)"
+    : stable
+      ? "var(--color-success)"
+      : active
+        ? "var(--color-accent)"
+        : "var(--color-fg-muted)";
 
   return (
-    <div className="group flex min-w-0 flex-col items-center select-none">
-      <style>{`
-        @keyframes thermalPulse {
-          0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
-          50% { opacity: 0.55; filter: drop-shadow(0 0 10px currentColor); }
-        }
-      `}</style>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        role="img"
-        aria-label={
-          hasActual
-            ? `${label} ${a.toFixed(1)} degrees Celsius${active ? `, target ${t.toFixed(0)} degrees` : ", target off"}`
-            : `${label} temperature unavailable`
-        }
-        className="h-auto w-full max-w-[220px]"
-      >
-        {/* Outer ticks */}
-        {tickElements}
-
-        {/* Segments */}
-        <g>
-          {segments.map(({ path, i }) => {
-            const lit = i < filledSegs;
-            const color = segColor(i);
-            return (
-              <path
-                key={i}
-                d={path}
-                fill={lit ? color : "var(--color-elevated)"}
-                opacity={lit ? 1 : 0.45}
-                style={{
-                  transition: "fill 240ms ease, opacity 240ms ease",
-                  filter: lit && active
-                    ? `drop-shadow(0 0 2px ${color})`
-                    : undefined,
-                  // Pulse the leading edge when heating up
-                  animation:
-                    heating && lit && i === filledSegs - 1
-                      ? "thermalPulse 1.4s ease-in-out infinite"
-                      : undefined,
-                  color,
-                }}
-              />
-            );
-          })}
-        </g>
-
-        {/* Target marker */}
-        {targetMarker}
-
-        {/* Mil-spec brackets at tips */}
-        <g stroke="var(--color-border-strong)" strokeWidth={1} fill="none">
-          {/* Left bracket */}
-          {(() => {
-            const [bx, by] = polar(startAngle, radius + 4);
-            return (
-              <path
-                d={`M ${bx + 6} ${by - 4} L ${bx} ${by - 4} L ${bx} ${by + 4} L ${bx + 6} ${by + 4}`}
-              />
-            );
-          })()}
-          {(() => {
-            const [bx, by] = polar(startAngle + arcSpan, radius + 4);
-            return (
-              <path
-                d={`M ${bx - 6} ${by - 4} L ${bx} ${by - 4} L ${bx} ${by + 4} L ${bx - 6} ${by + 4}`}
-              />
-            );
-          })()}
-        </g>
-
-        {/* Min / max numerics */}
-        <text
-          x={minX}
-          y={minY}
-          textAnchor="middle"
-          className="font-mono fill-[var(--color-fg-muted)]/70"
-          style={{ fontSize: 9, fontWeight: 600 }}
-        >
-          0
-        </text>
-        <text
-          x={maxX}
-          y={maxY}
-          textAnchor="middle"
-          className="font-mono fill-[var(--color-fg-muted)]/70"
-          style={{ fontSize: 9, fontWeight: 600 }}
-        >
-          {maxTemp}
-        </text>
-
-        {/* Center value */}
-        <text
-          x={cx}
-          y={cy - 18}
-          textAnchor="middle"
-          className="font-mono font-semibold fill-[var(--color-fg)]"
-          style={{
-            fontSize: 30,
-            fontVariantNumeric: "tabular-nums",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          {hasActual ? a.toFixed(1) : "—"}
-        </text>
-        <text
-          x={cx}
-          y={cy + 2}
-          textAnchor="middle"
-          className="font-mono fill-[var(--color-fg-muted)]"
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: "0.3em",
-          }}
-        >
-          DEG·C
-        </text>
-      </svg>
-
-      {/* Status block — mil-spec readout */}
-      <div className="-mt-1 flex w-full min-w-0 flex-col items-center gap-1 rounded-sm border border-[var(--color-border)] bg-[var(--color-elevated)]/40 px-2 py-1">
-        <div
-          className={cn(
-            "flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-bold",
-            active ? "text-[var(--color-accent)]" : "text-[var(--color-fg-muted)]",
-          )}
-        >
-          {icon}
-          {label}
+    <section
+      role="img"
+      aria-label={`${label} temperature ${hasActual ? `${value.toFixed(1)} degrees Celsius` : "unavailable"}`}
+      aria-description={`${setpoint > 0 ? `Target ${setpoint.toFixed(0)} degrees Celsius. ` : "No target. "}${status}.`}
+      className="min-w-0 border border-[var(--color-border)] bg-[var(--color-elevated)]/38 p-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {icon && <span aria-hidden="true" className="text-[var(--color-fg-muted)]">{icon}</span>}
+          <h3 className="instrument-label truncate">{label}</h3>
         </div>
-        <div className="grid w-full grid-cols-3 gap-1 text-[9px] tabular-nums">
-          <Indicator
-            label="TGT"
-            value={target == null ? "—" : active ? `${t.toFixed(0)}°` : "OFF"}
-            active={active}
-          />
-          <Indicator
-            label="PWR"
-            value={power != null && power > 0 ? `${(power * 100).toFixed(0)}%` : "—"}
-            active={(power ?? 0) > 0}
-          />
-          <Indicator
-            label="STA"
-            value={
-              !hasActual
-                ? "WAIT"
-                : overTarget
-                ? "HOT"
-                : reached
-                  ? "OK"
-                  : heating
-                    ? "RMP↑"
-                    : active
-                      ? "RMP"
-                      : "STBY"
-            }
-            active={active}
-            warning={overTarget}
-            heating={heating}
-          />
-        </div>
+        <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium" style={{ color: stateColor }}>
+          <span aria-hidden="true" className="status-lamp" />
+          {status}
+        </span>
       </div>
-    </div>
-  );
-}
 
-function Indicator({
-  label,
-  value,
-  active,
-  warning,
-  heating,
-}: {
-  label: string;
-  value: string;
-  active?: boolean;
-  warning?: boolean;
-  heating?: boolean;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col items-center gap-0.5">
-      <span className="text-[var(--color-fg-muted)]/60 font-bold tracking-[0.15em]">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "font-bold",
-          warning && "text-[var(--color-warning)]",
-          active && !warning && "text-[var(--color-accent)]",
-          heating && "animate-pulse",
-          !active && "text-[var(--color-fg)]",
-        )}
-      >
-        {value}
-      </span>
-    </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className={cn("instrument-value text-[clamp(1.65rem,3vw,2.35rem)] font-semibold leading-none tracking-[-0.06em]", !hasActual && "text-[var(--color-fg-muted)]")}>
+            {hasActual ? value.toFixed(1) : "—"}<span className="ml-1 text-[0.45em] tracking-normal">°C</span>
+          </div>
+          <div className="mt-2 flex gap-3 text-[11px] text-[var(--color-fg-muted)]">
+            <span><span className="instrument-label mr-1 text-[9px]">Set</span>{setpoint > 0 ? `${setpoint.toFixed(0)}°` : "—"}</span>
+            <span><span className="instrument-label mr-1 text-[9px]">Power</span>{power != null ? `${Math.round(power * 100)}%` : "—"}</span>
+          </div>
+        </div>
+        <span className="instrument-label shrink-0 text-right">Max<br />{maxTemp}°</span>
+      </div>
+
+      <div className="mt-3 h-1.5 overflow-hidden bg-[var(--color-bg)]" aria-hidden="true">
+        <div className="h-full transition-[width,background-color] duration-150" style={{ width: `${percent}%`, backgroundColor: stateColor }} />
+      </div>
+    </section>
   );
 }

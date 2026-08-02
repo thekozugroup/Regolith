@@ -6,6 +6,8 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
+- Regolith Instrument Cluster cosmetic redesign is local-only and ready for the normal release gates. It is intentionally not deployed or connected to the K1 Max during this batch.
+- The approved `Skadis Ivar Halter_PETG_2h49m.gcode` print completed successfully under read-only watch at 100%. Virtual SD became inactive, heater targets and power reached zero, cooling was monotonic, snapshots stayed available, and no new Klipper errors appeared. Any future deployment still needs fresh identity, idle, zero-power, backup, and rollback proof.
 - Camera stability, aligned card rhythm, bounded backup retention, printer-isolated browser QA, and neutral connection loading states are committed and pushed on `main` at `f2acff5`.
 - Static assets from `93fcf9b` are deployed on the live K1 Max and include the camera reconnect fix, layout polish, backup retention, and browser harness. The follow-up neutral loading-state polish in `f2acff5` is intentionally not deployed: fresh gates first detected calibration/heating and then a latched failed-print state, refusing before writes each time.
 - Delivery is fail-closed: key-first authentication, conclusive idle gates, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
@@ -25,6 +27,11 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## UI and accessibility
 
+- Design direction: **Regolith Instrument Cluster** — disciplined 1980s digital automotive instrumentation governed by Apple HIG clarity. Rectangular segmented readouts, labeled lamps, rules, opaque bezels, tabular values, and a calm status spine carry the visual language. Amber is active/selected, cyan is system information, and every semantic color is paired with text or shape.
+- Home now prioritizes mission state, camera health, thermal stability, and printer readiness in that order. The camera receives the primary 8-column surface on desktop; the status spine and rectangular thermal instruments occupy the adjacent 4-column rail. Mobile follows the same task order.
+- Shared panels are restrained `InstrumentPanel` surfaces with ruled headers, 6px panel geometry, 44px targets, visible focus, safe-area navigation, and reduced-motion-safe 150ms state changes. Frost remains limited to the app bar and navigation chrome.
+- Files and Timelapses use a 5/7 desktop master-detail composition and amber selection rails rather than filled selected cards. Print History uses ruled rows. Control uses a precise control matrix and recessed coordinate plane. Console uses an opaque ruled log surface. Settings uses grouped zones and preserves Basic/Expert behavior.
+- No decorative gradients, shimmer, continuous pulse, glow, fake semicircular thermal gauges, Liquid Glass, or color-only states remain in the redesigned surfaces.
 - Basic is the safe default for new browser profiles. It keeps Home, Files, Control, Timelapses, Settings, readiness, temperatures, camera, active-job state, guarded movement, and emergency stop visible.
 - Expert is a persisted UI-only preference. It reveals Tune, Console, low-level telemetry, full travel bounds, profiles, backup/restore, host diagnostics, and recovery restarts. Direct visits to Tune or Console in Basic mode show a plain-language safety gate instead of loading the tool.
 - Settings explains what each mode adds and confirms that mode changes do not alter printer configuration.
@@ -77,6 +84,13 @@ git diff --check
 
 All commands pass on exact-current runtime code: frozen install, lint, 31/31 unit tests, 11/11 mocked deployment safety tests, guided-setup checks, 6/6 printer-isolated Playwright tests, build, shell syntax, and diff validation. Build output is 0.69 kB HTML, 47.59 kB CSS (8.57 kB gzip), a 283.28 kB initial JavaScript chunk (90.95 kB gzip), and route chunks. Recharts and its transitive runtime are removed.
 
+Instrument Cluster evidence, local only:
+
+- `bun run lint`, `bun run build`, `bun run test`, `bun run test:deploy`, `bun run test:setup`, and `bun run test:e2e` pass on the cosmetic batch. The full browser suite has 9 passing tests.
+- `e2e/instrument-cluster.spec.ts` registers HTTP and WebSocket interception before navigation. It permits static localhost assets, only a mocked `printer.objects.subscribe` RPC, and a mocked camera image; it aborts and records all other external requests and all non-GET/HEAD writes. It proves zero escaped requests and zero writes for Basic 320px, Expert 1280px/reduced-motion, and offline-camera states.
+- Exact-current local captures in ignored `test-results/` cover all seven routes in Basic 320px and Expert 1280px; existing strict-mock coverage also exercises Basic/Expert desktop and mobile routes, offline camera recovery, neutral telemetry, and stale-chunk recovery. Reviewed captures show no horizontal overflow and no visible target smaller than 44px.
+- Forbidden production safety and transport files were SHA-256 baselined before UI edits and remain unchanged. No printer, Moonraker, camera-device, forge.local, external network, deployment, service, or remote-file interaction occurred during this cosmetic batch.
+
 Read-only exact-current local Chrome smoke covered every route in Basic and Expert mode at 390x844 and 1280x900:
 
 - Each route had exactly one useful `h1`, zero horizontal overflow, and zero undersized visible interactive targets.
@@ -113,6 +127,7 @@ If mDNS fails, resolve `forge.local`, verify that address against the stored ECD
 
 ## Remaining issues
 
+- `PRINT_START`/`use_kamp` setup normalization remains intentionally deferred. It is a behavior fix outside the cosmetic batch and must be addressed only through its own printer-safe, idle-gated workflow.
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.

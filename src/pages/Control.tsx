@@ -66,10 +66,10 @@ export function Control() {
     canJog(state, safety, axis, sign * dist).allowed;
 
   return (
-    <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
       {/* Status banner */}
       {(safety.isBusy || !safety.klipperReady || !safety.fullyHomed) && (
-        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(245,158,11,0.10)] border border-[rgba(245,158,11,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
           {safety.isBusy ? (
             <>
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
@@ -97,13 +97,13 @@ export function Control() {
 
       {/* Toast */}
       {error && (
-        <div className="sm:col-span-2 flex items-center gap-2 px-3 py-2 bg-[rgba(239,68,68,0.10)] border border-[rgba(239,68,68,0.4)] rounded-md text-[12px]">
+        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
           <span className="text-[var(--color-error)] font-medium">{error}</span>
         </div>
       )}
 
-      <Card title="Toolhead" icon={<Move />}>
+      <Card title="Toolhead" icon={<Move />} className="md:col-span-5 lg:col-span-7">
         <div className="space-y-3">
           {/* Position display */}
           <div className="grid grid-cols-3 gap-2">
@@ -223,7 +223,7 @@ export function Control() {
                 className={cn(
                   "min-h-11 min-w-11 rounded-lg px-2.5 text-[12px] font-medium tabular-nums transition-colors",
                   dist === d
-                    ? "bg-[var(--color-bg)] text-[var(--color-accent)] shadow-[inset_0_0_0_1px_var(--color-border-strong)]"
+                    ? "border border-[var(--color-border-strong)] bg-[var(--color-bg)] text-[var(--color-accent)]"
                     : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                 )}
               >
@@ -250,11 +250,11 @@ export function Control() {
       </Card>
 
       {/* Top-down bed visualization */}
-      <Card title="Position" icon={<Move />}>
+      <Card title="Position" icon={<Move />} className="md:col-span-3 lg:col-span-5">
         <BedView state={state} safety={safety} />
       </Card>
 
-      {isExpert && <Card title="Bounds & Safety" icon={<Lock />}>
+      {isExpert && <Card title="Bounds & Safety" icon={<Lock />} className="md:col-span-8 lg:col-span-12">
         <div className="space-y-2 text-[12px]">
           <Row label="Klipper">
             <Pill ok={safety.klipperReady}>
@@ -333,7 +333,7 @@ function BedView({
 
   return (
     <div className="space-y-3">
-      <div className="aspect-[4/3] border border-[var(--color-border-strong)] rounded-md bg-[var(--color-bg)] relative overflow-hidden">
+      <div className="relative aspect-[4/3] overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-bg)]">
         {/* Origin label */}
         <div className="absolute bottom-1 left-1 text-[8px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
           Front · 0,0
@@ -349,7 +349,7 @@ function BedView({
         {/* Toolhead marker */}
         {homed && (
           <div
-            className="absolute w-3 h-3 rounded-full border-2 -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-300 ease-out"
+            className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 border-2 transition-[left,top] duration-150 ease-out"
             style={{
               left: `${x}%`,
               top: `${y}%`,
@@ -359,9 +359,6 @@ function BedView({
               backgroundColor: printing
                 ? "var(--color-accent)"
                 : "transparent",
-              boxShadow: printing
-                ? "0 0 8px rgba(249,115,22,0.6)"
-                : "none",
             }}
           />
         )}

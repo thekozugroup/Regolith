@@ -17,22 +17,12 @@ export function AppBarProgress() {
   return (
     <div className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--color-elevated)] overflow-hidden">
       <div
-        className="h-full transition-[width] duration-700 ease-out"
+        className="h-full transition-[width,background-color] duration-150 ease-out"
         style={{
           width: `${progress * 100}%`,
-          background: paused
-            ? "var(--color-warning)"
-            : "linear-gradient(90deg, var(--color-accent), #fb923c, var(--color-accent))",
-          backgroundSize: paused ? undefined : "200% 100%",
-          animation: paused ? undefined : "appBarShimmer 2.5s ease-in-out infinite",
+          backgroundColor: paused ? "var(--color-warning)" : "var(--color-accent)",
         }}
       />
-      <style>{`
-        @keyframes appBarShimmer {
-          0%, 100% { background-position: 0 0; }
-          50% { background-position: 100% 0; }
-        }
-      `}</style>
     </div>
   );
 }

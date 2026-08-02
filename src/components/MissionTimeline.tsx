@@ -144,9 +144,9 @@ export function MissionTimeline() {
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
-          <div className="aspect-square rounded-md border border-[var(--color-accent)] bg-[rgba(249,115,22,0.05)] overflow-hidden flex items-center justify-center">
+          <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[rgba(249,115,22,0.05)]">
             <Activity
-              className="w-12 h-12 text-[var(--color-accent)] animate-pulse"
+              className="w-12 h-12 text-[var(--color-accent)]"
               strokeWidth={1.25}
             />
           </div>
@@ -168,7 +168,7 @@ export function MissionTimeline() {
             </div>
 
             {/* Recent gcode log preview */}
-            <div className="bg-black border border-[var(--color-border)] rounded-sm p-2 max-h-[88px] overflow-y-auto font-mono text-[10.5px] leading-relaxed">
+            <div className="max-h-[88px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[10.5px] leading-relaxed">
               {recentLines.length === 0 ? (
                 <div className="text-[var(--color-fg-muted)] italic">
                   Waiting for klipper output…
@@ -284,7 +284,7 @@ export function MissionTimeline() {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
         {/* Thumbnail */}
-        <div className="aspect-square rounded-md border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
+        <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)]">
           {thumbUrl ? (
             <img
               src={thumbUrl}
@@ -309,9 +309,9 @@ export function MissionTimeline() {
 
           {/* Timeline */}
           <div className="relative pt-3 pb-2">
-            <div className="absolute left-0 right-0 top-[18px] h-0.5 bg-[var(--color-elevated)] rounded-full" />
+            <div className="absolute left-0 right-0 top-[18px] h-0.5 bg-[var(--color-elevated)]" />
             <div
-              className="absolute left-0 top-[18px] h-0.5 bg-[var(--color-accent)] rounded-full transition-[width] duration-700"
+              className="absolute left-0 top-[18px] h-0.5 bg-[var(--color-accent)] transition-[width] duration-150"
               style={{ width: `${progress * 100}%` }}
             />
             <div className="relative flex justify-between">
@@ -326,9 +326,9 @@ export function MissionTimeline() {
                   >
                     <span
                       className={cn(
-                        "block w-3 h-3 rounded-full border-2 transition-all",
+                        "block h-3 w-3 border-2 transition-[background-color,border-color,transform] duration-150",
                         current &&
-                          "bg-[var(--color-accent)] border-[var(--color-accent)] scale-125",
+                          "bg-[var(--color-accent)] border-[var(--color-accent)] scale-110",
                         reached &&
                           !current &&
                           "bg-[var(--color-accent)] border-[var(--color-accent)]",

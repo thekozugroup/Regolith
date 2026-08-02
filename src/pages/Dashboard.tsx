@@ -20,16 +20,13 @@ export function Dashboard() {
   const bedH = profile.heaters.find((h) => h.klipper === "heater_bed");
 
   return (
-    <div className="grid grid-cols-12 gap-3 p-3 sm:p-4">
-      {/* LEFT — Printer card + Visual stacked, fills available height */}
-      <div className="col-span-12 sm:col-span-7 flex min-h-full flex-col gap-3">
-        <PrinterCard />
-
-        <Card title="Visual" icon={<Camera />}>
-          <div className="aspect-video rounded overflow-hidden -m-3.5 relative">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
+      <div className="order-2 flex min-h-full flex-col gap-3 md:col-span-5 lg:col-span-8 lg:order-1">
+        <Card title="Camera" icon={<Camera />}>
+          <div className="relative -m-[clamp(0.75rem,1.4vw,1.25rem)] aspect-video overflow-hidden bg-black">
             <CameraStream className="absolute inset-0" />
             {isExpert && state.toolhead?.position && (
-              <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums z-10">
+              <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[10px] tabular-nums">
                 <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
                 <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
                 <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
@@ -39,10 +36,11 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* RIGHT — Thermals + Telemetry stacked, fills available height */}
-      <div className="col-span-12 sm:col-span-5 flex min-h-full flex-col gap-3">
+      <div className="order-1 flex min-h-full flex-col gap-3 md:col-span-3 lg:col-span-4 lg:order-2">
+        <MissionTimeline />
+        <PrinterCard />
         <Card title="Thermals" icon={<Flame />}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
             <ThermalGauge
               label={hotend?.label ?? "Hotend"}
               actual={ext?.temperature}
@@ -62,9 +60,9 @@ export function Dashboard() {
           </div>
           {isExpert && (
             <>
-              <div className="grid grid-cols-2 gap-3 mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
+              <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3">
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
+                  <div className="instrument-label mb-1 flex items-center justify-between text-[9px]">
                     <span>Hotend trend</span>
                     <span className="tabular-nums">
                       {ext?.temperature?.toFixed(1) ?? "—"}°
@@ -73,7 +71,7 @@ export function Dashboard() {
                   <Sparkline value={ext?.temperature} />
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
+                  <div className="instrument-label mb-1 flex items-center justify-between text-[9px]">
                     <span>Bed trend</span>
                     <span className="tabular-nums">
                       {bed?.temperature?.toFixed(1) ?? "—"}°
@@ -83,8 +81,8 @@ export function Dashboard() {
                 </div>
               </div>
               {(profile.sensors.length > 0 || profile.fans.length > 0) && (
-                <div className="mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
-                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+                <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+                  <div className="instrument-label mb-2 text-[9px]">
                     Aux sensors
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -120,8 +118,8 @@ export function Dashboard() {
           )}
         </Card>
 
-        {isExpert && <Card title="Telemetry" icon={<Wind />} className="flex-1">
-          <div className="grid grid-cols-2 gap-2">
+        {isExpert && <Card title="Telemetry" icon={<Wind />}>
+          <div className="divide-y divide-[var(--color-border)]">
             <MetricTile
               label="Part Fan"
               value={`${(fanSpeed * 100).toFixed(0)}%`}
@@ -177,10 +175,6 @@ export function Dashboard() {
         </Card>}
       </div>
 
-      {/* BOTTOM — Mission timeline full width */}
-      <div className="col-span-12">
-        <MissionTimeline />
-      </div>
     </div>
   );
 }
@@ -210,12 +204,12 @@ function AuxRow({
   const critical = criticalAbove != null && actual != null && actual >= criticalAbove;
   const warn = !critical && warnAbove != null && actual != null && actual >= warnAbove;
   return (
-    <div className="flex items-center justify-between text-[11px] py-0.5">
-      <span className="text-[var(--color-fg-muted)] font-mono">{label}</span>
+    <div className="ruled-row flex items-center justify-between py-2 text-[11px]">
+      <span className="text-[var(--color-fg-muted)]">{label}</span>
       <div className="flex items-baseline gap-1.5 tabular-nums">
         <span
           className={cn(
-            "font-mono font-medium",
+            "instrument-value font-medium",
             critical && "text-[var(--color-error)]",
             !critical && (warn || overTarget) && "text-[var(--color-warning)]",
             active && !overTarget && !warn && !critical && "text-[var(--color-accent)]",
@@ -251,19 +245,14 @@ function MetricTile({
 }) {
   return (
     <div
-      className={cn(
-        "flex items-center justify-between rounded-lg border bg-[var(--color-elevated)]/40 px-2 py-1.5",
-        warn
-          ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.06)]"
-          : "border-[var(--color-border)]",
-      )}
+      className={cn("flex min-h-11 items-center justify-between gap-3 py-2", warn && "text-[var(--color-warning)]")}
     >
-      <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold">
+      <span className="instrument-label text-[10px]">
         {label}
       </span>
       <span
         className={cn(
-          "text-[13px] font-semibold tabular-nums font-mono",
+          "instrument-value text-[13px] font-semibold",
           active && "text-[var(--color-accent)]",
           warn && "text-[var(--color-warning)]",
         )}

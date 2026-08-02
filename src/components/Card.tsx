@@ -20,14 +20,14 @@ export function Card({
     <section
       aria-labelledby={titleId}
       className={cn(
-        "overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]",
+        "instrument-panel overflow-hidden",
         className
       )}
     >
-      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-3.5">
-        <div className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-[clamp(0.75rem,1.4vw,1.25rem)]">
+        <div className="flex min-w-0 items-center gap-2 text-[14px] font-semibold tracking-[-0.01em]">
           {icon && (
-            <span className="text-[var(--color-accent)] [&>svg]:w-3.5 [&>svg]:h-3.5">
+            <span aria-hidden="true" className="text-[var(--color-accent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
               {icon}
             </span>
           )}
@@ -35,7 +35,7 @@ export function Card({
         </div>
         {action}
       </header>
-      <div className="p-3.5">{children}</div>
+      <div className="p-[clamp(0.75rem,1.4vw,1.25rem)]">{children}</div>
     </section>
   );
 }

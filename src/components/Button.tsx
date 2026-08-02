@@ -19,7 +19,7 @@ export function Button({
     default:
       "bg-[var(--color-elevated)] border border-[var(--color-border)] text-[var(--color-fg)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)]",
     primary:
-      "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-[var(--color-accent-hover)]",
+      "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-[color-mix(in_oklch,var(--color-accent)_72%,black)] hover:bg-[var(--color-accent-hover)]",
     ghost:
       "text-[var(--color-fg-muted)] hover:bg-[rgba(249,115,22,0.06)] hover:text-[var(--color-fg)]",
     danger:
@@ -36,7 +36,7 @@ export function Button({
     <button
       {...props}
       className={cn(
-        "inline-flex min-w-11 items-center justify-center gap-1.5 rounded-lg font-medium",
+        "inline-flex min-w-11 items-center justify-center gap-1.5 rounded-md font-medium",
         "transition-[background,border-color,color,transform] duration-100",
         "active:translate-y-px",
         "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0",
