@@ -303,7 +303,12 @@ export class Moonraker {
     return this.state;
   }
 
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
   // ----- Commands -----
+  /** Low-level transport. UI actions should use printerActions for safety gates. */
   async runGcode(script: string): Promise<void> {
     await this.send("printer.gcode.script", { script });
   }

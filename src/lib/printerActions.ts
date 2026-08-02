@@ -1,0 +1,475 @@
+import { moonraker, type PrinterState } from "./moonraker";
+import { canJog, getSafetyState, type Axis } from "./safety";
+
+export type PrintSetupOption = "kamp-on" | "kamp-off";
+
+export type PrinterAction =
+  | { type: "start-print"; filename: string; setup: PrintSetupOption[] }
+  | { type: "pause-print" }
+  | { type: "resume-print" }
+  | { type: "cancel-print" }
+  | { type: "repeat-print"; filename: string }
+  | { type: "emergency-stop"; context?: string }
+  | { type: "restart-klipper" }
+  | { type: "firmware-restart" }
+  | { type: "console-gcode"; command: string }
+  | { type: "jog"; axis: Axis; delta: number }
+  | { type: "home"; axis: "all" | "z" }
+  | { type: "disable-motors" };
+
+export type ActionRisk = "routine" | "caution" | "critical";
+
+export interface ActionConfirmation {
+  risk: Exclude<ActionRisk, "routine">;
+  title: string;
+  message: string;
+  confirmLabel: string;
+}
+
+export interface PrinterActionClient {
+  getState(): PrinterState;
+  isConnected(): boolean;
+  runGcode(script: string): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  cancel(): Promise<void>;
+  startPrint(filename: string): Promise<void>;
+  emergencyStop(): Promise<void>;
+  restart(): Promise<void>;
+  firmwareRestart(): Promise<void>;
+}
+
+export interface ActionCheck {
+  allowed: boolean;
+  reason?: string;
+}
+
+export class PrinterActionError extends Error {
+  public readonly code:
+    | "blocked"
+    | "duplicate"
+    | "invalid"
+    | "setup-failed"
+    | "command-failed";
+
+  constructor(
+    code:
+      | "blocked"
+      | "duplicate"
+      | "invalid"
+      | "setup-failed"
+      | "command-failed",
+    message: string,
+  ) {
+    super(message);
+    this.code = code;
+    this.name = "PrinterActionError";
+  }
+}
+
+const SAFE_CONSOLE_COMMANDS = new Set([
+  "BED_MESH_OUTPUT",
+  "DUMP_TMC",
+  "GET_POSITION",
+  "HELP",
+  "QUERY_ENDSTOPS",
+  "STATUS",
+]);
+
+const CRITICAL_CONSOLE_COMMANDS = new Set([
+  "M112",
+  "RESTART",
+  "FIRMWARE_RESTART",
+  "SAVE_CONFIG",
+]);
+
+const HARDWARE_COMMANDS = /^(?:G0|G1|G2|G3|G28|G29|M18|M84|M104|M109|M140|M190|M220|M221|SET_HEATER_TEMPERATURE|SET_KINEMATIC_POSITION|FORCE_MOVE|STEPPER_BUZZ|PID_CALIBRATE|BED_MESH_CALIBRATE|SHAPER_CALIBRATE|SCREWS_TILT_CALCULATE|PROBE|PROBE_ACCURACY|LOAD_FILAMENT|UNLOAD_FILAMENT|TURN_OFF_HEATERS)(?:\s|$)/i;
+
+function firstCommandWord(line: string): string {
+  return line.trim().split(/\s+/, 1)[0]?.toUpperCase() ?? "";
+}
+
+export function normalizeConsoleCommand(command: string): string {
+  const normalized = command.replace(/\r\n?/g, "\n").trim();
+  if (!normalized) {
+    throw new PrinterActionError("invalid", "Enter a G-code command first.");
+  }
+  if (normalized.length > 4096) {
+    throw new PrinterActionError(
+      "invalid",
+      "Command is too long. Keep console input under 4,096 characters.",
+    );
+  }
+  if (normalized.includes("\0")) {
+    throw new PrinterActionError("invalid", "Command contains an invalid null character.");
+  }
+  const executableLines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith(";") && !line.startsWith("#"));
+  if (executableLines.length === 0) {
+    throw new PrinterActionError("invalid", "Enter an executable G-code command.");
+  }
+  if (executableLines.length > 20) {
+    throw new PrinterActionError(
+      "invalid",
+      "Console input is limited to 20 commands at once. Split this script into smaller steps.",
+    );
+  }
+  return normalized;
+}
+
+export function getConsoleCommandRisk(command: string): {
+  risk: ActionRisk;
+  summary: string;
+} {
+  const normalized = normalizeConsoleCommand(command);
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith(";") && !line.startsWith("#"));
+  const words = lines.map(firstCommandWord);
+
+  if (words.some((word) => CRITICAL_CONSOLE_COMMANDS.has(word))) {
+    return {
+      risk: "critical",
+      summary: "Can immediately stop or restart printer control software.",
+    };
+  }
+  if (lines.some((line) => HARDWARE_COMMANDS.test(line))) {
+    return {
+      risk: "critical",
+      summary: "Can move hardware, heat components, or change printer state.",
+    };
+  }
+  if (words.every((word) => SAFE_CONSOLE_COMMANDS.has(word))) {
+    return { risk: "routine", summary: "Read-only diagnostic command." };
+  }
+  return {
+    risk: "caution",
+    summary: "Unknown or custom command. Printer behavior depends on its configuration.",
+  };
+}
+
+function validFilename(filename: string): boolean {
+  if (!filename || filename.length > 1024 || filename.startsWith("/")) return false;
+  if (
+    Array.from(filename).some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    })
+  ) {
+    return false;
+  }
+  return !filename.split("/").includes("..");
+}
+
+function isPrintActive(state: PrinterState): boolean {
+  const printState = state.print_stats?.state;
+  return printState === "printing" || printState === "paused";
+}
+
+export function guardPrinterAction(
+  state: PrinterState,
+  connected: boolean,
+  action: PrinterAction,
+): ActionCheck {
+  if (!connected) {
+    return {
+      allowed: false,
+      reason: "Printer is offline. Reconnect before sending a command.",
+    };
+  }
+
+  const safety = getSafetyState(state);
+  const printState = state.print_stats?.state ?? "standby";
+
+  switch (action.type) {
+    case "start-print":
+    case "repeat-print":
+      if (!validFilename(action.filename)) {
+        return { allowed: false, reason: "Selected file name is invalid." };
+      }
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Resolve its status first." };
+      }
+      if (safety.isBusy || isPrintActive(state)) {
+        return {
+          allowed: false,
+          reason: `${safety.busyReason ?? "Printer is busy"}. Wait until it is idle.`,
+        };
+      }
+      return { allowed: true };
+    case "pause-print":
+      return printState === "printing"
+        ? { allowed: true }
+        : { allowed: false, reason: "Only an active print can be paused." };
+    case "resume-print":
+      return printState === "paused"
+        ? { allowed: true }
+        : { allowed: false, reason: "Only a paused print can be resumed." };
+    case "cancel-print":
+      return isPrintActive(state)
+        ? { allowed: true }
+        : { allowed: false, reason: "There is no active print to cancel." };
+    case "restart-klipper":
+    case "firmware-restart":
+      return safety.isBusy || isPrintActive(state)
+        ? {
+            allowed: false,
+            reason: `${safety.busyReason ?? "Printer is busy"}. Restart is blocked.`,
+          }
+        : { allowed: true };
+    case "emergency-stop":
+      return { allowed: true };
+    case "console-gcode": {
+      try {
+        const risk = getConsoleCommandRisk(action.command);
+        if (!safety.klipperReady && risk.risk !== "critical") {
+          return {
+            allowed: false,
+            reason: "Klipper is not ready. Use Settings for recovery controls.",
+          };
+        }
+        return { allowed: true };
+      } catch (error) {
+        return {
+          allowed: false,
+          reason: error instanceof Error ? error.message : "Command is invalid.",
+        };
+      }
+    }
+    case "jog":
+      return canJog(state, safety, action.axis, action.delta);
+    case "home":
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Resolve its status first." };
+      }
+      return safety.isBusy
+        ? { allowed: false, reason: `${safety.busyReason ?? "Printer is busy"}. Homing is blocked.` }
+        : { allowed: true };
+    case "disable-motors":
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Resolve its status first." };
+      }
+      return safety.isBusy
+        ? { allowed: false, reason: `${safety.busyReason ?? "Printer is busy"}. Motors must stay engaged.` }
+        : { allowed: true };
+  }
+}
+
+export function getActionConfirmation(
+  action: PrinterAction,
+): ActionConfirmation | null {
+  switch (action.type) {
+    case "start-print":
+    case "repeat-print":
+      return {
+        risk: "caution",
+        title: "Start this print?",
+        message: `Start “${action.filename}”? Check that the build plate is seated, the bed is clear, and filament can feed freely.`,
+        confirmLabel: "Start print",
+      };
+    case "cancel-print":
+      return {
+        risk: "critical",
+        title: "Cancel the current print?",
+        message: "Printing will stop and cannot be resumed. Heaters may remain hot while the printer runs its cancel routine.",
+        confirmLabel: "Cancel print",
+      };
+    case "emergency-stop":
+      return {
+        risk: "critical",
+        title: "Emergency stop?",
+        message: `${action.context ? `${action.context} ` : ""}This immediately disables printer control. Klipper must be restarted before normal use. Use only when hardware or a person may be at risk.`,
+        confirmLabel: "Emergency stop",
+      };
+    case "restart-klipper":
+      return {
+        risk: "caution",
+        title: "Restart Klipper?",
+        message: "Printer control will be briefly unavailable. This is blocked while a print or calibration is active.",
+        confirmLabel: "Restart Klipper",
+      };
+    case "firmware-restart":
+      return {
+        risk: "caution",
+        title: "Restart firmware?",
+        message: "The printer controller will reconnect. This is blocked while a print or calibration is active.",
+        confirmLabel: "Restart firmware",
+      };
+    case "disable-motors":
+      return {
+        risk: "caution",
+        title: "Release the motors?",
+        message: "Axis position will no longer be trusted. Home the printer before its next move.",
+        confirmLabel: "Release motors",
+      };
+    case "console-gcode": {
+      const risk = getConsoleCommandRisk(action.command);
+      if (risk.risk === "routine") return null;
+      return {
+        risk: risk.risk,
+        title: risk.risk === "critical" ? "Run hardware command?" : "Run custom command?",
+        message: `${risk.summary}\n\n${normalizeConsoleCommand(action.command)}`,
+        confirmLabel: "Run command",
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function actionKey(action: PrinterAction): string {
+  switch (action.type) {
+    case "start-print":
+    case "repeat-print":
+      return "print-start";
+    case "pause-print":
+    case "resume-print":
+    case "cancel-print":
+      return "print-control";
+    case "restart-klipper":
+    case "firmware-restart":
+      return "printer-restart";
+    case "jog":
+    case "home":
+    case "disable-motors":
+      return "printer-motion";
+    case "console-gcode":
+      return "console-gcode";
+    default:
+      return action.type;
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : "Printer did not provide an error message.";
+}
+
+export function createPrinterActionRunner(client: PrinterActionClient) {
+  const inFlight = new Set<string>();
+
+  return async function runPrinterAction(
+    action: PrinterAction,
+    options: {
+      confirm?: (details: ActionConfirmation) => boolean | Promise<boolean>;
+    } = {},
+  ): Promise<{ executed: boolean }> {
+    const key = actionKey(action);
+    if (inFlight.has(key)) {
+      throw new PrinterActionError(
+        "duplicate",
+        "That action is already in progress. Wait for it to finish.",
+      );
+    }
+
+    const firstCheck = guardPrinterAction(client.getState(), client.isConnected(), action);
+    if (!firstCheck.allowed) {
+      throw new PrinterActionError("blocked", firstCheck.reason ?? "Action is blocked.");
+    }
+
+    inFlight.add(key);
+    try {
+      const confirmation = getActionConfirmation(action);
+      if (confirmation) {
+        if (!options.confirm || !(await options.confirm(confirmation))) {
+          return { executed: false };
+        }
+      }
+
+      // State may change while a confirmation is open. Always gate again.
+      const finalCheck = guardPrinterAction(client.getState(), client.isConnected(), action);
+      if (!finalCheck.allowed) {
+        throw new PrinterActionError(
+          "blocked",
+          `Printer state changed. ${finalCheck.reason ?? "Action is no longer safe."}`,
+        );
+      }
+
+      try {
+        switch (action.type) {
+          case "start-print":
+            for (const option of action.setup) {
+              try {
+                await client.runGcode(
+                  option === "kamp-on"
+                    ? "SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=1"
+                    : "SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=0",
+                );
+              } catch (error) {
+                throw new PrinterActionError(
+                  "setup-failed",
+                  `Print setup failed, so the print was not started. ${errorMessage(error)}`,
+                );
+              }
+            }
+            {
+              const startCheck = guardPrinterAction(
+                client.getState(),
+                client.isConnected(),
+                action,
+              );
+              if (!startCheck.allowed) {
+                throw new PrinterActionError(
+                  "blocked",
+                  `Printer state changed during setup. ${startCheck.reason ?? "Print was not started."}`,
+                );
+              }
+            }
+            await client.startPrint(action.filename);
+            break;
+          case "repeat-print":
+            await client.startPrint(action.filename);
+            break;
+          case "pause-print":
+            await client.pause();
+            break;
+          case "resume-print":
+            await client.resume();
+            break;
+          case "cancel-print":
+            await client.cancel();
+            break;
+          case "emergency-stop":
+            await client.emergencyStop();
+            break;
+          case "restart-klipper":
+            await client.restart();
+            break;
+          case "firmware-restart":
+            await client.firmwareRestart();
+            break;
+          case "console-gcode":
+            await client.runGcode(normalizeConsoleCommand(action.command));
+            break;
+          case "jog":
+            await client.runGcode(
+              `SAVE_GCODE_STATE NAME=regolith_jog\nG91\nG1 ${action.axis}${action.delta} F3000\nRESTORE_GCODE_STATE NAME=regolith_jog`,
+            );
+            break;
+          case "home":
+            await client.runGcode(action.axis === "all" ? "G28" : "G28 Z");
+            break;
+          case "disable-motors":
+            await client.runGcode("M84");
+            break;
+        }
+      } catch (error) {
+        if (error instanceof PrinterActionError) throw error;
+        throw new PrinterActionError(
+          "command-failed",
+          `Printer rejected the action. ${errorMessage(error)}`,
+        );
+      }
+
+      return { executed: true };
+    } finally {
+      inFlight.delete(key);
+    }
+  };
+}
+
+export const runPrinterAction = createPrinterActionRunner(moonraker);

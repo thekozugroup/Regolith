@@ -5,6 +5,12 @@ import { Card } from "./Card";
 import { usePrinter } from "@/lib/usePrinter";
 import { useGcodeLog } from "@/lib/useGcodeLog";
 import { moonraker } from "@/lib/moonraker";
+import {
+  guardPrinterAction,
+  runPrinterAction,
+  type ActionConfirmation,
+  type PrinterAction,
+} from "@/lib/printerActions";
 import { formatDuration, cn } from "@/lib/utils";
 
 /**
@@ -20,12 +26,14 @@ import { formatDuration, cn } from "@/lib/utils";
  * SCREWS_TILT_CALCULATE, BED_MESH_CALIBRATE, PROBE_ACCURACY etc).
  */
 export function MissionTimeline() {
-  const { state, mr } = usePrinter();
+  const { state, connected } = usePrinter();
   const log = useGcodeLog(20);
   const ps = state.print_stats;
   const sd = state.virtual_sdcard;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [activityStart, setActivityStart] = useState<number | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const printState = ps?.state ?? "standby";
   const isPrintingFile = printState === "printing" || printState === "paused";
@@ -77,6 +85,26 @@ export function MissionTimeline() {
     { label: "Done", at: 1 },
   ];
 
+  const dispatch = async (action: PrinterAction) => {
+    setActionBusy(action.type);
+    setActionError(null);
+    try {
+      await runPrinterAction(action, {
+        confirm: (details: ActionConfirmation) =>
+          window.confirm(`${details.title}\n\n${details.message}`),
+      });
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Printer action failed.",
+      );
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const can = (action: PrinterAction) =>
+    guardPrinterAction(state, connected, action).allowed;
+
   // ---------- TUNING / MACRO MODE ----------
   if (isTuning) {
     const elapsedSec = activityStart
@@ -95,12 +123,27 @@ export function MissionTimeline() {
         title="Mission Status"
         icon={<Activity />}
         action={
-          <Button size="sm" variant="danger" onClick={() => mr.runGcode("CANCEL_PRINT")}>
-            <X className="w-3 h-3" /> Abort
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={!!actionBusy || !connected}
+            onClick={() =>
+              dispatch({
+                type: "emergency-stop",
+                context: "Klipper has no universal safe cancel command for this calibration.",
+              })
+            }
+          >
+            <X className="w-3 h-3" /> Emergency stop
           </Button>
         }
       >
-        <div className="grid grid-cols-[120px_1fr] gap-4">
+        {actionError && (
+          <div role="alert" className="mb-3 rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-3 text-[13px] text-[var(--color-error)]">
+            {actionError}
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
           <div className="aspect-square rounded-md border border-[var(--color-accent)] bg-[rgba(249,115,22,0.05)] overflow-hidden flex items-center justify-center">
             <Activity
               className="w-12 h-12 text-[var(--color-accent)] animate-pulse"
@@ -192,15 +235,30 @@ export function MissionTimeline() {
         isPrintingFile ? (
           <div className="flex gap-1">
             {printState === "printing" ? (
-              <Button size="sm" variant="ghost" onClick={() => mr.pause()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!!actionBusy || !can({ type: "pause-print" })}
+                onClick={() => dispatch({ type: "pause-print" })}
+              >
                 <Pause className="w-3 h-3" /> Pause
               </Button>
             ) : (
-              <Button size="sm" variant="primary" onClick={() => mr.resume()}>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!!actionBusy || !can({ type: "resume-print" })}
+                onClick={() => dispatch({ type: "resume-print" })}
+              >
                 <Play className="w-3 h-3" /> Resume
               </Button>
             )}
-            <Button size="sm" variant="danger" onClick={() => mr.cancel()}>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={!!actionBusy || !can({ type: "cancel-print" })}
+              onClick={() => dispatch({ type: "cancel-print" })}
+            >
               <Square className="w-3 h-3" /> Cancel
             </Button>
           </div>
@@ -208,18 +266,23 @@ export function MissionTimeline() {
           <Button
             size="sm"
             variant="primary"
-            onClick={() => {
-              if (confirm(`Print again: ${filename}?`)) {
-                mr.startPrint(filename).catch(() => {});
-              }
-            }}
+            disabled={
+              !!actionBusy ||
+              !can({ type: "repeat-print", filename })
+            }
+            onClick={() => dispatch({ type: "repeat-print", filename })}
           >
             <RotateCcw className="w-3 h-3" /> Print again
           </Button>
         ) : null
       }
     >
-      <div className="grid grid-cols-[120px_1fr] gap-4">
+      {actionError && (
+        <div role="alert" className="mb-3 rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-3 text-[13px] text-[var(--color-error)]">
+          {actionError}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
         {/* Thumbnail */}
         <div className="aspect-square rounded-md border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
           {thumbUrl ? (
@@ -248,7 +311,7 @@ export function MissionTimeline() {
           <div className="relative pt-3 pb-2">
             <div className="absolute left-0 right-0 top-[18px] h-0.5 bg-[var(--color-elevated)] rounded-full" />
             <div
-              className="absolute left-0 top-[18px] h-0.5 bg-gradient-to-r from-[var(--color-accent)] to-[#fb923c] rounded-full transition-[width] duration-700"
+              className="absolute left-0 top-[18px] h-0.5 bg-[var(--color-accent)] rounded-full transition-[width] duration-700"
               style={{ width: `${progress * 100}%` }}
             />
             <div className="relative flex justify-between">
@@ -265,7 +328,7 @@ export function MissionTimeline() {
                       className={cn(
                         "block w-3 h-3 rounded-full border-2 transition-all",
                         current &&
-                          "bg-[var(--color-accent)] border-[var(--color-accent)] shadow-[0_0_8px_rgba(249,115,22,0.6)] scale-125",
+                          "bg-[var(--color-accent)] border-[var(--color-accent)] scale-125",
                         reached &&
                           !current &&
                           "bg-[var(--color-accent)] border-[var(--color-accent)]",

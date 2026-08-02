@@ -4,6 +4,11 @@ import { Button } from "@/components/Button";
 import { usePrinter } from "@/lib/usePrinter";
 import { canJog, getSafetyState, type Axis } from "@/lib/safety";
 import {
+  runPrinterAction,
+  type ActionConfirmation,
+  type PrinterAction,
+} from "@/lib/printerActions";
+import {
   Move,
   Home,
   ChevronUp,
@@ -19,12 +24,27 @@ import { cn } from "@/lib/utils";
 const DISTANCES = [0.1, 1, 10, 25, 50, 100];
 
 export function Control() {
-  const { state, mr } = usePrinter();
+  const { state } = usePrinter();
   const [dist, setDist] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const safety = getSafetyState(state);
   const homed = state.toolhead?.homed_axes ?? "";
   const pos = state.toolhead?.position ?? [0, 0, 0, 0];
+
+  const dispatch = async (action: PrinterAction) => {
+    setError(null);
+    try {
+      await runPrinterAction(action, {
+        confirm: (details: ActionConfirmation) =>
+          window.confirm(`${details.title}\n\n${details.message}`),
+      });
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error ? actionError.message : "Printer action failed.",
+      );
+      setTimeout(() => setError(null), 5000);
+    }
+  };
 
   const tryJog = (axis: Axis, sign: 1 | -1) => {
     const delta = sign * dist;
@@ -34,9 +54,7 @@ export function Control() {
       setTimeout(() => setError(null), 3500);
       return;
     }
-    mr.runGcode(
-      `SAVE_GCODE_STATE NAME=jog\nG91\nG1 ${axis}${delta} F3000\nRESTORE_GCODE_STATE NAME=jog`,
-    ).catch(() => {});
+    void dispatch({ type: "jog", axis, delta });
   };
 
   // Per-axis directional reachability (used to grey out OOB buttons)
@@ -132,7 +150,7 @@ export function Control() {
               <Button
                 size="sm"
                 variant="primary"
-                onClick={() => mr.runGcode("G28")}
+                onClick={() => dispatch({ type: "home", axis: "all" })}
                 disabled={safety.isBusy}
                 className="w-9 h-9 p-0"
                 title="Home all"
@@ -169,7 +187,7 @@ export function Control() {
                 size="sm"
                 variant="primary"
                 disabled={safety.isBusy}
-                onClick={() => mr.runGcode("G28 Z")}
+                onClick={() => dispatch({ type: "home", axis: "z" })}
                 className="w-9 h-9 p-0"
                 title="Home Z"
               >
@@ -212,15 +230,7 @@ export function Control() {
               size="sm"
               variant="ghost"
               disabled={safety.isBusy}
-              onClick={() => {
-                if (
-                  confirm(
-                    "Disengage steppers? Position will be lost; you'll need to home before next move.",
-                  )
-                ) {
-                  mr.runGcode("M84").catch(() => {});
-                }
-              }}
+              onClick={() => dispatch({ type: "disable-motors" })}
             >
               <PowerOff className="w-3 h-3" /> Motors off
             </Button>

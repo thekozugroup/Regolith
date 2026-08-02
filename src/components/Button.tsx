@@ -27,16 +27,16 @@ export function Button({
   } as const;
 
   const sizeClasses = {
-    sm: "h-6 px-2 text-[11px]",
-    md: "h-7.5 px-3 text-[12px]",
-    lg: "h-9 px-4 text-[13px]",
+    sm: "min-h-11 px-3 text-[12px]",
+    md: "min-h-11 px-4 text-[13px]",
+    lg: "min-h-12 px-5 text-[14px]",
   } as const;
 
   return (
     <button
       {...props}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-sm font-medium",
+        "inline-flex min-w-11 items-center justify-center gap-1.5 rounded-lg font-medium",
         "transition-[background,border-color,color,transform] duration-100",
         "active:translate-y-px",
         "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0",

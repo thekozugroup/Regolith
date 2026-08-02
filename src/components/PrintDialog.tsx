@@ -1,15 +1,21 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "./Button";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
+import { usePrinter } from "@/lib/usePrinter";
+import {
+  guardPrinterAction,
+  runPrinterAction,
+  type PrinterAction,
+} from "@/lib/printerActions";
 import {
   X,
   Play,
   Clock,
   Layers,
   HardDrive,
-  Film,
   Layers3,
   AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
 
@@ -36,50 +42,92 @@ export interface GcodeMetadata {
 }
 
 const KAMP_KEY = "forge.print.kamp";
-const TIMELAPSE_KEY = "forge.print.timelapse";
 
 export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps) {
+  const { state, connected, profile } = usePrinter();
   const [kamp, setKamp] = useState(
     () => localStorage.getItem(KAMP_KEY) !== "0",
   );
-  const [timelapse, setTimelapse] = useState(
-    () => localStorage.getItem(TIMELAPSE_KEY) === "1",
-  );
+  const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  const action: PrinterAction = {
+    type: "start-print",
+    filename: file.path,
+    setup: profile.features.kamp ? [kamp ? "kamp-on" : "kamp-off"] : [],
+  };
+  const preflight = guardPrinterAction(state, connected, action);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
+  useEffect(() => {
+    if (!open) return;
+    setAcknowledged(false);
+    setError(null);
+  }, [open, file.path]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    const focusable = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+    requestAnimationFrame(() => focusable()[0]?.focus());
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busyRef.current) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [open, onClose]);
 
   if (!open) return null;
 
   const start = async () => {
     setBusy(true);
     setError(null);
-    // Persist toggles for next print
-    localStorage.setItem(KAMP_KEY, kamp ? "1" : "0");
-    localStorage.setItem(TIMELAPSE_KEY, timelapse ? "1" : "0");
-
     try {
-      // Send pre-print configuration via gcode variables that PRINT_START can read
-      const setup: string[] = [];
-      if (kamp) {
-        setup.push("SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=1");
-      } else {
-        setup.push("SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=0");
-      }
-      if (timelapse) {
-        setup.push("TIMELAPSE_RENDER  ; pre-arm: timelapse plugin will record");
-      }
-      // Catch failures of the variable set quietly — fallback silently if PRINT_START doesn't expose them
-      for (const cmd of setup) {
-        try {
-          await moonraker.runGcode(cmd);
-        } catch {
-          /* ignore */
-        }
-      }
-      await moonraker.startPrint(file.path);
-      onClose();
+      localStorage.setItem(KAMP_KEY, kamp ? "1" : "0");
+      const result = await runPrinterAction(action, {
+        confirm: () => acknowledged,
+      });
+      if (result.executed) onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Print did not start. Printer returned an unknown error.",
+      );
     } finally {
       setBusy(false);
     }
@@ -92,26 +140,37 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
     >
       <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-md max-w-md w-full overflow-hidden shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-xl max-w-lg w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl"
       >
         <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
-          <h2 className="text-[12px] font-semibold tracking-[0.06em] uppercase">
-            Confirm print
+          <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
+            Ready to print?
           </h2>
           <button
             onClick={onClose}
-            className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+            disabled={busy}
+            aria-label="Close print confirmation"
+            className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] disabled:opacity-40"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </header>
 
         <div className="p-4 space-y-4">
+          <p id={descriptionId} className="text-[14px] leading-relaxed text-[var(--color-fg-muted)]">
+            Review file and printer area. Regolith checks live printer state again immediately before starting.
+          </p>
           {/* Preview */}
           <div className="grid grid-cols-[110px_1fr] gap-3">
             <div className="aspect-square rounded-md border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
@@ -190,28 +249,52 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </div>
 
           {/* Pre-print options */}
-          <div className="space-y-1.5 pt-3 border-t border-[var(--color-border)]">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1">
-              Pre-print options
+          {profile.features.kamp && (
+            <div className="space-y-1.5 pt-3 border-t border-[var(--color-border)]">
+              <div className="text-[12px] text-[var(--color-fg-muted)] font-semibold mb-1">
+                Print setup
+              </div>
+              <Toggle
+                icon={<Layers3 className="w-4 h-4" />}
+                label="Adaptive bed mesh"
+                description="Probe only this model’s print area before printing. Start is blocked if setup fails."
+                checked={kamp}
+                onChange={setKamp}
+              />
             </div>
-            <Toggle
-              icon={<Layers3 className="w-3.5 h-3.5" />}
-              label="Adaptive bed mesh (KAMP)"
-              description="Probe only the print area for faster, more accurate first layer"
-              checked={kamp}
-              onChange={setKamp}
-            />
-            <Toggle
-              icon={<Film className="w-3.5 h-3.5" />}
-              label="Record timelapse"
-              description="Capture a frame per layer; saved to /timelapses"
-              checked={timelapse}
-              onChange={setTimelapse}
-            />
-          </div>
+          )}
+
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={acknowledged}
+            onClick={() => setAcknowledged((value) => !value)}
+            className={cn(
+              "w-full min-h-11 flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+              acknowledged
+                ? "border-[var(--color-success)] bg-[rgba(16,185,129,0.08)]"
+                : "border-[var(--color-border-strong)] bg-[var(--color-bg)]",
+            )}
+          >
+            <span className="mt-0.5 w-5 h-5 shrink-0 rounded border border-current inline-flex items-center justify-center text-[var(--color-success)]">
+              {acknowledged && <CheckCircle2 className="w-4 h-4" />}
+            </span>
+            <span className="text-[13px] leading-relaxed">
+              I checked that the build plate is seated, the bed is clear, and filament can feed freely.
+            </span>
+          </button>
+
+          {!preflight.allowed && (
+            <div role="status" className="flex items-start gap-2 p-3 bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.35)] rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+              <span className="text-[13px] text-[var(--color-warning)]">
+                {preflight.reason}
+              </span>
+            </div>
+          )}
 
           {error && (
-            <div className="flex items-start gap-2 p-2 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.3)] rounded-sm">
+            <div role="alert" className="flex items-start gap-2 p-3 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.3)] rounded-lg">
               <AlertTriangle className="w-3.5 h-3.5 text-[var(--color-error)] shrink-0 mt-0.5" />
               <span className="text-[11px] text-[var(--color-error)]">
                 {error}
@@ -220,11 +303,8 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           )}
         </div>
 
-        <footer className="flex justify-between items-center px-4 py-3 border-t border-[var(--color-border)] bg-[rgba(255,255,255,0.01)]">
-          <span className="text-[10px] text-[var(--color-fg-muted)]">
-            Bed clear · Filament loaded · Hotend cold
-          </span>
-          <div className="flex gap-2">
+        <footer className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)]">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <Button size="md" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
@@ -232,10 +312,10 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
               size="md"
               variant="primary"
               onClick={start}
-              disabled={busy}
+              disabled={busy || !acknowledged || !preflight.allowed}
             >
               <Play className="w-3.5 h-3.5" />
-              {busy ? "Starting…" : "Start print"}
+              {busy ? "Checking printer…" : "Start print"}
             </Button>
           </div>
         </footer>
@@ -281,9 +361,12 @@ function Toggle({
 }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "w-full flex items-center gap-3 p-2 rounded-sm border text-left transition-all",
+        "w-full min-h-11 flex items-center gap-3 p-3 rounded-lg border text-left transition-colors",
         checked
           ? "border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.06)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",

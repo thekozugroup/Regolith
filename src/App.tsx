@@ -20,7 +20,11 @@ function AppShell() {
       <Sidebar />
       <AppBar />
       <HealthAlerts />
-      <main className="ml-14 mt-14 min-h-[calc(100vh-3.5rem)]">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mt-14 min-h-[calc(100dvh-3.5rem)] pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-52 md:pb-0"
+      >
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/print" element={<Files />} />

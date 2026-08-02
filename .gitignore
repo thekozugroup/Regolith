@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Babysitter runtime state (keep reusable process definitions tracked)
+.a5c/node_modules/
+.a5c/runs/
+.a5c/package-lock.json

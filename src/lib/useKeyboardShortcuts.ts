@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { moonraker } from "./moonraker";
-import { getSafetyState } from "./safety";
+import { runPrinterAction } from "./printerActions";
 
 /**
  * Global keyboard shortcuts.
@@ -46,9 +46,13 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         const ps = moonraker.getState().print_stats?.state;
         if (ps === "printing") {
-          if (confirm("Pause print?")) moonraker.pause().catch(() => {});
+          void runPrinterAction({ type: "pause-print" }).catch((error) => {
+            alert(error instanceof Error ? error.message : "Could not pause print.");
+          });
         } else if (ps === "paused") {
-          if (confirm("Resume print?")) moonraker.resume().catch(() => {});
+          void runPrinterAction({ type: "resume-print" }).catch((error) => {
+            alert(error instanceof Error ? error.message : "Could not resume print.");
+          });
         }
         return;
       }
@@ -105,9 +109,6 @@ export function useKeyboardShortcuts() {
       if (chordTimer) clearTimeout(chordTimer);
     };
   }, [navigate]);
-
-  // Suppress unused-import lint
-  void getSafetyState;
 }
 
 function showHelp(): void {

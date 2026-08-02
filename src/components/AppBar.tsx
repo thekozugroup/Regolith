@@ -11,9 +11,9 @@ export function AppBar() {
   const printState = state.print_stats?.state;
 
   return (
-    <header className="fixed top-0 left-14 right-0 h-14 border-b border-[var(--color-border)] bg-[var(--color-bg)] flex items-center px-4 z-10">
+    <header className="app-chrome fixed top-0 left-0 right-0 h-14 border-b border-[var(--color-border)] flex items-center px-4 z-20 md:left-52">
       <div className="flex items-center gap-3">
-        <span className="text-[14px] font-semibold tracking-tight">
+        <span className="max-w-[52vw] truncate text-[15px] font-semibold tracking-tight sm:max-w-none">
           {deviceName}
         </span>
         {printState && printState !== "standby" && printState !== "complete" && (
@@ -45,7 +45,7 @@ export function AppBar() {
         )}
         <div
           className={cn(
-            "flex items-center gap-1.5 text-[11px]",
+            "flex min-h-11 items-center gap-1.5 text-[12px]",
             connected ? "text-[var(--color-fg-muted)]" : "text-[var(--color-error)]"
           )}
           title={connected ? "Moonraker connected" : "Moonraker offline"}
@@ -55,6 +55,7 @@ export function AppBar() {
           ) : (
             <WifiOff className="w-3.5 h-3.5" strokeWidth={2} />
           )}
+          <span className="hidden sm:inline">{connected ? "Connected" : "Offline"}</span>
         </div>
       </div>
       <AppBarProgress />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { PrintDialog, type GcodeMetadata } from "@/components/PrintDialog";
@@ -20,7 +20,7 @@ import {
 
 
 export function Files() {
-  const { state } = usePrinter();
+  const { state, connected } = usePrinter();
   const safety = getSafetyState(state);
   const [files, setFiles] = useState<MoonrakerFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +29,7 @@ export function Files() {
   const [selected, setSelected] = useState<MoonrakerFile | null>(null);
   const [metadata, setMetadata] = useState<GcodeMetadata | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const closePrintDialog = useCallback(() => setDialogOpen(false), []);
 
   const load = async () => {
     setLoading(true);
@@ -89,6 +90,7 @@ export function Files() {
         <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-sm">
           <Search className="w-3.5 h-3.5 text-[var(--color-fg-muted)]" />
           <input
+            aria-label="Filter print files"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter…"
@@ -116,33 +118,36 @@ export function Files() {
 
         <ul className="divide-y divide-[rgba(63,63,70,0.4)] max-h-[60vh] overflow-y-auto -mx-3.5">
           {filtered.map((f) => (
-            <li
-              key={f.path}
-              className={cn(
-                "flex items-center gap-3 py-2 px-3.5 cursor-pointer transition-colors",
-                selected?.path === f.path
-                  ? "bg-[rgba(249,115,22,0.10)]"
-                  : "hover:bg-[rgba(249,115,22,0.04)]",
-              )}
-              onClick={() => setSelected(f)}
-            >
-              <img
-                src={moonraker.thumbnailUrl(f.path, 32)}
-                onError={(e) =>
-                  ((e.target as HTMLImageElement).style.opacity = "0")
-                }
-                className="w-8 h-8 rounded border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
-                alt=""
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-medium truncate">
-                  {f.path}
+            <li key={f.path}>
+              <button
+                type="button"
+                aria-pressed={selected?.path === f.path}
+                className={cn(
+                  "w-full min-h-11 flex items-center gap-3 py-2 px-3.5 text-left transition-colors",
+                  selected?.path === f.path
+                    ? "bg-[rgba(249,115,22,0.10)]"
+                    : "hover:bg-[rgba(249,115,22,0.04)]",
+                )}
+                onClick={() => setSelected(f)}
+              >
+                <img
+                  src={moonraker.thumbnailUrl(f.path, 32)}
+                  onError={(e) =>
+                    ((e.target as HTMLImageElement).style.opacity = "0")
+                  }
+                  className="w-8 h-8 rounded border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
+                  alt=""
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium truncate">
+                    {f.path}
+                  </div>
+                  <div className="text-[11px] text-[var(--color-fg-muted)] tabular-nums">
+                    {formatBytes(f.size)} ·{" "}
+                    {new Date(f.modified * 1000).toLocaleDateString()}
+                  </div>
                 </div>
-                <div className="text-[10px] text-[var(--color-fg-muted)] tabular-nums">
-                  {formatBytes(f.size)} ·{" "}
-                  {new Date(f.modified * 1000).toLocaleDateString()}
-                </div>
-              </div>
+              </button>
             </li>
           ))}
         </ul>
@@ -160,7 +165,7 @@ export function Files() {
             <div className="aspect-square w-full max-w-[200px] mx-auto rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
               <img
                 src={moonraker.thumbnailUrl(selected.path, 300)}
-                alt=""
+                alt={`Preview of ${selected.path}`}
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
                   img.style.display = "none";
@@ -243,12 +248,18 @@ export function Files() {
               <Button
                 variant="primary"
                 size="lg"
-                disabled={safety.isBusy}
+                disabled={safety.isBusy || !safety.klipperReady || !connected}
                 onClick={openPrintDialog}
                 className="w-full"
               >
                 <Play className="w-4 h-4" />
-                {safety.isBusy ? safety.busyReason : "Start Print"}
+                {!connected
+                  ? "Printer offline"
+                  : !safety.klipperReady
+                    ? "Klipper not ready"
+                    : safety.isBusy
+                      ? safety.busyReason
+                      : "Start print"}
               </Button>
               <div className="text-[10px] text-[var(--color-fg-muted)] text-center mt-1.5 leading-tight">
                 Confirms before sending. Make sure the bed is clear and your
@@ -270,7 +281,7 @@ export function Files() {
           file={selected}
           metadata={metadata}
           open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
+          onClose={closePrintDialog}
         />
       )}
     </div>

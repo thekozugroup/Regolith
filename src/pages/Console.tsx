@@ -1,18 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import { moonraker } from "@/lib/moonraker";
+import { usePrinter } from "@/lib/usePrinter";
+import {
+  getConsoleCommandRisk,
+  guardPrinterAction,
+  runPrinterAction,
+  type ActionConfirmation,
+  type PrinterAction,
+} from "@/lib/printerActions";
 import { useGcodeLog } from "@/lib/useGcodeLog";
-import { Terminal, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, LockKeyhole, Send, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { cn } from "@/lib/utils";
 
 export function ConsolePage() {
+  const { state, connected } = usePrinter();
   const lines = useGcodeLog(200);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [expertMode, setExpertMode] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const commandRisk = useMemo(() => {
+    if (!input.trim()) return null;
+    try {
+      return getConsoleCommandRisk(input);
+    } catch {
+      return null;
+    }
+  }, [input]);
 
   // Ensure WS is connected
   useEffect(() => {
@@ -35,22 +55,43 @@ export function ConsolePage() {
 
   const send = async () => {
     const cmd = input.trim();
-    if (!cmd) return;
-    moonraker.recordCommand(cmd);
-    setHistory((h) => [cmd, ...h].slice(0, 50));
-    setHistoryIdx(-1);
-    setInput("");
+    if (!cmd || !expertMode || sending) return;
+    const action: PrinterAction = { type: "console-gcode", command: cmd };
+    setSending(true);
+    setError(null);
     try {
-      await moonraker.runGcode(cmd);
-    } catch (e) {
-      // Show error inline as a response line
-      const err = (e as Error).message;
-      moonraker.recordCommand(`!! ${err}`);
+      const result = await runPrinterAction(action, {
+        confirm: (details: ActionConfirmation) =>
+          window.confirm(`${details.title}\n\n${details.message}`),
+      });
+      if (result.executed) {
+        moonraker.recordCommand(cmd);
+        setHistory((historyItems) => [cmd, ...historyItems].slice(0, 50));
+        setHistoryIdx(-1);
+        setInput("");
+      }
+    } catch (actionError) {
+      const message =
+        actionError instanceof Error
+          ? actionError.message
+          : "Printer rejected the command.";
+      setError(message);
+      moonraker.recordCommand(`!! ${message}`);
+    } finally {
+      setSending(false);
     }
   };
 
+  const candidateAction: PrinterAction = {
+    type: "console-gcode",
+    command: input,
+  };
+  const candidateCheck = input.trim()
+    ? guardPrinterAction(state, connected, candidateAction)
+    : { allowed: false, reason: "Enter a command." };
+
   return (
-    <div className="p-3 h-[calc(100vh-3.5rem)]">
+    <div className="p-3 h-[calc(100dvh-3.5rem-5rem)] md:h-[calc(100dvh-3.5rem)]">
       <Card
         title="Console"
         icon={<Terminal />}
@@ -66,6 +107,31 @@ export function ConsolePage() {
           </Button>
         }
       >
+        <div className="mb-3 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg)] p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-2 min-w-0">
+              <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-warning)]" />
+              <div>
+                <div className="text-[13px] font-semibold">Expert commands</div>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+                  Commands can move or heat the printer. Read-only diagnostics run directly; unknown and hardware commands require confirmation.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={expertMode ? "danger" : "default"}
+              aria-pressed={expertMode}
+              onClick={() => {
+                setExpertMode((value) => !value);
+                setError(null);
+              }}
+            >
+              {expertMode ? "Disable console" : "Enable console"}
+            </Button>
+          </div>
+        </div>
+
         {/* Live feed — fills remaining height */}
         <div
           ref={scrollRef}
@@ -127,10 +193,11 @@ export function ConsolePage() {
             ›
           </span>
           <input
+            aria-label="G-code command"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") send();
+              if (e.key === "Enter") void send();
               else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 const idx = Math.min(historyIdx + 1, history.length - 1);
@@ -150,13 +217,40 @@ export function ConsolePage() {
                 }
               }
             }}
-            placeholder="gcode command…"
-            className="flex-1 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-sm px-3 h-8 text-[12px] font-mono focus:border-[var(--color-accent)] focus:outline-none"
+            disabled={!expertMode || sending}
+            placeholder={expertMode ? "Enter G-code command" : "Enable expert commands to type"}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            className="flex-1 min-w-0 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-lg px-3 min-h-11 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
           />
-          <Button onClick={send} variant="primary" size="md">
+          <Button
+            onClick={send}
+            variant={commandRisk?.risk === "critical" ? "danger" : "primary"}
+            size="md"
+            disabled={
+              !expertMode || sending || !input.trim() || !candidateCheck.allowed
+            }
+          >
             <Send className="w-3 h-3" /> Send
           </Button>
         </div>
+        {(commandRisk || error || (input.trim() && !candidateCheck.allowed)) && (
+          <div
+            role={error ? "alert" : "status"}
+            className={cn(
+              "mt-2 flex items-start gap-2 rounded-lg border p-2.5 text-[12px]",
+              error || !candidateCheck.allowed
+                ? "border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[var(--color-error)]"
+                : commandRisk?.risk === "routine"
+                  ? "border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.06)] text-[var(--color-success)]"
+                  : "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[var(--color-warning)]",
+            )}
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{error ?? (!candidateCheck.allowed ? candidateCheck.reason : commandRisk?.summary)}</span>
+          </div>
+        )}
       </Card>
     </div>
   );

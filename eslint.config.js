@@ -18,5 +18,11 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    // React Compiler-only rules are not enabled for this Vite app. Several
+    // components intentionally bootstrap async subscriptions from effects.
+    rules: {
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
+    },
   },
 ])

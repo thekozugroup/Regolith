@@ -1,0 +1,9 @@
+{
+  "projectName": "Regolith",
+  "repositoryRoot": "/Users/michaelwong/Developer/Regolith",
+  "branch": "main",
+  "printerHost": "forge.local",
+  "printerUser": "root",
+  "qualityTarget": 92,
+  "maxRefinementPasses": 2
+}
