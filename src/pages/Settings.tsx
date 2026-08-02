@@ -11,7 +11,9 @@ import { Button } from "@/components/Button";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { BackupSettings } from "@/components/BackupSettings";
 import { ProfileSettings } from "@/components/ProfileSettings";
+import { ExperienceSettings } from "@/components/ExperienceSettings";
 import { usePrinter } from "@/lib/usePrinter";
+import { useExperienceMode } from "@/lib/useExperienceMode";
 import {
   guardPrinterAction,
   runPrinterAction,
@@ -34,6 +36,8 @@ interface SystemInfo {
 
 export function SettingsPage() {
   const { state, connected } = usePrinter();
+  const [experienceMode] = useExperienceMode();
+  const isExpert = experienceMode === "expert";
   const [info, setInfo] = useState<Partial<SystemInfo>>({});
   const [infoError, setInfoError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -41,6 +45,7 @@ export function SettingsPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isExpert) return;
     const controller = new AbortController();
     const load = async () => {
       try {
@@ -91,7 +96,7 @@ export function SettingsPage() {
       controller.abort();
       clearInterval(id);
     };
-  }, []);
+  }, [isExpert]);
 
   const dispatch = async (action: PrinterAction, success: string) => {
     setBusyAction(action.type);
@@ -121,16 +126,17 @@ export function SettingsPage() {
       : 0;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+      <ExperienceSettings />
       <ThemeSettings />
-      <ProfileSettings />
-      <BackupSettings />
+      {isExpert && <ProfileSettings />}
+      {isExpert && <BackupSettings />}
 
       <Card title="System" icon={<Cog />}>
         <div className="space-y-3">
           <p className="text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
-            Recovery controls interrupt printer software. Restarts stay blocked during prints and calibration.
+            Emergency stop is only for immediate physical danger. It remains available in both experience modes.
           </p>
-          <Row label="Controller firmware" subtitle="Reconnect the motion controller">
+          {isExpert && <Row label="Controller firmware" subtitle="Reconnect the motion controller">
             <Button
               size="sm"
               variant="default"
@@ -143,8 +149,8 @@ export function SettingsPage() {
             >
               <RotateCw className="w-3 h-3" /> Firmware restart
             </Button>
-          </Row>
-          <Row label="Klipper software" subtitle="Restart printer control software">
+          </Row>}
+          {isExpert && <Row label="Klipper software" subtitle="Restart printer control software">
             <Button
               size="sm"
               variant="default"
@@ -155,7 +161,7 @@ export function SettingsPage() {
             >
               <RotateCw className="w-3 h-3" /> Restart Klipper
             </Button>
-          </Row>
+          </Row>}
           <Row label="Emergency stop" subtitle="Only for immediate physical danger">
             <Button
               size="sm"
@@ -181,7 +187,7 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      <Card title="Host" icon={<Cpu />}>
+      {isExpert && <Card title="Host" icon={<Cpu />}>
         <div className="space-y-2 text-[12px]">
           {infoError && (
             <div role="status" className="rounded-lg border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] p-3 text-[13px] text-[var(--color-warning)]">
@@ -223,9 +229,9 @@ export function SettingsPage() {
             </span>
           </Row>
         </div>
-      </Card>
+      </Card>}
 
-      <Card title="About" icon={<Activity />}>
+      {isExpert && <Card title="About" icon={<Activity />}>
         <div className="space-y-2 text-[12px]">
           <Row label="UI">
             <span className="font-mono">Regolith v0.1</span>
@@ -252,7 +258,7 @@ export function SettingsPage() {
             </a>
           </div>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }

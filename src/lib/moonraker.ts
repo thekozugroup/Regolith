@@ -11,6 +11,11 @@
  *   mr.subscribe(["print_stats", "extruder", "heater_bed"], (state) => { ... });
  */
 
+import {
+  isActiveWebSocketState,
+  moonrakerReconnectDelay,
+} from "./retry";
+
 type SubscriptionCallback = (state: PrinterState) => void;
 type ConnectionCallback = (connected: boolean) => void;
 type GcodeLogCallback = (lines: GcodeLine[]) => void;
@@ -139,17 +144,23 @@ export class Moonraker {
   private gcodeLogSubs = new Set<GcodeLogCallback>();
   private subscribedFields = new Set<string>();
   private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private manuallyDisconnected = false;
   private gcodeLog: GcodeLine[] = [];
   private static MAX_LOG = 200;
 
   // ----- Connection lifecycle -----
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    this.manuallyDisconnected = false;
+    if (isActiveWebSocketState(this.ws?.readyState)) return;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}${WS_PATH}`;
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.addEventListener("open", () => {
+    socket.addEventListener("open", () => {
+      if (this.ws !== socket) return;
+      this.reconnectAttempt = 0;
       this.connSubs.forEach((cb) => cb(true));
       // Re-subscribe on reconnect
       if (this.subscribedFields.size > 0) {
@@ -157,33 +168,50 @@ export class Moonraker {
       }
     });
 
-    this.ws.addEventListener("message", (e) => this.onMessage(e));
-
-    this.ws.addEventListener("close", () => {
-      this.connSubs.forEach((cb) => cb(false));
-      this.scheduleReconnect();
+    socket.addEventListener("message", (e) => {
+      if (this.ws === socket) this.onMessage(e);
     });
 
-    this.ws.addEventListener("error", () => {
-      this.ws?.close();
+    socket.addEventListener("close", () => {
+      if (this.ws !== socket) return;
+      this.ws = null;
+      this.connSubs.forEach((cb) => cb(false));
+      this.rejectPending("Printer connection closed before the action completed.");
+      if (!this.manuallyDisconnected) this.scheduleReconnect();
+    });
+
+    socket.addEventListener("error", () => {
+      socket.close();
     });
   }
 
   disconnect(): void {
+    this.manuallyDisconnected = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.ws?.close();
+    const socket = this.ws;
     this.ws = null;
+    socket?.close();
+    this.rejectPending("Printer connection was closed.");
+    this.connSubs.forEach((cb) => cb(false));
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
+    const delay = moonrakerReconnectDelay(this.reconnectAttempt);
+    this.reconnectAttempt += 1;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, 2000);
+    }, delay);
+  }
+
+  private rejectPending(message: string): void {
+    const error = new Error(message);
+    this.pending.forEach(({ reject }) => reject(error));
+    this.pending.clear();
   }
 
   // ----- RPC -----

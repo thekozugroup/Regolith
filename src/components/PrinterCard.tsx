@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Printer, Upload, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
+import { useExperienceMode } from "@/lib/useExperienceMode";
 
 const STORAGE_KEY = "forge.printer.image";
 
@@ -20,6 +21,8 @@ interface PrinterMeta {
  */
 export function PrinterCard() {
   const { state } = usePrinter();
+  const [experienceMode] = useExperienceMode();
+  const isExpert = experienceMode === "expert";
   const [image, setImage] = useState<string | null>(() =>
     localStorage.getItem(STORAGE_KEY),
   );
@@ -83,7 +86,7 @@ export function PrinterCard() {
           : "border-[var(--color-border)]",
       )}
     >
-      <div className="grid grid-cols-[160px_1fr] gap-4 p-4">
+      <div className="grid grid-cols-[112px_1fr] gap-4 p-4 sm:grid-cols-[160px_1fr]">
         {/* Image / icon */}
         <div className="relative group">
           <div
@@ -108,7 +111,7 @@ export function PrinterCard() {
             )}
           </div>
           {/* Upload overlay */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+          {isExpert && <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
             <button
               onClick={() => fileRef.current?.click()}
               className="flex min-h-11 min-w-11 items-center gap-1 rounded-lg bg-[var(--color-accent)] px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
@@ -125,7 +128,7 @@ export function PrinterCard() {
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
-          </div>
+          </div>}
           <input
             ref={fileRef}
             type="file"
@@ -160,7 +163,7 @@ export function PrinterCard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4 text-[11px] tabular-nums">
+          {isExpert && <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-4 text-[11px] tabular-nums">
             <Stat label="Hostname" value={meta.hostname} />
             <Stat label="OS" value={meta.firmware} />
             <Stat
@@ -171,7 +174,7 @@ export function PrinterCard() {
               label="Network"
               value={location.host.replace(/:.*/, "")}
             />
-          </div>
+          </div>}
         </div>
       </div>
     </section>

@@ -15,28 +15,32 @@ import { BrandLogo } from "./BrandLogo";
 import { ModalSurface } from "./ModalSurface";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
+import { useExperienceMode } from "@/lib/useExperienceMode";
 
 const NAV = [
   { to: "/", icon: LayoutDashboard, label: "Home" },
   { to: "/print", icon: FileText, label: "Files" },
   { to: "/control", icon: Move, label: "Control" },
-  { to: "/tune", icon: Sliders, label: "Tune" },
+  { to: "/tune", icon: Sliders, label: "Tune", expert: true },
   { to: "/timelapses", icon: Film, label: "Timelapses" },
-  { to: "/console", icon: Terminal, label: "Console" },
+  { to: "/console", icon: Terminal, label: "Console", expert: true },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
-const MOBILE_PRIMARY = NAV.slice(0, 3);
-const MOBILE_MORE = NAV.slice(3);
-
 export function Sidebar() {
   const { state } = usePrinter();
+  const [experienceMode] = useExperienceMode();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreTitleId = useId();
   const ps = state.print_stats?.state;
   const progress = state.virtual_sdcard?.progress ?? 0;
   const isPrinting = ps === "printing" || ps === "paused";
+  const visibleNav = NAV.filter(
+    (item) => !item.expert || experienceMode === "expert",
+  );
+  const mobilePrimary = visibleNav.slice(0, 3);
+  const mobileMore = visibleNav.slice(3);
 
   // Pulse the document title + favicon when a print is active so a
   // background tab still surfaces progress at a glance.
@@ -89,7 +93,7 @@ export function Sidebar() {
         </div>
 
         <nav aria-label="Primary" className="flex flex-col gap-1 p-2 flex-1">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {visibleNav.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -131,7 +135,7 @@ export function Sidebar() {
               </button>
             </div>
             <nav aria-label="More" className="grid grid-cols-2 gap-1">
-              {MOBILE_MORE.map(({ to, icon: Icon, label }) => (
+              {mobileMore.map(({ to, icon: Icon, label }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -156,7 +160,7 @@ export function Sidebar() {
         aria-label="Mobile primary"
         className="app-chrome fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[var(--color-border)] px-2 pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        {MOBILE_PRIMARY.map(({ to, icon: Icon, label }) => (
+        {mobilePrimary.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
@@ -179,7 +183,7 @@ export function Sidebar() {
           onClick={() => setMoreOpen((value) => !value)}
           className={cn(
             "min-h-16 flex flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium",
-            moreOpen || MOBILE_MORE.some((item) => item.to === location.pathname)
+            moreOpen || mobileMore.some((item) => item.to === location.pathname)
               ? "text-[var(--color-accent)]"
               : "text-[var(--color-fg-muted)]",
           )}

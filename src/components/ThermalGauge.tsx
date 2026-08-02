@@ -134,14 +134,19 @@ export function ThermalGauge({
   })();
 
   return (
-    <div className="flex flex-col items-center group select-none">
+    <div className="group flex min-w-0 flex-col items-center select-none">
       <style>{`
         @keyframes thermalPulse {
           0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
           50% { opacity: 0.55; filter: drop-shadow(0 0 10px currentColor); }
         }
       `}</style>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`${label} ${a.toFixed(1)} degrees Celsius${active ? `, target ${t.toFixed(0)} degrees` : ", target off"}`}
+        className="h-auto w-full max-w-[220px]"
+      >
         {/* Outer ticks */}
         {tickElements}
 
@@ -247,7 +252,7 @@ export function ThermalGauge({
       </svg>
 
       {/* Status block — mil-spec readout */}
-      <div className="flex flex-col items-center gap-1 -mt-1 px-3 py-1 rounded-sm bg-[var(--color-elevated)]/40 border border-[var(--color-border)]">
+      <div className="-mt-1 flex w-full min-w-0 flex-col items-center gap-1 rounded-sm border border-[var(--color-border)] bg-[var(--color-elevated)]/40 px-2 py-1">
         <div
           className={cn(
             "flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-bold",
@@ -257,19 +262,17 @@ export function ThermalGauge({
           {icon}
           {label}
         </div>
-        <div className="flex items-center gap-2 text-[9px] tabular-nums">
+        <div className="grid w-full grid-cols-3 gap-1 text-[9px] tabular-nums">
           <Indicator
             label="TGT"
             value={active ? `${t.toFixed(0)}°` : "OFF"}
             active={active}
           />
-          <Divider />
           <Indicator
             label="PWR"
             value={power != null && power > 0 ? `${(power * 100).toFixed(0)}%` : "—"}
             active={(power ?? 0) > 0}
           />
-          <Divider />
           <Indicator
             label="STA"
             value={
@@ -307,7 +310,7 @@ function Indicator({
   heating?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 flex-col items-center gap-0.5">
       <span className="text-[var(--color-fg-muted)]/60 font-bold tracking-[0.15em]">
         {label}
       </span>
@@ -324,8 +327,4 @@ function Indicator({
       </span>
     </div>
   );
-}
-
-function Divider() {
-  return <span className="text-[var(--color-fg-muted)]/30">·</span>;
 }

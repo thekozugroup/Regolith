@@ -1,45 +1,85 @@
-import { useEffect, useRef, useState } from "react";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { cameraRetryDelay } from "@/lib/retry";
 import { cn } from "@/lib/utils";
-
-/**
- * Robust MJPG camera stream.
- *
- * Why this component instead of a plain <img>:
- *   - Vite's dev proxy buffers long-running MJPG streams unpredictably,
- *     causing visible lag / freezing every few seconds. We bypass it by
- *     hitting mjpg_streamer's port 8080 directly via the printer hostname.
- *   - <img src> stalls silently if the connection drops or the server
- *     stutters. We watch the onLoad event — if no progressive frames in
- *     N seconds, we force a reconnect by changing the URL.
- *   - In production (built bundle served by nginx on the printer) the
- *     proxy isn't in the path so direct/relative is the same.
- */
 
 interface Props {
   className?: string;
   /** Override hostname; defaults to current page host (works on tailnet + LAN). */
   host?: string;
-  /** Stuck-watchdog timeout in ms — force reload if no frame in this window. */
+  /** Stuck-watchdog timeout in ms — force reload if no frame arrives. */
   stallMs?: number;
+  /** Stop automatic network churn after this many retries. */
+  maxAutomaticRetries?: number;
   /** Show fullscreen toggle button. */
   fullscreenable?: boolean;
 }
 
+type CameraStatus = "connecting" | "live" | "retrying" | "offline";
+
+const STATUS_LABELS: Record<CameraStatus, string> = {
+  connecting: "Connecting",
+  live: "Live",
+  retrying: "Retrying",
+  offline: "Offline",
+};
+
+/** MJPEG stream with bounded, user-recoverable failure handling. */
 export function CameraStream({
   className,
   host,
   stallMs = 4000,
+  maxAutomaticRetries = 5,
   fullscreenable = true,
 }: Props) {
   const [generation, setGeneration] = useState(0);
-  const [hasError, setHasError] = useState(false);
+  const [status, setStatus] = useState<CameraStatus>("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastFrameRef = useRef(Date.now());
-  const imgRef = useRef<HTMLImageElement>(null);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const statusRef = useRef<CameraStatus>("connecting");
 
-  // Sync fullscreen state with browser-level fullscreen
+  const updateStatus = useCallback((next: CameraStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRetry = useCallback(() => {
+    if (retryTimerRef.current != null || statusRef.current === "offline") return;
+
+    const attempt = retryAttemptRef.current;
+    if (attempt >= maxAutomaticRetries) {
+      updateStatus("offline");
+      return;
+    }
+
+    retryAttemptRef.current = attempt + 1;
+    updateStatus("retrying");
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      lastFrameRef.current = Date.now();
+      updateStatus("connecting");
+      setGeneration((current) => current + 1);
+    }, cameraRetryDelay(attempt));
+  }, [maxAutomaticRetries, updateStatus]);
+
+  const retryNow = useCallback(() => {
+    clearRetryTimer();
+    retryAttemptRef.current = 0;
+    lastFrameRef.current = Date.now();
+    updateStatus("connecting");
+    setGeneration((current) => current + 1);
+  }, [clearRetryTimer, updateStatus]);
+
   useEffect(() => {
     const onChange = () => {
       setIsFullscreen(document.fullscreenElement === containerRef.current);
@@ -47,6 +87,20 @@ export function CameraStream({
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  useEffect(() => {
+    const watchdog = window.setInterval(() => {
+      if (
+        statusRef.current === "live" &&
+        Date.now() - lastFrameRef.current > stallMs
+      ) {
+        scheduleRetry();
+      }
+    }, 1000);
+    return () => clearInterval(watchdog);
+  }, [scheduleRetry, stallMs]);
+
+  useEffect(() => clearRetryTimer, [clearRetryTimer]);
 
   const toggleFullscreen = async () => {
     try {
@@ -56,109 +110,85 @@ export function CameraStream({
         await containerRef.current.requestFullscreen();
       }
     } catch {
-      // Some browsers / permissions deny; ignore
+      // Browser permissions may deny fullscreen. The stream remains usable.
     }
   };
 
-  // Build the direct URL — port 8080 to bypass nginx + vite proxy
-  const buildUrl = (gen: number) => {
-    const h = host ?? location.hostname;
-    return `http://${h}:8080/?action=stream&_=${gen}`;
-  };
-
-  const url = buildUrl(generation);
-
-  // Stuck watchdog — poll every second; if no progress, bump generation
-  useEffect(() => {
-    lastFrameRef.current = Date.now();
-    const id = setInterval(() => {
-      const idle = Date.now() - lastFrameRef.current;
-      if (idle > stallMs) {
-        setGeneration((g) => g + 1);
-        lastFrameRef.current = Date.now();
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [stallMs, generation]);
-
-  // MJPG progressive: each chunk fires onLoad on most browsers.
-  // We use a polling probe via fetch HEAD to verify reachability instead.
-  useEffect(() => {
-    let stopped = false;
-    const probe = async () => {
-      try {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 1500);
-        await fetch(buildUrl(generation).replace("action=stream", "action=snapshot"), {
-          method: "GET",
-          signal: ctl.signal,
-        });
-        clearTimeout(t);
-        if (!stopped) lastFrameRef.current = Date.now();
-      } catch {
-        /* ignore */
-      }
-    };
-    probe();
-    const id = setInterval(probe, 1500);
-    return () => {
-      stopped = true;
-      clearInterval(id);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation, host]);
+  const hostname = host ?? location.hostname;
+  const url = `http://${hostname}:8080/?action=stream&_=${generation}`;
+  const available = status === "live";
 
   return (
-    <div ref={containerRef} className={cn("relative bg-black group", className)}>
-      {hasError ? (
-        <div className="absolute inset-0 flex items-center justify-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em] font-mono">
-          Stream offline
+    <div ref={containerRef} className={cn("group relative bg-black", className)}>
+      {!available && (
+        <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <div aria-live="polite" className="text-[12px] font-medium text-white/70">
+            {status === "connecting" && "Connecting to camera…"}
+            {status === "retrying" && "Camera unavailable. Retrying…"}
+            {status === "offline" && "Camera is offline. Printing controls are unaffected."}
+          </div>
+          {status === "offline" && (
+            <button
+              type="button"
+              onClick={retryNow}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 text-[12px] font-medium text-white hover:bg-white/15"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Try camera again
+            </button>
+          )}
         </div>
-      ) : null}
+      )}
       <img
-        ref={imgRef}
         key={generation}
         src={url}
-        alt="Live"
+        alt="Live printer camera"
         onLoad={() => {
+          clearRetryTimer();
+          retryAttemptRef.current = 0;
           lastFrameRef.current = Date.now();
-          setHasError(false);
+          updateStatus("live");
         }}
-        onError={() => setHasError(true)}
+        onError={scheduleRetry}
         className={cn(
-          "h-full w-full",
-          hasError && "opacity-0",
+          "h-full w-full transition-opacity",
+          !available && "opacity-0",
           isFullscreen ? "object-contain" : "object-cover",
         )}
         draggable={false}
       />
-      <div className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm">
+      <div
+        aria-live="polite"
+        className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm"
+      >
         <span
           className={cn(
             "h-1.5 w-1.5 rounded-full",
-            hasError ? "bg-[var(--color-error)]" : "bg-[var(--color-success)]",
+            status === "live" && "bg-[var(--color-success)]",
+            (status === "connecting" || status === "retrying") &&
+              "bg-[var(--color-warning)]",
+            status === "offline" && "bg-[var(--color-error)]",
           )}
         />
-        {hasError ? "Offline" : "Live"}
+        {STATUS_LABELS[status]}
       </div>
-      {fullscreenable && (
+      {fullscreenable && available && (
         <button
           type="button"
           onClick={toggleFullscreen}
           aria-label={isFullscreen ? "Exit camera fullscreen" : "Open camera fullscreen"}
           className={cn(
-            "absolute top-2 right-2 z-10 min-h-11 min-w-11 rounded-lg border border-white/15 bg-black/70 backdrop-blur-sm",
-            "flex items-center justify-center text-white/90 hover:text-white hover:bg-black/85",
-            "transition-opacity",
+            "absolute right-2 top-2 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm",
+            "transition-opacity hover:bg-black/85 hover:text-white",
             isFullscreen
               ? "opacity-100"
               : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100",
           )}
         >
           {isFullscreen ? (
-            <Minimize2 className="w-3.5 h-3.5" strokeWidth={2} />
+            <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />
           ) : (
-            <Maximize2 className="w-3.5 h-3.5" strokeWidth={2} />
+            <Maximize2 className="h-3.5 w-3.5" strokeWidth={2} />
           )}
         </button>
       )}

@@ -20,11 +20,15 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useExperienceMode } from "@/lib/useExperienceMode";
 
 const DISTANCES = [0.1, 1, 10, 25, 50, 100];
+const BASIC_DISTANCES = [1, 10, 50];
 
 export function Control() {
   const { state } = usePrinter();
+  const [experienceMode] = useExperienceMode();
+  const isExpert = experienceMode === "expert";
   const [dist, setDist] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const safety = getSafetyState(state);
@@ -116,10 +120,10 @@ export function Control() {
                       ○
                     </span>
                   )}
-                  <span className="ml-auto text-[9px] tabular-nums text-[var(--color-fg-muted)]/60">
+                  {isExpert && <span className="ml-auto text-[9px] tabular-nums text-[var(--color-fg-muted)]/60">
                     {safety.bounds.min[i].toFixed(0)}–
                     {safety.bounds.max[i].toFixed(0)}
-                  </span>
+                  </span>}
                 </div>
                 <div className="text-[14px] font-semibold tabular-nums mt-0.5">
                   {pos[i]?.toFixed(2) ?? "—"}
@@ -209,7 +213,7 @@ export function Control() {
             aria-label="Jog distance"
             className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-1"
           >
-            {DISTANCES.map((d) => (
+            {(isExpert ? DISTANCES : BASIC_DISTANCES).map((d) => (
               <button
                 type="button"
                 key={d}
@@ -232,7 +236,7 @@ export function Control() {
           </div>
 
           {/* Motors off — confirms when busy */}
-          <div className="pt-2">
+          {isExpert && <div className="pt-2">
             <Button
               size="sm"
               variant="ghost"
@@ -241,7 +245,7 @@ export function Control() {
             >
               <PowerOff className="w-3 h-3" /> Motors off
             </Button>
-          </div>
+          </div>}
         </div>
       </Card>
 
@@ -250,7 +254,7 @@ export function Control() {
         <BedView state={state} safety={safety} />
       </Card>
 
-      <Card title="Bounds & Safety" icon={<Lock />}>
+      {isExpert && <Card title="Bounds & Safety" icon={<Lock />}>
         <div className="space-y-2 text-[12px]">
           <Row label="Klipper">
             <Pill ok={safety.klipperReady}>
@@ -300,7 +304,7 @@ export function Control() {
             </div>
           </div>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }

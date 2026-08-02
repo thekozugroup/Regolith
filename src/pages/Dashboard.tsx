@@ -1,15 +1,26 @@
+import { lazy, Suspense } from "react";
 import { Card } from "@/components/Card";
 import { ThermalGauge } from "@/components/ThermalGauge";
-import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
 import { MissionTimeline } from "@/components/MissionTimeline";
 import { CameraStream } from "@/components/CameraStream";
 import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useExperienceMode } from "@/lib/useExperienceMode";
+
+const Sparkline = lazy(() =>
+  import("@/components/Sparkline").then((module) => ({ default: module.Sparkline })),
+);
+
+function SparklineFallback() {
+  return <div aria-hidden="true" className="h-[34px] rounded bg-[var(--color-elevated)]/35" />;
+}
 
 export function Dashboard() {
   const { state, profile } = usePrinter();
+  const [experienceMode] = useExperienceMode();
+  const isExpert = experienceMode === "expert";
   const ext = state.extruder;
   const bed = state.heater_bed;
   const fanSpeed = state.fan?.speed ?? 0;
@@ -25,7 +36,7 @@ export function Dashboard() {
         <Card title="Visual" icon={<Camera />}>
           <div className="aspect-video rounded overflow-hidden -m-3.5 relative">
             <CameraStream className="absolute inset-0" />
-            {state.toolhead?.position && (
+            {isExpert && state.toolhead?.position && (
               <div className="absolute bottom-2 left-2 flex gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm border border-white/10 font-mono text-[10px] tabular-nums z-10">
                 <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
                 <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
@@ -57,65 +68,71 @@ export function Dashboard() {
               icon={<ThermometerSun className="w-3 h-3" />}
             />
           </div>
-          {/* Sparklines */}
-          <div className="grid grid-cols-2 gap-3 mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
-            <div>
-              <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
-                <span>Hotend trend</span>
-                <span className="tabular-nums">
-                  {ext?.temperature?.toFixed(1) ?? "—"}°
-                </span>
+          {isExpert && (
+            <>
+              <div className="grid grid-cols-2 gap-3 mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
+                <div>
+                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
+                    <span>Hotend trend</span>
+                    <span className="tabular-nums">
+                      {ext?.temperature?.toFixed(1) ?? "—"}°
+                    </span>
+                  </div>
+                  <Suspense fallback={<SparklineFallback />}>
+                    <Sparkline value={ext?.temperature ?? 0} />
+                  </Suspense>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
+                    <span>Bed trend</span>
+                    <span className="tabular-nums">
+                      {bed?.temperature?.toFixed(1) ?? "—"}°
+                    </span>
+                  </div>
+                  <Suspense fallback={<SparklineFallback />}>
+                    <Sparkline value={bed?.temperature ?? 0} color="var(--color-info)" />
+                  </Suspense>
+                </div>
               </div>
-              <Sparkline value={ext?.temperature ?? 0} />
-            </div>
-            <div>
-              <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
-                <span>Bed trend</span>
-                <span className="tabular-nums">
-                  {bed?.temperature?.toFixed(1) ?? "—"}°
-                </span>
-              </div>
-              <Sparkline value={bed?.temperature ?? 0} color="var(--color-info)" />
-            </div>
-          </div>
-          {/* Aux thermals — driven by active profile */}
-          {(profile.sensors.length > 0 || profile.fans.length > 0) && (
-            <div className="mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
-              <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
-                Aux sensors
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                {profile.sensors.map((s) => {
-                  const live = state[s.klipper as `temperature_sensor ${string}`];
-                  return (
-                    <AuxRow
-                      key={s.klipper}
-                      label={s.label}
-                      actual={live?.temperature}
-                      warnAbove={s.warnAbove}
-                      criticalAbove={s.criticalAbove}
-                    />
-                  );
-                })}
-                {profile.fans.map((f) => {
-                  const live = state[f.klipper as `temperature_fan ${string}`];
-                  return (
-                    <AuxRow
-                      key={f.klipper}
-                      label={f.label}
-                      actual={live?.temperature}
-                      target={live?.target}
-                      speed={live?.speed}
-                      driftWarn={f.driftWarn}
-                    />
-                  );
-                })}
-              </div>
-            </div>
+              {(profile.sensors.length > 0 || profile.fans.length > 0) && (
+                <div className="mt-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
+                  <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+                    Aux sensors
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {profile.sensors.map((s) => {
+                      const live = state[s.klipper as `temperature_sensor ${string}`];
+                      return (
+                        <AuxRow
+                          key={s.klipper}
+                          label={s.label}
+                          actual={live?.temperature}
+                          warnAbove={s.warnAbove}
+                          criticalAbove={s.criticalAbove}
+                        />
+                      );
+                    })}
+                    {profile.fans.map((f) => {
+                      const live = state[f.klipper as `temperature_fan ${string}`];
+                      return (
+                        <AuxRow
+                          key={f.klipper}
+                          label={f.label}
+                          actual={live?.temperature}
+                          target={live?.target}
+                          speed={live?.speed}
+                          driftWarn={f.driftWarn}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </Card>
 
-        <Card title="Telemetry" icon={<Wind />} className="flex-1">
+        {isExpert && <Card title="Telemetry" icon={<Wind />} className="flex-1">
           <div className="grid grid-cols-2 gap-2">
             <MetricTile
               label="Part Fan"
@@ -169,7 +186,7 @@ export function Dashboard() {
               active={!!state.toolhead?.homed_axes}
             />
           </div>
-        </Card>
+        </Card>}
       </div>
 
       {/* BOTTOM — Mission timeline full width */}
