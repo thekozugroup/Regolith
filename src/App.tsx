@@ -1,10 +1,11 @@
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
-import { BrowserRouter, Link, Routes, Route } from "react-router";
+import { BrowserRouter, Link, Routes, Route, useLocation } from "react-router";
 import { LockKeyhole } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { AppBar } from "./components/AppBar";
 import { HealthAlerts } from "./components/HealthAlerts";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { useNotifications } from "./lib/useNotifications";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { useExperienceMode } from "./lib/useExperienceMode";
@@ -70,6 +71,7 @@ function ExpertOnly({ children }: { children: ReactNode }) {
 }
 
 function AppShell() {
+  const location = useLocation();
   useNotifications();
   useKeyboardShortcuts();
   return (
@@ -82,17 +84,19 @@ function AppShell() {
         tabIndex={-1}
         className="mt-14 min-h-[calc(100dvh-3.5rem)] pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-52 md:pb-0"
       >
-        <Suspense fallback={<RouteLoading />}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/print" element={<Files />} />
-            <Route path="/control" element={<Control />} />
-            <Route path="/tune" element={<ExpertOnly><Tune /></ExpertOnly>} />
-            <Route path="/timelapses" element={<Timelapses />} />
-            <Route path="/console" element={<ExpertOnly><ConsolePage /></ExpertOnly>} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </Suspense>
+        <RouteErrorBoundary key={location.pathname}>
+          <Suspense fallback={<RouteLoading />}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/print" element={<Files />} />
+              <Route path="/control" element={<Control />} />
+              <Route path="/tune" element={<ExpertOnly><Tune /></ExpertOnly>} />
+              <Route path="/timelapses" element={<Timelapses />} />
+              <Route path="/console" element={<ExpertOnly><ConsolePage /></ExpertOnly>} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
     </>
   );

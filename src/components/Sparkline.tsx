@@ -1,39 +1,48 @@
-import { useEffect, useRef, useState } from "react";
-import { LineChart, Line, YAxis, ResponsiveContainer } from "recharts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { buildSparklineGeometry } from "@/lib/sparkline";
 
-/**
- * Tiny rolling sparkline. Pushes new value into a fixed-length buffer.
- */
+/** Lightweight one-second rolling trend with no chart runtime. */
 export function Sparkline({
   value,
   bufferSize = 60,
   color = "var(--color-accent)",
   height = 28,
 }: {
-  value: number;
+  value: number | null | undefined;
   bufferSize?: number;
   color?: string;
   height?: number;
 }) {
-  const [data, setData] = useState<{ v: number }[]>([]);
-  const lastUpdate = useRef(0);
+  const valueRef = useRef(value);
+  const [values, setValues] = useState<number[]>(() =>
+    typeof value === "number" && Number.isFinite(value) ? [value] : [],
+  );
 
   useEffect(() => {
-    // Throttle to one push per second
-    const now = Date.now();
-    if (now - lastUpdate.current < 950) return;
-    lastUpdate.current = now;
-    setData((prev) => {
-      const next = [...prev, { v: value }];
-      if (next.length > bufferSize) next.shift();
-      return next;
-    });
-  }, [value, bufferSize]);
+    valueRef.current = value;
+  }, [value]);
 
-  if (data.length < 2) {
+  useEffect(() => {
+    const sample = () => {
+      const nextValue = valueRef.current;
+      if (typeof nextValue !== "number" || !Number.isFinite(nextValue)) return;
+      setValues((current) => [...current, nextValue].slice(-bufferSize));
+    };
+    const timer = window.setInterval(sample, 1000);
+    return () => clearInterval(timer);
+  }, [bufferSize]);
+
+  const geometry = useMemo(
+    () => buildSparklineGeometry(values, 100, height),
+    [height, values],
+  );
+
+  if (!geometry) {
     return (
       <div
         style={{ height }}
+        role="img"
+        aria-label="Temperature trend collecting data"
         className="flex items-center justify-center text-[10px] text-[var(--color-fg-muted)]/60"
       >
         ──
@@ -42,21 +51,32 @@ export function Sparkline({
   }
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-        <YAxis
-          domain={["dataMin - 1", "dataMax + 1"]}
-          hide
-        />
-        <Line
-          type="monotone"
-          dataKey="v"
-          stroke={color}
-          strokeWidth={1.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <svg
+      viewBox={`0 0 100 ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Temperature trend from ${geometry.min.toFixed(1)} to ${geometry.max.toFixed(1)} degrees Celsius`}
+      className="block w-full"
+      style={{ height }}
+    >
+      <line
+        x1="2"
+        y1={height - 2}
+        x2="98"
+        y2={height - 2}
+        stroke="var(--color-border)"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
+      <polyline
+        points={geometry.points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
   );
 }

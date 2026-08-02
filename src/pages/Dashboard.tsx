@@ -1,6 +1,6 @@
-import { lazy, Suspense } from "react";
 import { Card } from "@/components/Card";
 import { ThermalGauge } from "@/components/ThermalGauge";
+import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
 import { MissionTimeline } from "@/components/MissionTimeline";
 import { CameraStream } from "@/components/CameraStream";
@@ -8,14 +8,6 @@ import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useExperienceMode } from "@/lib/useExperienceMode";
-
-const Sparkline = lazy(() =>
-  import("@/components/Sparkline").then((module) => ({ default: module.Sparkline })),
-);
-
-function SparklineFallback() {
-  return <div aria-hidden="true" className="h-[34px] rounded bg-[var(--color-elevated)]/35" />;
-}
 
 export function Dashboard() {
   const { state, profile } = usePrinter();
@@ -78,9 +70,7 @@ export function Dashboard() {
                       {ext?.temperature?.toFixed(1) ?? "—"}°
                     </span>
                   </div>
-                  <Suspense fallback={<SparklineFallback />}>
-                    <Sparkline value={ext?.temperature ?? 0} />
-                  </Suspense>
+                  <Sparkline value={ext?.temperature} />
                 </div>
                 <div>
                   <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] mb-0.5 flex items-center justify-between">
@@ -89,9 +79,7 @@ export function Dashboard() {
                       {bed?.temperature?.toFixed(1) ?? "—"}°
                     </span>
                   </div>
-                  <Suspense fallback={<SparklineFallback />}>
-                    <Sparkline value={bed?.temperature ?? 0} color="var(--color-info)" />
-                  </Suspense>
+                  <Sparkline value={bed?.temperature} color="var(--color-info)" />
                 </div>
               </div>
               {(profile.sensors.length > 0 || profile.fans.length > 0) && (
