@@ -6,8 +6,8 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
-- Exact-current safety, accessibility, responsive hierarchy, deployment hardening, and Tune action race fixes are committed and pushed on `main` at `d2c2e7b`.
-- Exact-current static assets are deployed on the live K1 Max. Local and live hashes match for HTML, CSS, and JavaScript.
+- Exact-current Basic/Expert disclosure, route splitting, camera/network recovery, responsive thermal polish, safety, accessibility, and deployment hardening are committed and pushed on `main` at `a7e56fe`.
+- Exact-current static assets are deployed on the live K1 Max. Local and live hashes match for HTML, CSS, core JavaScript, the Dashboard route, and the lazy Expert chart chunk.
 - Delivery is fail-closed: key-first authentication, conclusive idle gates, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
 - No G-code or hardware-affecting printer action occurred during preflight, deployment, or validation.
 
@@ -25,6 +25,9 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## UI and accessibility
 
+- Basic is the safe default for new browser profiles. It keeps Home, Files, Control, Timelapses, Settings, readiness, temperatures, camera, active-job state, guarded movement, and emergency stop visible.
+- Expert is a persisted UI-only preference. It reveals Tune, Console, low-level telemetry, full travel bounds, profiles, backup/restore, host diagnostics, and recovery restarts. Direct visits to Tune or Console in Basic mode show a plain-language safety gate instead of loading the tool.
+- Settings explains what each mode adds and confirms that mode changes do not alter printer configuration.
 - Desktop navigation has visible labels. Mobile uses a four-target bottom bar plus an accessible More sheet.
 - Mobile More, print confirmation, and Tune confirmation now share a modal primitive with initial focus, complete Tab/Shift+Tab trapping, Escape dismissal, background inerting, scroll lock, backdrop dismissal, and focus restoration. Busy print confirmation cannot dismiss mid-start.
 - Every visible interactive target uses at least a 44x44px hit area, including jog distance presets, theme fields/swatches, brand controls, camera fullscreen, uploads, file filtering, and Console autoscroll.
@@ -33,26 +36,31 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - Every route exposes one useful visible `h1`; card titles are semantic `h2` headings with a quieter, sentence-case hierarchy.
 - Theme fields and pressure advance expose explicit labels, current values, and units. Files and Timelapses announce loading/results and expose `aria-busy`.
 - File and Timelapse rows are keyboard-operable buttons. Camera status no longer claims Live after a stream error. Motion honors `prefers-reduced-motion`.
+- Camera status starts at Connecting, backs off through bounded automatic retry, settles Offline without continued network churn, and exposes one explicit Try Again action. Printing controls remain independent.
+- Moonraker treats CONNECTING and OPEN sockets as active, preventing duplicate connections from concurrent hooks. Reconnect delay grows from 2 seconds to a 30-second cap, stale callbacks are ignored, and pending actions reject when the connection closes.
+- Thermal gauges scale to their grid cells, use compact three-column status readouts, and expose full temperature/target descriptions to assistive technology.
 - Frosted blur is confined to app navigation/status chrome.
 
-## Live printer validation — 2026-08-02
+## Live printer validation — 2026-08-02, `a7e56fe`
 
 - Target: Creality K1 Max (`# K1-MAX`, 300 x 300 x 300 mm in `printer.cfg`). Firmware `1.3.5.19`; board `CR4CU220812S11`; Moonraker `v0.10.0-19-g1ed102e` / API `1.5.0`; Klipper reported ready.
-- Pre-deploy and post-deploy gates: `print_stats.state=standby`, empty filename/message, `idle_timeout.state=Idle`, `virtual_sdcard.is_active=false`, no file, and queue empty.
-- Final temperatures: hotend `26.70 C`, bed `25.01 C`; both targets `0.0` and power `0.0`.
+- Pre-deploy and post-deploy gates: `print_stats.state=standby`, empty filename/message, `idle_timeout.state=Idle`, `virtual_sdcard.is_active=false`, and no active file.
+- Final temperatures: hotend `27.65 C`, bed `26.40 C`; both targets `0.0` and power `0.0`.
 - No hardware actions occurred: no G-code, motion, homing, heating, extrusion, fan/light, print control, calibration, firmware update, service restart, or config write.
-- `/usr/data` is ext4 and had 4,728,848 KiB free. nginx `1.17.7` listens on port 80 and serves `root /usr/data/fluidd` with SPA fallback.
-- Read-only `./deploy.sh --preflight` passed. Fixed-slot manifest before and after preflight remained `3e78a239facffdd485b10a90bdb84254fdde46b84bb3562371d3c6be89cbd2b0`, proving zero preflight writes.
-- Exact-current guarded deployment archive: 223,003 bytes, SHA-256 `6251a13dffbe8edcbd0b8910ba9b9791e2efee13fafd57bae775e0b51f61acdb`.
+- `forge.local` SSH succeeded but the first HTTP gate failed closed when macOS mDNS timed out. A fresh resolver lookup returned `192.168.50.179`; its ECDSA host key matched accepted `forge.local` byte-for-byte before use.
+- Read-only preflight through the fingerprint-matched resolver address passed with ready/standby/Idle/inactive state and changed no remote files.
+- Exact-current guarded deployment archive: 231,781 bytes, SHA-256 `747646c9ac13c1b06f40142f1da9b7adecddb9dbbefc298aea5da8fbabf60842`.
 - Exact local/live HTTP hash matches:
-  - `index.html`: `69b1df60b451a3cd5c2695b4f5c702bc18177993dff6955864d4602531aaf8d1`
-  - `assets/index-CL6ijiBo.css`: `3f2113a8befd018c240416b5f7ad4eda63ba4e3d48b0d974b0966f0059cec638`
-  - `assets/index-CDUZ8eNw.js`: `b3ae8b4b1576a07c6d3a41ed343c83a608e23c688d0138fb4aea63c740474817`
-- Routes `/`, `/settings`, `/print`, `/control`, `/tune`, `/timelapses`, and `/console` returned HTTP 200. Printer, system, and server APIs returned HTTP 200; browser WebSocket handshakes upgraded with HTTP 101.
-- Exact-current live browser smoke passed: desktop Home at 1440x1000 showed ready/standby telemetry; mobile Tune at 390x844 rendered all calibration sections. Both had zero overflow, current CSS/JavaScript returned 200, three API requests succeeded, and no failed network requests, console messages, or page exceptions occurred. No control was clicked.
-- Rollback ready: `/usr/data/fluidd.previous/index.html` exists and matches the first verified Regolith slot (`2cbaa5978159696cd53a264d3a24b0d667c671e5f23050689f71b41fd3cfe92b`).
-- Latest persistent verified backup: `/usr/data/regolith-backups/fluidd-before-20260802T155117Z.tgz`, 221,394 bytes, SHA-256 `67fcec3819381e43b53fa21309400502b0486a4ae33f8bfdb412355929807af8`, 6 entries. Two verified backups remain. `/usr/data/fluidd.next` and `/usr/data/regolith-deploy.tgz` are absent after cleanup.
-- mDNS became intermittent after initial success. Fallback address came from the macOS resolver, not guessing. Its ECDSA host key exactly matched accepted `forge.local`: `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`; SSH used `HostKeyAlias=forge.local` for pinned checks.
+  - `index.html`: `609d9f053194b03e46e79e412b65105a94b34587e2a32955432333ac40bf9143`
+  - `assets/index-BP6jlvX2.css`: `586e0ee02c40434550cad96491d777b0d2617d99a71af73545e47ac20f382dbc`
+  - `assets/index-C1BOr199.js`: `9806735d8c4c2de4af56f85527c2f53023c80f1185861d541fe8a644df9c2308`
+  - `assets/Dashboard-4GjB2Eox.js`: `c67c9261033a433b9d83b9e9acdaeda0d1b6dcee5f0ede14e8e0c1f55d86adef`
+  - `assets/Sparkline-BzutuvMN.js`: `3c750e9f2210132630b235ba5504e1fc6c6a96380d2cd73fb238b9b8cf2ef37f`
+- Routes `/`, `/settings`, `/print`, `/control`, `/tune`, `/timelapses`, and `/console` returned HTTP 200. Printer, system, and server APIs returned HTTP 200; browser WebSocket opened successfully.
+- Live browser smoke passed: Basic Home at 1440x1000 and 390x844 showed ready/standby telemetry and a real Live camera feed; Expert Settings and Tune rendered at 390x844. All views had zero overflow and zero visible targets below 44px. There were zero request failures, console errors, or page exceptions. No control was clicked.
+- Rollback ready: the previously verified UI remains in `/usr/data/fluidd.previous`.
+- Latest persistent verified backup: `/usr/data/regolith-backups/fluidd-before-20260802T172316Z.tgz`, 221,782 bytes, SHA-256 `0d1065a85c0e0bf2a8ee76a4b891b020cac9cca62e9a04681191f35997132444`, 6 entries. Deploy cleanup completed.
+- Accepted ECDSA fingerprint remains `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`. Never use a resolver fallback without matching it first.
 
 ## Verification
 
@@ -67,13 +75,15 @@ bash -n deploy.sh tests/deploy.test.sh scripts/light-watchdog.sh
 git diff --check
 ```
 
-All commands pass on exact-current `d2c2e7b`: 18/18 unit tests and 9/9 mocked deployment safety tests. Build output is 0.61 kB HTML, 45.48 kB CSS (8.32 kB gzip), and 714.33 kB JavaScript (215.72 kB gzip).
+All commands pass on exact-current `a7e56fe`: 24/24 unit tests and 9/9 mocked deployment safety tests. Build output is 0.69 kB HTML, 47.57 kB CSS (8.57 kB gzip), a 308.85 kB initial JavaScript chunk (99.44 kB gzip), and route chunks. Recharts is isolated in a 304.29 kB Expert-only chunk and is not downloaded in Basic mode.
 
-Read-only exact-current local Chrome smoke covered Home, Tune, and Settings at 390x844 and 1280x900:
+Read-only exact-current local Chrome smoke covered every route in Basic and Expert mode at 390x844 and 1280x900:
 
 - Each route had exactly one useful `h1`, zero horizontal overflow, and zero undersized visible interactive targets.
-- Offline Tune exposed every Run, Apply, Apply & Save, and Refresh action as disabled. No printer-affecting control was activated.
-- Four console resource errors were expected camera failures against the intentionally absent local port 8080; the UI retained its Stream Offline state.
+- Basic direct visits to Tune and Console showed the expert safety gate. Basic Control exposed Toolhead and Position; Expert added Bounds & Safety.
+- Offline camera retry settled after the bounded retry sequence, issued zero additional requests during a five-second observation window, and resumed only after Try Again. Local camera resource failures were expected because port 8080 was intentionally absent.
+- Basic Home made no Sparkline request. Expert Home loaded the isolated chart chunk on demand.
+- No printer-affecting control was activated.
 - Browser and preview processes were closed; port 4173 is no longer listening.
 
 ## Deployment and rollback
@@ -100,9 +110,10 @@ If mDNS fails, resolve `forge.local`, verify that address against the stored ECD
 
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
-- Production JavaScript remains a monolithic 714.33 kB chunk. Add route-level code splitting after a separate live parity pass.
-- Dashboard, Control, Tune, and Settings remain dense for first-time Apple users. Move expert telemetry, acronyms, and uncommon calibration controls behind progressive disclosure without hiding safety state.
-- Camera offline handling is clear, but the stream and snapshot probes create repeated expected connection errors. Add bounded exponential retry and one recovery action in a later verified UI iteration.
+- Existing browser tabs can still request an old lazy chunk immediately after an atomic deployment. Add a one-time, user-visible update recovery path for chunk-load failures rather than leaving a blank route.
+- The Expert chart chunk is 304.29 kB because Recharts remains heavy. Replace the two small temperature trends with a lightweight native SVG implementation.
+- `vite.config.ts` still contains one printer-specific development proxy address. Move development connection settings to a validated local environment file and document automatic `forge.local` defaults.
+- Installation is safe but terminal-led. Add a macOS-friendly guided installer/check command that discovers the printer, fingerprints it, runs read-only preflight first, and clearly explains rollback/update recovery.
 
 ## User-owned files
 
@@ -114,6 +125,6 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 ## Next steps
 
 1. Rotate the exposed historical printer password; decide whether coordinated history rewriting is worth clone disruption.
-2. Add route-level code splitting, then re-run exact local/live asset, route, API, WebSocket, desktop, and 390px parity checks.
-3. Simplify first-run hierarchy with Basic and Expert disclosure while keeping temperatures, readiness, active-job state, and emergency control visible.
-4. Add bounded camera retry/backoff and test unplugged, delayed, and recovered camera states.
+2. Add chunk-load update recovery and replace Recharts with a tiny native SVG trend so Expert mode also stays light.
+3. Replace the hard-coded development proxy with validated local configuration and a `forge.local` default.
+4. Add a guided macOS installer/check flow around the existing read-only preflight, verified deployment, backup, and rollback commands.
