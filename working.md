@@ -7,7 +7,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 ## Current status
 
 - Camera stability, aligned card rhythm, bounded backup retention, printer-isolated browser QA, and neutral connection loading states are committed and pushed on `main` at `f2acff5`.
-- Static assets from `93fcf9b` are deployed on the live K1 Max and include the camera reconnect fix, layout polish, backup retention, and browser harness. The follow-up neutral loading-state polish in `f2acff5` is intentionally not deployed: a fresh gate detected an active hotend operation and refused before writes.
+- Static assets from `93fcf9b` are deployed on the live K1 Max and include the camera reconnect fix, layout polish, backup retention, and browser harness. The follow-up neutral loading-state polish in `f2acff5` is intentionally not deployed: fresh gates first detected calibration/heating and then a latched failed-print state, refusing before writes each time.
 - Delivery is fail-closed: key-first authentication, conclusive idle gates, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
 - No G-code or hardware-affecting printer action occurred during preflight, deployment, or validation.
 
@@ -58,7 +58,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - Live browser smoke passed every Basic and Expert route at 1440x1000 and 390x844. Each had one page title, zero overflow, and zero visible targets below 44px. The real camera remained Live with no new request during a 15-second hold. There were zero write requests, bad responses, request failures, console errors, or page exceptions. No control was clicked.
 - Rollback ready: the previously verified UI remains in `/usr/data/fluidd.previous`.
 - Latest persistent verified backup: `/usr/data/regolith-backups/fluidd-before-20260802T180532Z.tgz`, 140,357 bytes, SHA-256 `62fca6533c1195b5f48062a09fe639a3d7cd62256ea4914013f159fbd9ded0c2`, 21 entries. Five archives remain; this deployment pruned none.
-- A later read-only preflight for `f2acff5` stopped before writes when `idle_timeout.state=Printing`. Follow-up queries confirmed active heating: hotend targets moved from `220 C` to `165 C`, then the bed target became `60 C`. No deployment, printer action, or service change followed.
+- A later read-only preflight for `f2acff5` stopped before writes when `idle_timeout.state=Printing`. Read-only G-code history identified a 36-point bed-mesh calibration; later heating held the hotend at `255 C` and bed at `60 C`. A print then failed at 0.15% with `Unknown gcode_macro variable 'user_flag'`, leaving `print_stats.state=error`. Heater targets and power returned to zero, but the error state remains fail-closed. No deployment, printer action, or service change followed.
 - Accepted ECDSA fingerprint remains `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`. Never use a resolver fallback without matching it first.
 
 ## Verification
@@ -75,7 +75,7 @@ bash -n deploy.sh tests/deploy.test.sh tests/setup.test.sh "Install Regolith.com
 git diff --check
 ```
 
-All commands pass on exact-current `f2acff5`: frozen install, lint, 31/31 unit tests, 10/10 mocked deployment safety tests, guided-setup checks, 6/6 printer-isolated Playwright tests, build, shell syntax, and diff validation. Build output is 0.69 kB HTML, 47.59 kB CSS (8.57 kB gzip), a 283.28 kB initial JavaScript chunk (90.95 kB gzip), and route chunks. Recharts and its transitive runtime are removed.
+All commands pass on exact-current runtime code: frozen install, lint, 31/31 unit tests, 11/11 mocked deployment safety tests, guided-setup checks, 6/6 printer-isolated Playwright tests, build, shell syntax, and diff validation. Build output is 0.69 kB HTML, 47.59 kB CSS (8.57 kB gzip), a 283.28 kB initial JavaScript chunk (90.95 kB gzip), and route chunks. Recharts and its transitive runtime are removed.
 
 Read-only exact-current local Chrome smoke covered every route in Basic and Expert mode at 390x844 and 1280x900:
 
@@ -99,7 +99,7 @@ Read-only exact-current local Chrome smoke covered every route in Basic and Expe
 - Every post-swap failure triggers automatic slot rollback and HTTP recovery verification. `--rollback` is idle-gated, reversible, and HTTP-verified.
 - `/usr/data/fluidd.previous` and `/usr/data/regolith-backups` improve update recovery. Survival remains best-effort because firmware can erase `/usr/data`, replace routing, or change Moonraker.
 - Moonraker contains `[update_manager fluidd]` with `channel: beta` and `path: /usr/data/fluidd`. Update status reported Fluidd `v1.36.4`, remote `v1.36.4`, `is_valid=false`. Fluidd, helper, or firmware updates may overwrite or invalidate Regolith; re-run preflight and deploy afterward.
-- Mocked shell tests cover bad-host rejection, busy and unknown-state refusal without writes, read-only preflight, verified retention, malformed-backup refusal before swap, failed-HTTP automatic rollback/recovery, manual rollback, and insecure SSH/secret patterns.
+- Mocked shell tests cover bad-host rejection, busy, failed-print, and unknown-state refusal without writes, read-only preflight, verified retention, malformed-backup refusal before swap, failed-HTTP automatic rollback/recovery, manual rollback, and insecure SSH/secret patterns.
 
 Recovery commands; provide the password only at runtime or through the silent prompt:
 
@@ -116,7 +116,7 @@ If mDNS fails, resolve `forge.local`, verify that address against the stored ECD
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
-- Exact-current `f2acff5` is pushed but not live because the printer became active. Re-run Check and deploy only after it is conclusively idle; never work around the gate.
+- Exact-current runtime code is pushed but not live because the printer entered calibration/heating and then a latched failed-print state. Re-run Check and deploy only after the printer error is resolved and state is conclusively idle; never work around the gate.
 
 ## User-owned files
 
@@ -128,5 +128,5 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 ## Next steps
 
 1. Rotate the exposed historical printer password; decide whether coordinated history rewriting is worth clone disruption.
-2. When the printer is conclusively idle, deploy `f2acff5` through the guided fingerprint and idle gates, then repeat live browser/hash QA.
+2. Resolve the printer-side `user_flag` macro error separately. When the printer returns to a conclusively idle allowed state, deploy exact-current main through the guided fingerprint and idle gates, then repeat live browser/hash QA.
 3. Produce a prebuilt macOS-friendly release path; sign and notarize when credentials are available.

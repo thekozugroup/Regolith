@@ -30,6 +30,7 @@ if [ "${1:-}" = "-e" ]; then
   cat >/dev/null
   case "${MOCK_SCENARIO:-idle}" in
     busy) printf 'ready|printing|Printing|true' ;;
+    print_error) printf 'ready|error|Ready|false' ;;
     unknown) exit 2 ;;
     *) printf 'ready|standby|Ready|false' ;;
   esac
@@ -67,6 +68,7 @@ if [[ "$url" == *'/printer/objects/query?'* ]]; then
   case "${MOCK_SCENARIO:-idle}" in
     unknown) printf '{"result":{"status":{}}}' ;;
     busy) printf '{"result":{"status":{"webhooks":{"state":"ready"},"print_stats":{"state":"printing"},"idle_timeout":{"state":"Printing"},"virtual_sdcard":{"is_active":true}}}}' ;;
+    print_error) printf '{"result":{"status":{"webhooks":{"state":"ready"},"print_stats":{"state":"error"},"idle_timeout":{"state":"Ready"},"virtual_sdcard":{"is_active":false}}}}' ;;
     *) printf '{"result":{"status":{"webhooks":{"state":"ready"},"print_stats":{"state":"standby"},"idle_timeout":{"state":"Ready"},"virtual_sdcard":{"is_active":false}}}}' ;;
   esac
   exit 0
@@ -232,6 +234,16 @@ if grep -q '^WRITE_' "$LOG_FILE"; then
   fail_test "busy refusal performed remote write"
 fi
 pass_test "busy printer refused without writes"
+
+prepare_case print-error
+if invoke print_error --preflight; then
+  fail_test "failed print state must refuse deployment"
+fi
+grep -q 'Print state is error' "$OUTPUT_FILE" || fail_test "failed print error is clear"
+if grep -q '^WRITE_' "$LOG_FILE"; then
+  fail_test "failed print refusal performed remote write"
+fi
+pass_test "failed print state refused without writes"
 
 prepare_case unknown
 if invoke unknown --preflight; then
