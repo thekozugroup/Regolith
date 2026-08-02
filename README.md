@@ -8,7 +8,7 @@ A modern, opinionated web interface for Klipper-based 3D printers — built for 
 
 The UI is a static React SPA that talks directly to Moonraker over a single WebSocket. There is no backend service to maintain — drop the built bundle anywhere nginx can serve static files. State subscriptions are merged into immutable snapshots so React renders only what changed, and a stuck-watchdog reconnects the camera stream and WS automatically when the network blips.
 
-Printer actions use a shared typed safety boundary with current-state checks, duplicate prevention, and clear errors. Print start re-checks state after confirmation and again after setup. Control blocks unhomed, busy, or out-of-bounds moves with a 0.5 mm endstop buffer. Expert Console access stays available, but hardware-changing and unknown commands are classified and confirmed. Tune macros currently retain their dedicated confirmation and busy-state guard while migration into the shared boundary continues.
+Printer actions use a shared typed safety boundary with current-state checks, duplicate prevention, and clear errors. Print start re-checks state after confirmation and again after setup. Control blocks unhomed, busy, or out-of-bounds moves with a 0.5 mm endstop buffer. Expert Console access stays available, but hardware-changing and unknown commands are classified and confirmed. Tune macros and pressure-advance writes use the same live-state runner and duplicate lock.
 
 Calibration tasks are exposed as one-click cards with explicit confirm modals, estimated durations, and the literal G-code preview behind a `<details>`. Print confirmation includes a physical-area checklist and optional adaptive bed mesh (KAMP); a setup error blocks print start instead of silently continuing. Print History surfaces the rolling Moonraker job log with success/failure pills and per-print stats.
 
@@ -17,7 +17,7 @@ Calibration tasks are exposed as one-click cards with explicit confirm modals, e
 - React 19 + TypeScript on Bun + Vite
 - Tailwind v4 with CSS-driven theming (8 accent presets, configurable device name)
 - Lucide icons in the Radix stroke aesthetic
-- Recharts for thermals, custom SVG for tachometer-style segmented gauges
+- Dependency-free SVG temperature trends and custom segmented thermal gauges
 - No backend — pure static SPA against Moonraker's WebSocket + REST API
 
 ## Status
@@ -37,11 +37,39 @@ bun install
 bun run dev
 ```
 
-Open the local URL printed by Vite. During development, Vite proxies `/printer`, `/server`, `/machine`, `/access`, `/api`, `/webcam`, and `/websocket` to the configured printer.
+Open the local URL printed by Vite. Development defaults to `forge.local`; no source edit is needed. To use another trusted LAN hostname or IPv4 address:
+
+```sh
+cp .env.example .env.local
+```
+
+Edit only `VITE_REGOLITH_PRINTER_HOST` in `.env.local`, then start Vite. Values containing a protocol, port, path, shell syntax, or invalid IPv4 address are rejected before the server starts. Vite proxies `/printer`, `/server`, `/machine`, `/access`, `/api`, `/webcam`, and `/websocket` to that validated host. The camera uses the same host in development.
 
 ## Safely install on the printer
 
 Regolith targets `forge.local` by default. The deployment changes static web files only under `/usr/data`; it does not send G-code, move axes, heat components, edit printer configuration, or restart services.
+
+### Guided setup on macOS
+
+The simplest path is the guided setup. In Finder, double-click `Install Regolith.command`, or run:
+
+```sh
+bash "Install Regolith.command"
+```
+
+Choose **Check only** first. It is read-only and is the default if you press Return. After it passes, run the setup again and choose **Install**. Install uses the same conclusive idle checks, local tests, verified backup, atomic swap, HTTP verification, and automatic rollback described below. **Roll Back** restores the previous verified WebUI slot and is also idle-gated.
+
+The guided setup checks for SSH, curl, and Bun. It discovers the printer's ECDSA fingerprint before authentication. A saved identity must match exactly; a first-time identity must be confirmed interactively. It never stores the printer password. If SSH keys are unavailable, `sshpass` is still required for the silent password fallback.
+
+Command-line equivalents are also available:
+
+```sh
+bash "Install Regolith.command" --check
+bash "Install Regolith.command" --install
+bash "Install Regolith.command" --rollback
+```
+
+### Manual install
 
 First, verify SSH access. An SSH key is recommended:
 

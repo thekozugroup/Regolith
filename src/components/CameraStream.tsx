@@ -114,7 +114,10 @@ export function CameraStream({
     }
   };
 
-  const hostname = host ?? location.hostname;
+  const developmentHost = import.meta.env.DEV
+    ? import.meta.env.VITE_REGOLITH_PRINTER_HOST || "forge.local"
+    : undefined;
+  const hostname = host ?? developmentHost ?? location.hostname;
   const url = `http://${hostname}:8080/?action=stream&_=${generation}`;
   const available = status === "live";
 
