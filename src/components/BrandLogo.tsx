@@ -141,8 +141,19 @@ export function BrandLogo({
         setOpen(false);
       }
     };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
     setTimeout(() => document.addEventListener("mousedown", handler), 0);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [open]);
 
   const handleUpload = (file: File) => {
@@ -181,6 +192,7 @@ export function BrandLogo({
   return (
     <span className={cn("relative inline-flex items-center", className)}>
       <button
+        type="button"
         ref={triggerRef}
         onClick={() => {
           if (!configurable) return;
@@ -191,13 +203,14 @@ export function BrandLogo({
           setOpen((o) => !o);
         }}
         className={cn(
-          "inline-flex items-center justify-center rounded-sm transition-colors",
+          "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
           configurable && "hover:bg-[rgba(249,115,22,0.08)] cursor-pointer",
           !configurable && "cursor-default",
         )}
-        style={{ padding: 4 }}
         title={configurable ? "Change brand icon" : undefined}
-        aria-label="Change brand icon"
+        aria-label={configurable ? "Change brand icon" : "Brand icon"}
+        aria-expanded={configurable ? open : undefined}
+        disabled={!configurable}
       >
         {renderIcon() ?? (
           <span
@@ -212,6 +225,8 @@ export function BrandLogo({
       {open && configurable && anchor && createPortal(
         <div
           ref={popoverRef}
+          role="dialog"
+          aria-label="Choose brand icon"
           className="fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] rounded-md shadow-2xl overflow-hidden"
           style={{
             left: Math.min(anchor.x, window.innerWidth - 290),
@@ -223,33 +238,37 @@ export function BrandLogo({
               Brand icon
             </span>
             <button
+              type="button"
               onClick={() => setOpen(false)}
-              className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+              aria-label="Close brand icon picker"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
             >
-              <X className="w-3 h-3" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="p-2">
             {/* Lucide grid */}
-            <div className="grid grid-cols-8 gap-1 max-h-[160px] overflow-y-auto">
+            <div className="grid max-h-[220px] grid-cols-5 gap-1 overflow-y-auto">
               {Object.entries(ICON_LIBRARY).map(([name, Icon]) => {
                 const active =
                   brand.type === "lucide" && brand.name === name;
                 return (
                   <button
+                    type="button"
                     key={name}
                     onClick={() => {
                       setBrand({ type: "lucide", name });
                       setOpen(false);
                     }}
                     className={cn(
-                      "w-7 h-7 flex items-center justify-center rounded transition-colors",
+                      "flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
                       active
-                        ? "bg-[var(--color-accent)] text-white"
+                        ? "bg-[var(--color-accent)] text-[var(--color-accent-fg)]"
                         : "hover:bg-[rgba(249,115,22,0.10)] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]",
                     )}
-                    title={name}
+                    aria-label={`${name} brand icon`}
+                    aria-pressed={active}
                   >
                     <Icon className="w-3.5 h-3.5" strokeWidth={2} />
                   </button>
@@ -260,8 +279,9 @@ export function BrandLogo({
 
           <div className="border-t border-[var(--color-border)] p-2 space-y-1">
             <button
+              type="button"
               onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[rgba(249,115,22,0.06)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[rgba(249,115,22,0.06)]"
             >
               <Upload className="w-3 h-3 text-[var(--color-accent)]" />
               <span>Upload image…</span>
@@ -272,12 +292,13 @@ export function BrandLogo({
               )}
             </button>
             <button
+              type="button"
               onClick={() => {
                 setBrand({ type: "none" });
                 setOpen(false);
               }}
               className={cn(
-                "w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[rgba(249,115,22,0.06)]",
+                "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[rgba(249,115,22,0.06)]",
                 brand.type === "none" && "text-[var(--color-accent)]",
               )}
             >
@@ -290,11 +311,12 @@ export function BrandLogo({
               )}
             </button>
             <button
+              type="button"
               onClick={() => {
                 setBrand(DEFAULT_BRAND);
                 setOpen(false);
               }}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[rgba(249,115,22,0.06)] text-[var(--color-fg-muted)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[rgba(249,115,22,0.06)]"
             >
               <span>Reset to default</span>
             </button>

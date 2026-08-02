@@ -20,6 +20,7 @@ export function Timelapses() {
     setLoading(true);
     try {
       const res = await fetch("/server/files/list?root=timelapse");
+      if (!res.ok) throw new Error(`Could not load timelapses (${res.status}).`);
       const data = await res.json();
       const list = (data.result ?? []) as TimelapseFile[];
       // Show only video files (mp4/avi/mov), sorted newest first
@@ -63,12 +64,20 @@ export function Timelapses() {
         title="Timelapses"
         icon={<Film />}
         action={
-          <Button size="sm" variant="ghost" onClick={load}>
+          <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
             <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
             Refresh
           </Button>
         }
       >
+        <div className="sr-only" role="status" aria-live="polite">
+          {loading
+            ? "Loading timelapses."
+            : err
+              ? "Timelapses could not be loaded."
+              : `${files.length} timelapses available.`}
+        </div>
+        <div aria-busy={loading}>
         {err && (
           <div className="text-[12px] text-[var(--color-error)] py-3 text-center">
             {err}
@@ -87,31 +96,35 @@ export function Timelapses() {
         )}
         <ul className="divide-y divide-[rgba(63,63,70,0.4)] max-h-[60vh] overflow-y-auto -mx-3.5">
           {files.map((f) => (
-            <li
-              key={f.path}
-              className={cn(
-                "flex items-center gap-3 py-2 px-3.5 cursor-pointer transition-colors",
-                selected?.path === f.path
-                  ? "bg-[rgba(249,115,22,0.10)]"
-                  : "hover:bg-[rgba(249,115,22,0.04)]",
-              )}
-              onClick={() => setSelected(f)}
-            >
-              <div className="w-12 h-9 bg-black border border-[var(--color-border)] rounded-sm flex items-center justify-center shrink-0">
-                <Film className="w-4 h-4 text-[var(--color-fg-muted)]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-medium truncate">
-                  {f.path}
-                </div>
-                <div className="text-[10px] text-[var(--color-fg-muted)] tabular-nums">
-                  {formatBytes(f.size)} ·{" "}
-                  {new Date(f.modified * 1000).toLocaleString()}
-                </div>
-              </div>
+            <li key={f.path}>
+              <button
+                type="button"
+                aria-pressed={selected?.path === f.path}
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors",
+                  selected?.path === f.path
+                    ? "bg-[rgba(249,115,22,0.10)]"
+                    : "hover:bg-[rgba(249,115,22,0.04)]",
+                )}
+                onClick={() => setSelected(f)}
+              >
+                <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-sm border border-[var(--color-border)] bg-black">
+                  <Film className="w-4 h-4 text-[var(--color-fg-muted)]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-medium">
+                    {f.path}
+                  </span>
+                  <span className="block text-[10px] text-[var(--color-fg-muted)] tabular-nums">
+                    {formatBytes(f.size)} ·{" "}
+                    {new Date(f.modified * 1000).toLocaleString()}
+                  </span>
+                </span>
+              </button>
             </li>
           ))}
         </ul>
+        </div>
       </Card>
 
       <Card title="Preview" icon={<Play />}>
@@ -138,7 +151,7 @@ export function Timelapses() {
               <a
                 href={downloadUrl(selected)}
                 download={selected.path}
-                className="inline-flex items-center gap-1.5 h-7.5 px-3 text-[12px] font-medium rounded-sm bg-[var(--color-elevated)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]"
+                className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[12px] font-medium hover:bg-[var(--color-surface)]"
               >
                 <Download className="w-3 h-3" /> Download
               </a>

@@ -169,9 +169,11 @@ export function ConsolePage() {
         <div className="flex items-center justify-between text-[10px] text-[var(--color-fg-muted)] uppercase tracking-[0.1em] py-1.5 -mx-3.5 px-3.5 border-b border-[var(--color-border)] bg-[var(--color-bg)]/50">
           <span>{lines.length} lines</span>
           <button
+            type="button"
             onClick={() => setAutoScroll((s) => !s)}
+            aria-pressed={autoScroll}
             className={cn(
-              "flex items-center gap-1 hover:text-[var(--color-fg)]",
+              "flex min-h-11 min-w-11 items-center gap-1 rounded-lg px-2 hover:text-[var(--color-fg)]",
               autoScroll && "text-[var(--color-accent)]",
             )}
           >

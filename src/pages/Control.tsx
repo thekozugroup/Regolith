@@ -204,13 +204,20 @@ export function Control() {
           </div>
 
           {/* Distance presets */}
-          <div className="flex gap-1 p-0.5 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-md w-fit">
+          <div
+            role="group"
+            aria-label="Jog distance"
+            className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-1"
+          >
             {DISTANCES.map((d) => (
               <button
+                type="button"
                 key={d}
                 onClick={() => setDist(d)}
+                aria-label={`Jog ${d} millimeters`}
+                aria-pressed={dist === d}
                 className={cn(
-                  "h-6 px-2.5 rounded text-[11px] font-medium tabular-nums transition-colors",
+                  "min-h-11 min-w-11 rounded-lg px-2.5 text-[12px] font-medium tabular-nums transition-colors",
                   dist === d
                     ? "bg-[var(--color-bg)] text-[var(--color-accent)] shadow-[inset_0_0_0_1px_var(--color-border-strong)]"
                     : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -219,7 +226,7 @@ export function Control() {
                 {d}
               </button>
             ))}
-            <span className="text-[10px] text-[var(--color-fg-muted)] self-center px-1.5">
+            <span aria-hidden="true" className="self-center px-1.5 text-[10px] text-[var(--color-fg-muted)]">
               mm
             </span>
           </div>
@@ -408,7 +415,7 @@ function JogBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="w-9 h-9 p-0"
+      className="min-h-11 min-w-11 p-0"
     >
       {children}
     </Button>

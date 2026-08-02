@@ -111,7 +111,7 @@ export function PrinterCard() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
             <button
               onClick={() => fileRef.current?.click()}
-              className="px-2 py-1 rounded-sm bg-[var(--color-accent)] text-white text-[10px] font-medium uppercase tracking-[0.05em] hover:bg-[var(--color-accent-hover)] flex items-center gap-1"
+              className="flex min-h-11 min-w-11 items-center gap-1 rounded-lg bg-[var(--color-accent)] px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
             >
               <Upload className="w-3 h-3" />
               {image ? "Replace" : "Upload"}
@@ -119,7 +119,8 @@ export function PrinterCard() {
             {image && (
               <button
                 onClick={clearImage}
-                className="px-2 py-1 rounded-sm bg-[var(--color-elevated)] text-[var(--color-fg-muted)] text-[10px] hover:text-[var(--color-error)]"
+                aria-label="Remove printer image"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-[var(--color-elevated)] text-[var(--color-fg-muted)] hover:text-[var(--color-error)]"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -144,9 +145,9 @@ export function PrinterCard() {
               Printer
             </div>
             <div className="flex items-baseline gap-3 mt-0.5">
-              <h1 className="text-[22px] font-semibold tracking-tight">
+              <h2 className="text-[22px] font-semibold tracking-tight">
                 {meta.hostname ?? "Forge"}
-              </h1>
+              </h2>
               <span className="text-[12px] text-[var(--color-fg-muted)] font-mono">
                 {meta.model ?? "Creality K1 Max"}
               </span>

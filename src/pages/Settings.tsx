@@ -246,7 +246,7 @@ export function SettingsPage() {
               href="https://github.com/thekozugroup/Regolith"
               target="_blank"
               rel="noreferrer"
-              className="text-[var(--color-accent)] hover:underline"
+              className="inline-flex min-h-11 items-center text-[var(--color-accent)] hover:underline"
             >
               github/Regolith
             </a>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import { Palette, Check } from "lucide-react";
@@ -16,6 +16,10 @@ export function ThemeSettings() {
   const [accent, setAccent] = useAccent();
   const [draftName, setDraftName] = useState(name);
   const [draftHex, setDraftHex] = useState(accent);
+  const deviceNameId = useId();
+  const accentPickerId = useId();
+  const accentHexId = useId();
+  const accentErrorId = useId();
   const dirty = draftName !== name;
   const hexValid = isValidHex(draftHex);
   const hexDirty = hexValid && normalizeHex(draftHex) !== accent;
@@ -31,16 +35,20 @@ export function ThemeSettings() {
       <div className="space-y-4">
         {/* Device name */}
         <div>
-          <label className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+          <label
+            htmlFor={deviceNameId}
+            className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5"
+          >
             Device name
           </label>
           <div className="flex gap-2">
             <input
+              id={deviceNameId}
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
               maxLength={24}
               placeholder="Forge"
-              className="flex-1 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-sm px-3 h-8 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none"
+              className="min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] focus:border-[var(--color-accent)] focus:outline-none"
             />
             <Button
               size="md"
@@ -57,30 +65,37 @@ export function ThemeSettings() {
         </div>
 
         {/* Accent color */}
-        <div>
-          <label className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+        <fieldset>
+          <legend className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
             Accent color
-          </label>
+          </legend>
 
           {/* Hex input + native color picker swatch */}
           <div className="flex gap-2 mb-2">
             <div className="relative">
+              <label htmlFor={accentPickerId} className="sr-only">
+                Choose accent color
+              </label>
               <input
+                id={accentPickerId}
                 type="color"
                 value={hexValid ? normalizeHex(draftHex) : accent}
                 onChange={(e) => {
                   setDraftHex(e.target.value);
                   setAccent(e.target.value);
                 }}
-                className="absolute inset-0 w-8 h-8 opacity-0 cursor-pointer"
-                title="Open color picker"
+                className="absolute inset-0 z-10 min-h-11 min-w-11 cursor-pointer opacity-0"
               />
               <div
-                className="w-8 h-8 rounded-sm border border-[var(--color-border)] pointer-events-none"
+                className="pointer-events-none h-11 w-11 rounded-lg border border-[var(--color-border)]"
                 style={{ backgroundColor: hexValid ? normalizeHex(draftHex) : accent }}
               />
             </div>
+            <label htmlFor={accentHexId} className="sr-only">
+              Accent color hex value
+            </label>
             <input
+              id={accentHexId}
               value={draftHex}
               onChange={(e) => setDraftHex(e.target.value)}
               onBlur={commitHex}
@@ -90,8 +105,10 @@ export function ThemeSettings() {
               }}
               placeholder="#f97316"
               spellCheck={false}
+              aria-invalid={!hexValid}
+              aria-describedby={!hexValid ? accentErrorId : undefined}
               className={cn(
-                "flex-1 bg-[var(--color-elevated)] border rounded-sm px-3 h-8 text-[13px] font-mono uppercase tracking-wider focus:outline-none",
+                "min-h-11 min-w-0 flex-1 rounded-lg border bg-[var(--color-elevated)] px-3 text-[13px] font-mono uppercase tracking-wider focus:outline-none",
                 hexValid
                   ? "border-[var(--color-border)] focus:border-[var(--color-accent)]"
                   : "border-[var(--color-error)] focus:border-[var(--color-error)]",
@@ -108,7 +125,7 @@ export function ThemeSettings() {
           </div>
 
           {/* Preset chips */}
-          <div className="grid grid-cols-8 gap-1.5">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(2.75rem,1fr))] gap-1.5">
             {Object.entries(ACCENT_PRESETS).map(([key, hex]) => {
               const active = accent.toLowerCase() === hex.toLowerCase();
               return (
@@ -116,15 +133,18 @@ export function ThemeSettings() {
                   key={key}
                   onClick={() => setAccent(hex)}
                   className={cn(
-                    "aspect-square rounded-md border-2 transition-all flex items-center justify-center",
+                    "flex min-h-11 min-w-11 items-center justify-center rounded-lg border-2 transition-[border-color,transform]",
                     active
                       ? "border-[var(--color-fg)] scale-105"
                       : "border-transparent hover:border-[var(--color-border-strong)]",
                   )}
                   style={{ backgroundColor: hex }}
-                  title={`${key} · ${hex}`}
+                  aria-label={`${key} accent, ${hex}`}
+                  aria-pressed={active}
                 >
-                  {active && <Check className="w-3.5 h-3.5 text-white" />}
+                  {active && (
+                    <Check className="w-4 h-4 text-[var(--color-accent-fg)]" />
+                  )}
                 </button>
               );
             })}
@@ -132,7 +152,12 @@ export function ThemeSettings() {
           <div className="text-[10px] text-[var(--color-fg-muted)] mt-1.5 font-mono">
             Current: {accent.toUpperCase()}
           </div>
-        </div>
+          {!hexValid && (
+            <div id={accentErrorId} role="alert" className="mt-1.5 text-[11px] text-[var(--color-error)]">
+              Enter a 3- or 6-digit hex color, such as #f97316.
+            </div>
+          )}
+        </fieldset>
       </div>
     </Card>
   );

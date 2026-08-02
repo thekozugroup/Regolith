@@ -10,7 +10,8 @@
   --color-fg: #fafafa;
   --color-fg-muted: #a1a1aa;
   --color-accent: #f97316;
-  --color-accent-hover: #ea580c;
+  --color-accent-hover: #fa8432;
+  --color-accent-fg: #120b07;
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
@@ -47,7 +48,7 @@
 
   ::selection {
     background: rgb(249 115 22 / 0.35);
-    color: #fff;
+    color: var(--color-fg);
   }
 
   *:focus-visible {

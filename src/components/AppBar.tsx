@@ -3,17 +3,33 @@ import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 import { useDeviceName } from "@/lib/useTheme";
 import { AppBarProgress } from "./AppBarProgress";
+import { useLocation } from "react-router";
+
+const ROUTE_TITLES: Record<string, string> = {
+  "/": "Home",
+  "/print": "Files",
+  "/control": "Control",
+  "/tune": "Tune",
+  "/timelapses": "Timelapses",
+  "/console": "Console",
+  "/settings": "Settings",
+};
 
 export function AppBar() {
   const { state, connected } = usePrinter();
   const [deviceName] = useDeviceName();
+  const location = useLocation();
   const klipperOk = state.webhooks?.state === "ready";
   const printState = state.print_stats?.state;
 
   return (
     <header className="app-chrome fixed top-0 left-0 right-0 h-14 border-b border-[var(--color-border)] flex items-center px-4 z-20 md:left-52">
       <div className="flex items-center gap-3">
-        <span className="max-w-[52vw] truncate text-[15px] font-semibold tracking-tight sm:max-w-none">
+        <h1 className="max-w-[42vw] truncate text-[17px] font-semibold tracking-tight sm:max-w-none">
+          {ROUTE_TITLES[location.pathname] ?? "Regolith"}
+        </h1>
+        <span aria-hidden="true" className="hidden h-4 w-px bg-[var(--color-border-strong)] sm:block" />
+        <span className="hidden max-w-[28vw] truncate text-[12px] text-[var(--color-fg-muted)] sm:block">
           {deviceName}
         </span>
         {printState && printState !== "standby" && printState !== "complete" && (

@@ -141,11 +141,12 @@ export function HealthAlerts() {
             </span>
           </div>
           <button
+            type="button"
             onClick={() =>
               setDismissed((d) => new Set([...d, a.id]))
             }
-            className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] text-[16px] leading-none"
-            title="Dismiss"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-black/10 hover:text-[var(--color-fg)]"
+            aria-label="Dismiss alert"
           >
             ×
           </button>

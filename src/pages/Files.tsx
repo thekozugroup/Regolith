@@ -80,21 +80,30 @@ export function Files() {
         title="Files"
         icon={<FileText />}
         action={
-          <Button size="sm" variant="ghost" onClick={load}>
+          <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
             <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
             Refresh
           </Button>
         }
       >
+        <div aria-busy={loading}>
+        <div className="sr-only" role="status" aria-live="polite">
+          {loading
+            ? "Loading print files."
+            : err
+              ? "Print files could not be loaded."
+              : `${filtered.length} print files available.`}
+        </div>
+
         {/* Search */}
-        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-sm">
+        <div className="mb-2 flex min-h-11 items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3">
           <Search className="w-3.5 h-3.5 text-[var(--color-fg-muted)]" />
           <input
             aria-label="Filter print files"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter…"
-            className="flex-1 bg-transparent outline-none text-[12px] font-mono"
+            className="min-h-11 min-w-0 flex-1 bg-transparent text-[12px] font-mono outline-none"
           />
         </div>
 
@@ -151,6 +160,7 @@ export function Files() {
             </li>
           ))}
         </ul>
+        </div>
       </Card>
 
       {/* Detail panel */}

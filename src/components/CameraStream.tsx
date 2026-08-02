@@ -126,23 +126,34 @@ export function CameraStream({
         }}
         onError={() => setHasError(true)}
         className={cn(
-          "w-full h-full",
+          "h-full w-full",
+          hasError && "opacity-0",
           isFullscreen ? "object-contain" : "object-cover",
         )}
         draggable={false}
       />
+      <div className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm">
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            hasError ? "bg-[var(--color-error)]" : "bg-[var(--color-success)]",
+          )}
+        />
+        {hasError ? "Offline" : "Live"}
+      </div>
       {fullscreenable && (
         <button
+          type="button"
           onClick={toggleFullscreen}
+          aria-label={isFullscreen ? "Exit camera fullscreen" : "Open camera fullscreen"}
           className={cn(
-            "absolute top-2 right-2 w-7 h-7 rounded bg-black/60 backdrop-blur-sm border border-white/10 z-10",
-            "flex items-center justify-center text-white/80 hover:text-white hover:bg-black/80",
+            "absolute top-2 right-2 z-10 min-h-11 min-w-11 rounded-lg border border-white/15 bg-black/70 backdrop-blur-sm",
+            "flex items-center justify-center text-white/90 hover:text-white hover:bg-black/85",
             "transition-opacity",
             isFullscreen
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100",
+              : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100",
           )}
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         >
           {isFullscreen ? (
             <Minimize2 className="w-3.5 h-3.5" strokeWidth={2} />

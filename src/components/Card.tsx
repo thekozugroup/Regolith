@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export function Card({
@@ -14,25 +14,26 @@ export function Card({
   children: ReactNode;
   className?: string;
 }) {
+  const titleId = useId();
+
   return (
     <section
+      aria-labelledby={titleId}
       className={cn(
-        "bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md overflow-hidden",
+        "overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]",
         className
       )}
     >
-      <header className="relative h-9 flex items-center justify-between px-3.5 border-b border-[var(--color-border)]">
-        <div className="flex items-center gap-2 text-[12px] font-semibold tracking-[0.05em] uppercase">
+      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-3.5">
+        <div className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
           {icon && (
             <span className="text-[var(--color-accent)] [&>svg]:w-3.5 [&>svg]:h-3.5">
               {icon}
             </span>
           )}
-          <span>{title}</span>
+          <h2 id={titleId} className="truncate">{title}</h2>
         </div>
         {action}
-        {/* Accent underline */}
-        <span className="absolute -bottom-px left-3.5 w-6 h-px bg-[var(--color-accent)] opacity-50" />
       </header>
       <div className="p-3.5">{children}</div>
     </section>

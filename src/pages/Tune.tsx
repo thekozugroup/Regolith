@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { ModalSurface } from "@/components/ModalSurface";
 import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
 import { moonraker } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
@@ -159,6 +160,8 @@ export function Tune() {
   const [pending, setPending] = useState<TuneAction | null>(null);
   const [running, setRunning] = useState<RunningAction | null>(null);
   const [pa, setPa] = useState<number | null>(null);
+  const pressureAdvanceId = useId();
+  const pressureAdvanceHintId = useId();
   const safety = getSafetyState(state);
   const isPrinting = safety.isBusy;
 
@@ -247,19 +250,29 @@ export function Tune() {
             Live tunable. Apply temporarily or save permanently.
           </div>
           <div className="flex items-center gap-3 py-2">
+            <label htmlFor={pressureAdvanceId} className="sr-only">
+              Pressure advance in seconds
+            </label>
             <input
+              id={pressureAdvanceId}
               type="range"
               min="0"
               max="0.2"
               step="0.005"
               value={displayedPa}
               onChange={(e) => setPa(parseFloat(e.target.value))}
-              className="flex-1 accent-[var(--color-accent)]"
+              aria-describedby={pressureAdvanceHintId}
+              aria-valuetext={`${displayedPa.toFixed(4)} seconds`}
+              className="min-h-11 flex-1 accent-[var(--color-accent)]"
               disabled={isPrinting}
             />
-            <span className="text-[14px] font-semibold tabular-nums w-16 text-right">
-              {displayedPa.toFixed(4)}
-            </span>
+            <output
+              htmlFor={pressureAdvanceId}
+              className="w-24 text-right text-[14px] font-semibold tabular-nums"
+              aria-live="polite"
+            >
+              {displayedPa.toFixed(4)} s
+            </output>
           </div>
           <div className="flex gap-2 pt-1">
             <Button
@@ -283,7 +296,10 @@ export function Tune() {
               </Button>
             )}
           </div>
-          <div className="text-[11px] text-[var(--color-fg-muted)] pt-1">
+          <div
+            id={pressureAdvanceHintId}
+            className="text-[11px] text-[var(--color-fg-muted)] pt-1"
+          >
             Current: <span className="font-mono tabular-nums">{currentPa.toFixed(4)}</span>{" "}
             · Typical PLA 0.03-0.05 · PETG 0.05-0.07 · TPU 0.10-0.20
           </div>
@@ -351,28 +367,33 @@ function ConfirmModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
+
   return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onCancel}
+    <ModalSurface
+      labelledBy={titleId}
+      describedBy={descriptionId}
+      onDismiss={onCancel}
+      panelClassName="max-w-md rounded-xl"
     >
-      <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-md max-w-md w-full overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
         <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
-          <h2 className="text-[13px] font-semibold tracking-tight">
+          <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
             Confirm: {action.title}
           </h2>
           <button
+            type="button"
             onClick={onCancel}
-            className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+            aria-label="Close calibration confirmation"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </header>
         <div className="p-4 space-y-3">
-          <p className="text-[13px] leading-relaxed">{action.confirm}</p>
+          <p id={descriptionId} className="text-[13px] leading-relaxed">
+            {action.confirm}
+          </p>
           {action.movesPrinthead && (
             <div className="flex items-center gap-2 p-2 bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.3)] rounded-sm">
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)]" />
@@ -382,7 +403,7 @@ function ConfirmModal({
             </div>
           )}
           <details className="text-[11px] font-mono">
-            <summary className="text-[var(--color-fg-muted)] cursor-pointer hover:text-[var(--color-fg)]">
+            <summary className="flex min-h-11 cursor-pointer items-center text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
               View gcode
             </summary>
             <pre className="mt-2 p-2 bg-black border border-[var(--color-border)] rounded-sm overflow-x-auto whitespace-pre-wrap">
@@ -403,8 +424,7 @@ function ConfirmModal({
             <CheckCircle2 className="w-3.5 h-3.5" /> Run
           </Button>
         </footer>
-      </div>
-    </div>
+    </ModalSurface>
   );
 }
 

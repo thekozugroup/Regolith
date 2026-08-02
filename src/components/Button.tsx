@@ -19,7 +19,7 @@ export function Button({
     default:
       "bg-[var(--color-elevated)] border border-[var(--color-border)] text-[var(--color-fg)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)]",
     primary:
-      "bg-[var(--color-accent)] text-white border border-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-[var(--color-accent-hover)]",
+      "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-[var(--color-accent-hover)]",
     ghost:
       "text-[var(--color-fg-muted)] hover:bg-[rgba(249,115,22,0.06)] hover:text-[var(--color-fg)]",
     danger:

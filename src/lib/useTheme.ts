@@ -39,17 +39,51 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
-/** Darken by ~12% — matches the visual relationship of the original presets. */
-function darken(hex: string): string {
-  const [r, g, b] = hexToRgb(hex).map((c) => Math.round(c * 0.85));
-  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+function relativeLuminance(hex: string): number {
+  const channels = hexToRgb(hex).map((value) => {
+    const channel = value / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
+function contrastRatio(a: string, b: string): number {
+  const light = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const dark = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (light + 0.05) / (dark + 0.05);
+}
+
+const DARK_ACTION_TEXT = "#120b07";
+const LIGHT_ACTION_TEXT = "#fff8f1";
+
+export function getAccessibleAccentForeground(hex: string): string {
+  return contrastRatio(hex, DARK_ACTION_TEXT) >=
+    contrastRatio(hex, LIGHT_ACTION_TEXT)
+    ? DARK_ACTION_TEXT
+    : LIGHT_ACTION_TEXT;
+}
+
+function mixHex(a: string, b: string, amount: number): string {
+  const first = hexToRgb(a);
+  const second = hexToRgb(b);
+  const mixed = first.map((value, index) =>
+    Math.round(value + (second[index] - value) * amount),
+  );
+  return `#${mixed.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function applyAccent(hex: string): void {
   const root = document.documentElement;
   const [r, g, b] = hexToRgb(hex);
+  const foreground = getAccessibleAccentForeground(hex);
   root.style.setProperty("--color-accent", hex);
-  root.style.setProperty("--color-accent-hover", darken(hex));
+  root.style.setProperty("--color-accent-fg", foreground);
+  root.style.setProperty(
+    "--color-accent-hover",
+    mixHex(hex, foreground === DARK_ACTION_TEXT ? "#fff8f1" : "#120b07", 0.12),
+  );
   root.style.setProperty("--accent-soft-r", hex);
   root.style.setProperty("--color-accent-rgb", `${r},${g},${b}`);
 }

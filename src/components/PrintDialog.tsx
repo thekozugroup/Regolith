@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Button } from "./Button";
+import { ModalSurface } from "./ModalSurface";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import {
@@ -51,8 +52,6 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const busyRef = useRef(false);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -64,52 +63,10 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   const preflight = guardPrinterAction(state, connected, action);
 
   useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
-
-  useEffect(() => {
     if (!open) return;
     setAcknowledged(false);
     setError(null);
   }, [open, file.path]);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    const focusable = () =>
-      Array.from(
-        dialog?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-    requestAnimationFrame(() => focusable()[0]?.focus());
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busyRef.current) {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusable();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previousFocus?.focus();
-    };
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -139,20 +96,13 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
+    <ModalSurface
+      labelledBy={titleId}
+      describedBy={descriptionId}
+      onDismiss={onClose}
+      dismissLocked={busy}
+      panelClassName="max-h-[calc(100dvh-2rem)]"
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-xl max-w-lg w-full max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-2xl"
-      >
         <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
           <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
             Ready to print?
@@ -319,8 +269,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             </Button>
           </div>
         </footer>
-      </div>
-    </div>
+    </ModalSurface>
   );
 }
 

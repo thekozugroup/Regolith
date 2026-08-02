@@ -27,3 +27,4 @@ dist-ssr
 .a5c/node_modules/
 .a5c/runs/
 .a5c/package-lock.json
+.playwright-cli/

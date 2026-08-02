@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import {
   LayoutDashboard,
@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
+import { ModalSurface } from "./ModalSurface";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 
@@ -32,6 +33,7 @@ export function Sidebar() {
   const { state } = usePrinter();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreTitleId = useId();
   const ps = state.print_stats?.state;
   const progress = state.virtual_sdcard?.progress ?? 0;
   const isPrinting = ps === "printing" || ps === "paused";
@@ -51,15 +53,6 @@ export function Sidebar() {
   useEffect(() => {
     setMoreOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreOpen(false);
-    };
-    document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
-  }, [moreOpen]);
 
   return (
     <>
@@ -118,16 +111,16 @@ export function Sidebar() {
       </aside>
 
       {moreOpen && (
-        <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onMouseDown={() => setMoreOpen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="More navigation"
-            className="app-chrome absolute inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] rounded-2xl border border-[var(--color-border-strong)] p-2 shadow-2xl"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
+        <ModalSurface
+          labelledBy={moreTitleId}
+          onDismiss={() => setMoreOpen(false)}
+          overlayClassName="items-end bg-black/55 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] md:hidden"
+          panelClassName="app-chrome max-w-none rounded-2xl p-2"
+        >
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-[15px] font-semibold">More</span>
+              <h2 id={moreTitleId} className="text-[17px] font-semibold tracking-tight">
+                More
+              </h2>
               <button
                 type="button"
                 aria-label="Close more navigation"
@@ -156,8 +149,7 @@ export function Sidebar() {
                 </NavLink>
               ))}
             </nav>
-          </div>
-        </div>
+        </ModalSurface>
       )}
 
       <nav
