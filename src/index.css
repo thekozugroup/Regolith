@@ -54,9 +54,32 @@
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
+
+  /* --- Derived radius system (S3 §3.2) ---
+     Exactly TWO radii are authored: --radius-control (every interior
+     control) and --radius-lamp (the signature lamp corner). Every container
+     radius is DERIVED as pad + inner so a child's corner runs concentric
+     with its container's. Children never author a literal — they write
+     `rounded-inner` and the container's cascade (below, @layer components)
+     resolves it: inner = outer − pad, floored at 0. Hard-edged fallback is
+     one line: --radius-control: 0px. */
+  --radius-control: 0.25rem; /* the ONLY authored interior radius */
+  --radius-lamp: 1px; /* unifies the three lamp shapes */
+  --modal-pad: 1rem; /* formalizes the modal's p-4 */
+  --group-pad: 0.25rem; /* formalizes the control group's p-1 */
+  --radius-panel: calc(var(--card-pad) + var(--radius-control)); /* 14–20px fluid */
+  --radius-modal: calc(var(--modal-pad) + var(--radius-control)); /* 20px */
+  --radius-group: calc(var(--group-pad) + var(--radius-control)); /* 8px */
+  /* Default outside any container: a bare control on the page ground keeps
+     the control radius. Containers override this for their descendants. */
+  --radius-inner: var(--radius-control);
+
+  /* --- Spacing scale (S3 §4.3) --- */
+  --space-icon: 6px; /* icon-to-label gap */
+  --stack-tight: 8px; /* related rows */
+  --stack: 12px; /* sibling blocks */
+  --grid-gap: 8px; /* default grid gap; documented exceptions: 1px hairline grids, 4px jog cluster */
+  --binnacle-row: 44px; /* S2 pod row module = the hit-target floor */
 
   /* --- Gauge instrument --- */
   --color-gauge-track: oklch(0.26 0 0);
@@ -123,7 +146,7 @@
   }
 
   ::selection { background: color-mix(in oklab, var(--color-accent) 42%, transparent); color: var(--color-fg); }
-  *:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: 4px; }
+  *:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: var(--radius-control); }
   *::-webkit-scrollbar { width: 7px; height: 7px; }
   *::-webkit-scrollbar-track { background: var(--color-bg); }
   *::-webkit-scrollbar-thumb { background: var(--color-border-strong); border: 2px solid var(--color-bg); border-radius: 999px; }
@@ -150,10 +173,26 @@
   .instrument-panel {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border-radius: var(--radius-panel);
     box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-fg) 4%, transparent);
     container-type: inline-size;
+    --radius-inner: max(0px, calc(var(--radius-panel) - var(--card-pad)));
   }
+
+  /* Concentric cascade containers: each sets the inner radius its padding
+     leaves for children (inner = outer − pad). Geometry only — surfaces
+     keep their own backgrounds/borders. */
+  .modal-panel {
+    border-radius: var(--radius-modal);
+    --radius-inner: max(0px, calc(var(--radius-modal) - var(--modal-pad)));
+  }
+  .control-group {
+    border-radius: var(--radius-group);
+    --radius-inner: max(0px, calc(var(--radius-group) - var(--group-pad)));
+  }
+  /* Full-bleed strip inside a Card: cancels --card-pad so dividers and row
+     hovers reach the panel edge. */
+  .bleed { margin-inline: calc(-1 * var(--card-pad)); }
 
   .instrument-label {
     color: var(--color-fg-muted);
@@ -166,7 +205,7 @@
 
   .instrument-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; }
   .ruled-row + .ruled-row { border-top: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent); }
-  .status-lamp { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 1px; background: currentColor; flex: none; }
+  .status-lamp { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: var(--radius-lamp); background: currentColor; flex: none; }
 
   .readout {
     font-family: var(--font-mono);
