@@ -101,6 +101,15 @@ export function CameraStream({
     : undefined;
   const hostname = host ?? developmentHost ?? location.hostname;
   const url = `http://${hostname}:8080/?action=stream&_=${generation}`;
+  // Concurrent React may discard and redo a render (a Moonraker push landing
+  // mid route-transition does exactly this on load). An <img> created in a
+  // DISCARDED render still starts its network fetch, so putting `url`
+  // straight on the element double-hits the camera. Assign src only after
+  // THIS instance actually committed: one fetch per generation, ever.
+  const [committedSrc, setCommittedSrc] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setCommittedSrc(url);
+  }, [url]);
   const available = status === "live";
 
   return (
@@ -124,9 +133,12 @@ export function CameraStream({
           )}
         </div>
       )}
+      {/* No key: the element is reused and the src ATTRIBUTE is the only
+          load trigger, so each generation produces exactly one fetch when
+          the committed src lands — a keyed remount would fetch the stale
+          committed URL first. */}
       <img
-        key={generation}
-        src={url}
+        src={committedSrc}
         alt="Live printer camera"
         onLoad={() => {
           clearRetryTimer();
