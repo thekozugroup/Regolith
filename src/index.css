@@ -16,7 +16,10 @@
   --color-border: oklch(0.29 0.018 250);
   --color-border-strong: oklch(0.38 0.024 250);
   --color-fg: oklch(0.94 0.012 85);
-  --color-fg-muted: oklch(0.72 0.018 250);
+  /* slate-400 — SOLID by contract. Never layer alpha/opacity on this token:
+     at 60% over surface it composites to 3.30:1 and reproduces the shipped
+     3.49:1 AA defect. (Disabled controls are the only WCAG-exempt exception.) */
+  --color-fg-muted: oklch(0.704 0.04 256.788);
   /* Default accent. Single source of truth is DEFAULT_ACCENT in
      src/lib/useTheme.ts — these three literals must stay byte-identical to
      computeAccentTokens(DEFAULT_ACCENT). Enforced by tests/accentDefault.test.ts.
@@ -31,10 +34,14 @@
   --color-accent-soft: color-mix(in oklab, var(--color-accent) 10%, transparent);
   --color-accent-faint: color-mix(in oklab, var(--color-accent) 5%, transparent);
   --color-accent-edge: color-mix(in oklab, var(--color-accent) 30%, transparent);
-  --color-success: oklch(0.75 0.14 148);
-  --color-warning: oklch(0.83 0.15 88);
-  --color-error: oklch(0.68 0.21 27);
-  --color-info: oklch(0.78 0.11 205);
+  /* State colors — Tailwind v4 shade-400 (the repo's installed tailwindcss),
+     so each token is byte-identical to its utility class of the same name.
+     warning is yellow-400, NOT amber-400: amber-400 is the default accent,
+     and a paused print must never render the same color as a printing one. */
+  --color-success: oklch(0.792 0.209 151.711); /* green-400 */
+  --color-warning: oklch(0.852 0.199 91.936); /* yellow-400 */
+  --color-error: oklch(0.704 0.191 22.216); /* red-400 */
+  --color-info: oklch(0.789 0.154 211.53); /* cyan-400 */
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
