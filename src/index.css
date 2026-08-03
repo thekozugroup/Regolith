@@ -9,17 +9,21 @@
 @custom-variant compact (@media not ((min-width: 48rem) and (min-height: 600px)));
 
 @theme {
-  /* Regolith Instrument Cluster — opaque, precise, calm. */
-  --color-bg: oklch(0.145 0.012 250);
-  --color-surface: oklch(0.185 0.014 250);
-  --color-elevated: oklch(0.215 0.016 250);
-  --color-border: oklch(0.29 0.018 250);
-  --color-border-strong: oklch(0.38 0.024 250);
+  /* Regolith Instrument Cluster — opaque, precise, calm.
+     Ground ramp is chroma-0 neutral (owner: "no blue tint"). Write `0 0`,
+     never `0 250`: a zero-chroma value with a hue channel invites an engine
+     to reinterpolate a tint back in. */
+  --color-bg: oklch(0.145 0 0);
+  --color-surface: oklch(0.185 0 0);
+  --color-elevated: oklch(0.215 0 0);
+  --color-border: oklch(0.29 0 0);
+  --color-border-strong: oklch(0.38 0 0);
   --color-fg: oklch(0.94 0.012 85);
-  /* slate-400 — SOLID by contract. Never layer alpha/opacity on this token:
-     at 60% over surface it composites to 3.30:1 and reproduces the shipped
-     3.49:1 AA defect. (Disabled controls are the only WCAG-exempt exception.) */
-  --color-fg-muted: oklch(0.704 0.04 256.788);
+  /* neutral-400 — SOLID by contract. Never layer alpha/opacity on this token:
+     at 60% over surface it composites below the 4.5:1 AA floor (the shape of
+     the shipped 3.49:1 defect). Solid it measures 7.191:1 on the neutral
+     surface. (Disabled controls are the only WCAG-exempt exception.) */
+  --color-fg-muted: oklch(0.708 0 0);
   /* Default accent. Single source of truth is DEFAULT_ACCENT in
      src/lib/useTheme.ts — these three literals must stay byte-identical to
      computeAccentTokens(DEFAULT_ACCENT). Enforced by tests/accentDefault.test.ts.
@@ -50,13 +54,13 @@
   --radius-lg: 0.5rem;
 
   /* --- Gauge instrument --- */
-  --color-gauge-track: oklch(0.26 0.014 250);
+  --color-gauge-track: oklch(0.26 0 0);
   /* Major graduations are informational (the scale a value is read against),
-     so they owe WCAG 1.4.11 its 3:1 non-text floor: slate-500, 3.92:1 vs
-     surface. The old 0.46-L mark measured 2.62:1; slate-600 (2.46) fails too.
-     Minor ticks and the track stay deliberately sub-threshold — decorative. */
-  --color-gauge-tick: oklch(0.554 0.046 257.417);
-  --color-gauge-tick-minor: oklch(0.34 0.018 250);
+     so they owe WCAG 1.4.11 its 3:1 non-text floor: neutral-500, 3.918:1 vs
+     surface and 3.833:1 vs ThermalGauge's elevated/38 backdrop. Minor ticks
+     and the track stay deliberately sub-threshold — decorative. */
+  --color-gauge-tick: oklch(0.556 0 0);
+  --color-gauge-tick-minor: oklch(0.34 0 0);
   --color-gauge-target: oklch(0.88 0.014 85);
 
   /* --- 80s digital, bounded --- */
