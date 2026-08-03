@@ -1,4 +1,4 @@
-import { usePrinter } from "@/lib/usePrinter";
+import { usePrinterSelector } from "@/lib/usePrinter";
 import { computeJobTiming } from "@/lib/jobProgress";
 import { cn } from "@/lib/utils";
 
@@ -34,14 +34,24 @@ function formatClock(seconds: number | null): string {
  * index.css — the same tokens drive the app shell's content clearance).
  */
 export function MissionBar() {
-  const { state, connected } = usePrinter();
-  const ps = state.print_stats;
-  const printState = ps?.state ?? "standby";
+  // The bar is pinned to every route, so it selects exactly the six fields
+  // it renders — idle temperature ticks no longer commit it (WP-MEMO /
+  // S5 P2). During an active job the duration/progress fields change every
+  // push, which is precisely when the bar must repaint.
+  const { printState, rawFilename, printDuration, sdProgress, klipperReady, connected } =
+    usePrinterSelector((state, isConnected) => ({
+      printState: state.print_stats?.state ?? "standby",
+      rawFilename: state.print_stats?.filename ?? "",
+      printDuration: state.print_stats?.print_duration,
+      sdProgress: state.virtual_sdcard?.progress,
+      klipperReady: state.webhooks?.state === "ready",
+      connected: isConnected,
+    }));
   const isActive = printState === "printing" || printState === "paused";
   // A finished/stopped job keeps its identity but must not read as live.
   const isEnded =
     printState === "complete" || printState === "cancelled" || printState === "error";
-  const filename = (ps?.filename ?? "").split("/").pop()?.replace(/\.gcode$/i, "") ?? "";
+  const filename = rawFilename.split("/").pop()?.replace(/\.gcode$/i, "") ?? "";
   // Klipper leaves `print_stats.filename` populated long after a job ends —
   // including once the state falls back to plain standby. Seen live on the
   // K1 Max: the bar read "standby · <old file>", which looks like a queued
@@ -54,12 +64,8 @@ export function MissionBar() {
   // from `toolhead.estimated_print_time`: that is Klipper's monotonic clock
   // (roughly the machine's uptime), not the duration of this job, so it could
   // sit here reading confidently wrong for an entire multi-hour print.
-  const { progress, remaining } = computeJobTiming(
-    ps?.print_duration,
-    state.virtual_sdcard?.progress,
-  );
+  const { progress, remaining } = computeJobTiming(printDuration, sdProgress);
 
-  const klipperReady = state.webhooks?.state === "ready";
   const link = !connected
     ? { word: "Connecting", color: "var(--color-fg-muted)" }
     : klipperReady
@@ -108,7 +114,7 @@ export function MissionBar() {
            */}
           <span
             className="min-w-0 flex-1 truncate text-[13px] font-medium"
-            title={jobLabel ? ps?.filename || undefined : undefined}
+            title={jobLabel ? rawFilename || undefined : undefined}
           >
             {jobLabel || (connected ? "No active job" : "—")}
           </span>

@@ -53,6 +53,15 @@ function jobReason(message: string | null | undefined): string {
   return text;
 }
 
+/** Hoisted once (WP-MEMO): five static markers, never a per-render array. */
+const CHECKPOINTS = [
+  { label: "Start", at: 0 },
+  { label: "25%", at: 0.25 },
+  { label: "50%", at: 0.5 },
+  { label: "75%", at: 0.75 },
+  { label: "Done", at: 1 },
+] as const;
+
 /**
  * Mission Status — SpaceX-style mission control.
  *
@@ -67,11 +76,9 @@ function jobReason(message: string | null | undefined): string {
  */
 export function MissionTimeline() {
   const { state, connected } = usePrinter();
-  const log = useGcodeLog(20);
   const ps = state.print_stats;
   const sd = state.virtual_sdcard;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [activityStart, setActivityStart] = useState<number | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<{
@@ -103,15 +110,6 @@ export function MissionTimeline() {
   const layerText = formatLayer(ps?.info?.current_layer, ps?.info?.total_layer);
   const reason = jobReason(ps?.message);
 
-  // Track activity start for non-print ops
-  useEffect(() => {
-    if (isTuning && activityStart === null) {
-      setActivityStart(Date.now());
-    } else if (!isTuning && activityStart !== null) {
-      setActivityStart(null);
-    }
-  }, [isTuning, activityStart]);
-
   // Resolve thumbnail (prints only)
   useEffect(() => {
     if (!filename) {
@@ -124,14 +122,6 @@ export function MissionTimeline() {
     img.onerror = () => setThumbUrl(null);
     img.src = url;
   }, [filename]);
-
-  const checkpoints = [
-    { label: "Start", at: 0 },
-    { label: "25%", at: 0.25 },
-    { label: "50%", at: 0.5 },
-    { label: "75%", at: 0.75 },
-    { label: "Done", at: 1 },
-  ];
 
   const dispatch = async (action: PrinterAction) => {
     setActionBusy(action.type);
@@ -175,107 +165,23 @@ export function MissionTimeline() {
 
   // ---------- TUNING / MACRO MODE ----------
   if (isTuning) {
-    const elapsedSec = activityStart
-      ? Math.floor((Date.now() - activityStart) / 1000)
-      : 0;
-    // Newest-first meaningful lines (bare "ok" acknowledgements dropped).
-    const recentLines = recentMeaningfulLines(log);
-    // What is it doing RIGHT NOW — the newest line, index 0. The old code
-    // read the last element of this newest-first window, i.e. the OLDEST of
-    // the four, so the headline op lagged three commands behind the machine.
-    const guessedOp = recentLines[0]?.text || "—";
-
     return (
       <>
-      <Card
-        title="Mission Status"
-        icon={<Activity />}
-        action={
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={!!actionBusy || !connected}
-            onClick={() =>
-              dispatch({
-                type: "emergency-stop",
-                context: "Klipper has no universal safe cancel command for this calibration.",
-              })
-            }
-          >
-            <X className="w-3 h-3" /> Emergency stop
-          </Button>
-        }
-      >
-        {actionError && (
-          <div role="alert" className="mb-3 rounded-inner border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
-            {actionError}
-          </div>
-        )}
-        <div className="mission-media-grid">
-          <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[var(--color-accent-faint)]">
-            <Activity
-              className="w-12 h-12 text-[var(--color-accent)]"
-              strokeWidth={1.25}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
-                Calibration · Tuning
-              </span>
-              <span className="shrink-0 px-1.5 py-0.5 rounded-inner border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]">
-                ACTIVE
-              </span>
-            </div>
-            <div
-              className="text-[13px] font-mono font-medium truncate"
-              title={guessedOp}
-            >
-              {guessedOp}
-            </div>
-
-            {/* Recent gcode log preview */}
-            <div className="max-h-[88px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] leading-relaxed">
-              {recentLines.length === 0 ? (
-                <div className="text-[var(--color-fg-muted)] italic">
-                  Waiting for klipper output…
-                </div>
-              ) : (
-                recentLines
-                  .slice()
-                  .reverse()
-                  .map((l, i) => (
-                    <div key={i} className="text-[var(--color-fg-muted)]">
-                      {l.text}
-                    </div>
-                  ))
-              )}
-            </div>
-
-            <div className="flex gap-3 text-[11px] tabular-nums">
-              <Stat
-                label="Elapsed"
-                value={formatDuration(elapsedSec)}
-                accent
-              />
-              <Stat
-                label="Position"
-                value={
-                  state.toolhead?.position
-                    ? `${state.toolhead.position[0]?.toFixed(0)},${state.toolhead.position[1]?.toFixed(0)},${state.toolhead.position[2]?.toFixed(1)}`
-                    : "—"
-                }
-              />
-              <Stat
-                label="State"
-                value={state.idle_timeout?.state ?? "—"}
-              />
-            </div>
-          </div>
-        </div>
-      </Card>
-      {confirmDialog}
+        <TuningStatus
+          connected={connected}
+          actionBusy={actionBusy}
+          actionError={actionError}
+          position={state.toolhead?.position}
+          idleState={state.idle_timeout?.state}
+          onEmergencyStop={() =>
+            dispatch({
+              type: "emergency-stop",
+              context:
+                "Klipper has no universal safe cancel command for this calibration.",
+            })
+          }
+        />
+        {confirmDialog}
       </>
     );
   }
@@ -406,7 +312,7 @@ export function MissionTimeline() {
               style={{ width: `${progress * 100}%` }}
             />
             <div className="relative flex justify-between">
-              {checkpoints.map((cp) => {
+              {CHECKPOINTS.map((cp) => {
                 const reached = progress >= cp.at;
                 const current =
                   progress >= cp.at && progress < cp.at + 0.05;
@@ -501,6 +407,123 @@ export function MissionTimeline() {
     </Card>
     {confirmDialog}
     </>
+  );
+}
+
+/**
+ * Tuning/macro mode, split out (WP-MEMO) so the gcode-log subscription only
+ * exists while a calibration is actually running: useGcodeLog re-renders on
+ * every klipper response line, which is exactly the traffic a long macro
+ * produces and exactly what the idle/print branches never read. Mounting
+ * the component IS the activity-start marker — it appears when isTuning
+ * flips true, so elapsed counts from the moment the machine went busy.
+ */
+function TuningStatus({
+  connected,
+  actionBusy,
+  actionError,
+  position,
+  idleState,
+  onEmergencyStop,
+}: {
+  connected: boolean;
+  actionBusy: string | null;
+  actionError: string | null;
+  position?: [number, number, number, number];
+  idleState?: string;
+  onEmergencyStop: () => void;
+}) {
+  const log = useGcodeLog(20);
+  const [startedAt] = useState(() => Date.now());
+  const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+  // Newest-first meaningful lines (bare "ok" acknowledgements dropped).
+  const recentLines = recentMeaningfulLines(log);
+  // What is it doing RIGHT NOW — the newest line, index 0. The old code
+  // read the last element of this newest-first window, i.e. the OLDEST of
+  // the four, so the headline op lagged three commands behind the machine.
+  const guessedOp = recentLines[0]?.text || "—";
+
+  return (
+    <Card
+      title="Mission Status"
+      icon={<Activity />}
+      action={
+        <Button
+          size="sm"
+          variant="danger"
+          disabled={!!actionBusy || !connected}
+          onClick={onEmergencyStop}
+        >
+          <X className="w-3 h-3" /> Emergency stop
+        </Button>
+      }
+    >
+      {actionError && (
+        <div role="alert" className="mb-3 rounded-inner border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
+          {actionError}
+        </div>
+      )}
+      <div className="mission-media-grid">
+        <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[var(--color-accent-faint)]">
+          <Activity
+            className="w-12 h-12 text-[var(--color-accent)]"
+            strokeWidth={1.25}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
+              Calibration · Tuning
+            </span>
+            <span className="shrink-0 px-1.5 py-0.5 rounded-inner border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]">
+              ACTIVE
+            </span>
+          </div>
+          <div
+            className="text-[13px] font-mono font-medium truncate"
+            title={guessedOp}
+          >
+            {guessedOp}
+          </div>
+
+          {/* Recent gcode log preview */}
+          <div className="max-h-[88px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] leading-relaxed">
+            {recentLines.length === 0 ? (
+              <div className="text-[var(--color-fg-muted)] italic">
+                Waiting for klipper output…
+              </div>
+            ) : (
+              recentLines
+                .slice()
+                .reverse()
+                .map((l, i) => (
+                  <div key={i} className="text-[var(--color-fg-muted)]">
+                    {l.text}
+                  </div>
+                ))
+            )}
+          </div>
+
+          <div className="flex gap-3 text-[11px] tabular-nums">
+            <Stat
+              label="Elapsed"
+              value={formatDuration(elapsedSec)}
+              accent
+            />
+            <Stat
+              label="Position"
+              value={
+                position
+                  ? `${position[0]?.toFixed(0)},${position[1]?.toFixed(0)},${position[2]?.toFixed(1)}`
+                  : "—"
+              }
+            />
+            <Stat label="State" value={idleState ?? "—"} />
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

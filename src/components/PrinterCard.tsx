@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Printer, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { cn } from "@/lib/utils";
-import { usePrinter } from "@/lib/usePrinter";
+import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 
 const STORAGE_KEY = "forge.printer.image";
@@ -20,8 +20,15 @@ interface PrinterMeta {
  * Top-of-dashboard card. Image or icon on the left, key printer stats on the
  * right in a tight grid.
  */
-export function PrinterCard() {
-  const { state } = usePrinter();
+// memo + a two-word selector (WP-MEMO / S5 P2): the card has no props, so a
+// Dashboard re-render must never cascade into it; its own selection decides.
+export const PrinterCard = memo(function PrinterCard() {
+  // Readiness only reads the two state WORDS — select them so temperature
+  // ticks stop committing this card.
+  const { printerState, printState } = usePrinterSelector((state) => ({
+    printerState: state.webhooks?.state,
+    printState: state.print_stats?.state,
+  }));
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
   const [image, setImage] = useState<string | null>(() =>
@@ -59,8 +66,6 @@ export function PrinterCard() {
       .catch(() => {});
   }, []);
 
-  const printerState = state.webhooks?.state;
-  const printState = state.print_stats?.state;
   const isPrinting = printState === "printing" || printState === "paused";
 
   const handleFile = (file: File) => {
@@ -187,7 +192,7 @@ export function PrinterCard() {
       </div>
     </section>
   );
-}
+});
 
 function Stat({ label, value }: { label: string; value: string | undefined }) {
   return (

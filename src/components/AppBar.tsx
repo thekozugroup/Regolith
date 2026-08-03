@@ -1,6 +1,6 @@
 import { AlertCircle, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { usePrinter } from "@/lib/usePrinter";
+import { usePrinterSelector } from "@/lib/usePrinter";
 import { useDeviceName } from "@/lib/useTheme";
 import { useLocation } from "react-router";
 
@@ -15,14 +15,20 @@ const ROUTE_TITLES: Record<string, string> = {
 };
 
 export function AppBar() {
-  const { state, connected } = usePrinter();
+  // Chrome components select the few fields they read — a temperature tick
+  // must not commit the app bar (WP-MEMO / S5 P2).
+  const { klipperState, printState, connected } = usePrinterSelector(
+    (state, isConnected) => ({
+      klipperState: state.webhooks?.state,
+      printState: state.print_stats?.state,
+      connected: isConnected,
+    }),
+  );
   const [deviceName] = useDeviceName();
   const location = useLocation();
-  const klipperState = state.webhooks?.state;
-  const printState = state.print_stats?.state;
 
   return (
-    <header className="app-chrome fixed top-0 left-0 right-0 z-20 flex h-[var(--appbar-h)] items-center gap-3 border-b border-[var(--color-border)] px-[var(--page-gutter)] desk:left-56">
+    <header className="app-chrome fixed top-0 left-0 right-0 z-20 flex h-[var(--appbar-h)] items-center gap-3 border-b border-[var(--color-border)] px-[var(--page-gutter)] transition-[left] duration-200 desk:left-[var(--sidebar-w,14rem)]">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <h1 className="min-w-0 truncate text-[17px] font-semibold tracking-tight">
           {ROUTE_TITLES[location.pathname] ?? "Regolith"}

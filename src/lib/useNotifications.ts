@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { usePrinter } from "./usePrinter";
+import { usePrinterSelector } from "./usePrinter";
 
 /**
  * Browser-level notifications for major print state transitions.
@@ -32,7 +32,15 @@ const TITLE_BY_STATE: Record<State, string> = {
 };
 
 export function useNotifications() {
-  const { state } = usePrinter();
+  // Selector, not the whole state: this hook mounts in AppShell, so before
+  // WP-MEMO every temperature tick re-rendered the entire app through it.
+  // The selector re-renders only on the two fields the notifier reads —
+  // every print_stats.state EDGE still arrives (each push runs the selector
+  // in its own message event; see usePrinterSelector).
+  const { printState, filename } = usePrinterSelector((state) => ({
+    printState: state.print_stats?.state,
+    filename: state.print_stats?.filename ?? "",
+  }));
   const lastState = useRef<State | null>(null);
   const permRef = useRef<NotificationPermission | null>(null);
 
@@ -49,7 +57,7 @@ export function useNotifications() {
   }, []);
 
   useEffect(() => {
-    const cur = state.print_stats?.state as State | undefined;
+    const cur = printState as State | undefined;
     if (!cur) return;
 
     // Skip first observation
@@ -60,7 +68,6 @@ export function useNotifications() {
     if (cur === lastState.current) return;
 
     const title = TITLE_BY_STATE[cur];
-    const filename = state.print_stats?.filename ?? "";
     if (
       title &&
       typeof Notification !== "undefined" &&
@@ -77,5 +84,5 @@ export function useNotifications() {
       }
     }
     lastState.current = cur;
-  }, [state.print_stats?.state, state.print_stats?.filename]);
+  }, [printState, filename]);
 }
