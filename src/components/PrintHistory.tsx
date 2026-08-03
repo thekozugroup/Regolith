@@ -130,7 +130,7 @@ export function PrintHistory() {
                   <div className="text-[12px] font-medium truncate font-mono">
                     {j.filename}
                   </div>
-                  <div className="text-[10px] text-[var(--color-fg-muted)] tabular-nums">
+                  <div className="text-[11px] text-[var(--color-fg-muted)] tabular-nums">
                     {new Date(date * 1000).toLocaleString()} ·{" "}
                     {formatDuration(j.print_duration)}
                     {j.filament_used
@@ -140,7 +140,7 @@ export function PrintHistory() {
                 </div>
                 <span
                   className={cn(
-                    "px-1.5 py-0.5 rounded-sm border text-[9px] font-bold uppercase tracking-[0.1em]",
+                    "px-1.5 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
                     success
                       ? "text-[var(--color-success)] bg-[rgba(16,185,129,0.10)] border-[rgba(16,185,129,0.3)]"
                       : "text-[var(--color-error)] bg-[rgba(239,68,68,0.10)] border-[rgba(239,68,68,0.3)]",
@@ -160,7 +160,7 @@ export function PrintHistory() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
       <div className="text-[14px] font-semibold tabular-nums font-mono mt-0.5">

@@ -60,8 +60,8 @@ export function ThermalGauge({
             {hasActual ? value.toFixed(1) : "—"}<span className="ml-1 text-[0.45em] tracking-normal">°C</span>
           </div>
           <div className="mt-2 flex gap-3 text-[11px] text-[var(--color-fg-muted)]">
-            <span><span className="instrument-label mr-1 text-[9px]">Set</span>{setpoint > 0 ? `${setpoint.toFixed(0)}°` : "—"}</span>
-            <span><span className="instrument-label mr-1 text-[9px]">Power</span>{power != null ? `${Math.round(power * 100)}%` : "—"}</span>
+            <span><span className="instrument-label mr-1 text-[11px]">Set</span>{setpoint > 0 ? `${setpoint.toFixed(0)}°` : "—"}</span>
+            <span><span className="instrument-label mr-1 text-[11px]">Power</span>{power != null ? `${Math.round(power * 100)}%` : "—"}</span>
           </div>
         </div>
         <span className="instrument-label shrink-0 text-right">Max<br />{maxTemp}°</span>

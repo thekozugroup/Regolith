@@ -153,10 +153,10 @@ export function MissionTimeline() {
 
           <div className="flex flex-col gap-2 min-w-0">
             <div className="flex items-baseline gap-2">
-              <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
+              <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
                 Calibration · Tuning
               </span>
-              <span className="shrink-0 px-1.5 py-0.5 rounded-sm border text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]">
+              <span className="shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]">
                 ACTIVE
               </span>
             </div>
@@ -168,7 +168,7 @@ export function MissionTimeline() {
             </div>
 
             {/* Recent gcode log preview */}
-            <div className="max-h-[88px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[10.5px] leading-relaxed">
+            <div className="max-h-[88px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[11px] leading-relaxed">
               {recentLines.length === 0 ? (
                 <div className="text-[var(--color-fg-muted)] italic">
                   Waiting for klipper output…
@@ -185,7 +185,7 @@ export function MissionTimeline() {
               )}
             </div>
 
-            <div className="flex gap-3 text-[10px] tabular-nums">
+            <div className="flex gap-3 text-[11px] tabular-nums">
               <Stat
                 label="Elapsed"
                 value={formatDuration(elapsedSec)}
@@ -216,7 +216,7 @@ export function MissionTimeline() {
       <Card title="Mission Status" icon={<FileText />}>
         <div className="flex items-center justify-between py-1">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
               {printState}
             </div>
             <div className="text-[14px] font-medium mt-1">Ready to print</div>
@@ -338,7 +338,7 @@ export function MissionTimeline() {
                     />
                     <span
                       className={cn(
-                        "text-[9px] uppercase tracking-[0.1em] font-semibold mt-1",
+                        "text-[11px] uppercase tracking-[0.1em] font-semibold mt-1",
                         reached
                           ? "text-[var(--color-fg)]"
                           : "text-[var(--color-fg-muted)]/60",
@@ -387,7 +387,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
       <div
@@ -420,7 +420,7 @@ function StateBadge({ state }: { state: string }) {
   return (
     <span
       className={cn(
-        "shrink-0 px-1.5 py-0.5 rounded-sm border text-[9px] font-semibold uppercase tracking-[0.1em]",
+        "shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em]",
         variants[state] ?? variants.standby,
       )}
     >

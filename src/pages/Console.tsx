@@ -166,7 +166,7 @@ export function ConsolePage() {
         </div>
 
         {/* Status / autoscroll toggle */}
-        <div className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[clamp(0.75rem,1.4vw,1.25rem)] py-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+        <div className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[clamp(0.75rem,1.4vw,1.25rem)] py-1.5 text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
           <span>{lines.length} lines</span>
           <button
             type="button"

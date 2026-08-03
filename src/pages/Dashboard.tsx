@@ -22,7 +22,7 @@ export function Dashboard() {
           <div className="relative -m-[clamp(0.75rem,1.4vw,1.25rem)] aspect-video overflow-hidden bg-black">
             <CameraStream className="absolute inset-0" />
             {isExpert && state.toolhead?.position && (
-              <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[10px] tabular-nums">
+              <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[11px] tabular-nums">
                 <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
                 <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
                 <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
@@ -77,7 +77,7 @@ function ThermalsPanel({
           <Trend label="Bed trend" value={bed?.temperature} color="var(--color-info)" />
         </div>
         {(profile.sensors.length > 0 || profile.fans.length > 0) && <div className="mt-3 border-t border-[var(--color-border)] pt-3">
-          <div className="instrument-label mb-2 text-[9px]">Aux sensors</div>
+          <div className="instrument-label mb-2 text-[11px]">Aux sensors</div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             {profile.sensors.map((sensor) => <AuxRow key={sensor.klipper} label={sensor.label} actual={state[sensor.klipper as `temperature_sensor ${string}`]?.temperature} warnAbove={sensor.warnAbove} criticalAbove={sensor.criticalAbove} />)}
             {profile.fans.map((fan) => <AuxRow key={fan.klipper} label={fan.label} actual={state[fan.klipper as `temperature_fan ${string}`]?.temperature} target={state[fan.klipper as `temperature_fan ${string}`]?.target} speed={state[fan.klipper as `temperature_fan ${string}`]?.speed} driftWarn={fan.driftWarn} />)}
@@ -89,7 +89,7 @@ function ThermalsPanel({
 }
 
 function Trend({ label, value, color }: { label: string; value?: number; color?: string }) {
-  return <div><div className="instrument-label mb-1 flex items-center justify-between text-[9px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} color={color} /></div>;
+  return <div><div className="instrument-label mb-1 flex items-center justify-between text-[11px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} color={color} /></div>;
 }
 
 function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrinter>["state"]; fanSpeed: number }) {
@@ -144,12 +144,12 @@ function AuxRow({
           {actual != null ? `${actual.toFixed(1)}°C` : "—"}
         </span>
         {target != null && target > 0 && (
-          <span className="text-[var(--color-fg-muted)] text-[10px]">
+          <span className="text-[var(--color-fg-muted)] text-[11px]">
             / {target.toFixed(0)}°
           </span>
         )}
         {speed != null && speed > 0 && (
-          <span className="text-[var(--color-fg-muted)] text-[10px]">
+          <span className="text-[var(--color-fg-muted)] text-[11px]">
             · {(speed * 100).toFixed(0)}%
           </span>
         )}
@@ -173,7 +173,7 @@ function MetricTile({
     <div
       className={cn("flex min-h-11 items-center justify-between gap-3 px-3 py-2", warn && "text-[var(--color-warning)]")}
     >
-      <span className="instrument-label text-[10px]">
+      <span className="instrument-label text-[11px]">
         {label}
       </span>
       <span

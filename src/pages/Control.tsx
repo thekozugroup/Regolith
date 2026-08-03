@@ -109,7 +109,7 @@ export function Control() {
           <div className="grid grid-cols-3 gap-2">
             {(["X", "Y", "Z"] as const).map((axis, i) => (
               <div key={axis}>
-                <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold flex items-center gap-1">
+                <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold flex items-center gap-1">
                   {axis}
                   {homed.toLowerCase().includes(axis.toLowerCase()) ? (
                     <span className="text-[var(--color-accent)]" title="homed">
@@ -120,7 +120,7 @@ export function Control() {
                       ○
                     </span>
                   )}
-                  {isExpert && <span className="ml-auto text-[9px] tabular-nums text-[var(--color-fg-muted)]/60">
+                  {isExpert && <span className="ml-auto text-[11px] tabular-nums text-[var(--color-fg-muted)]/60">
                     {safety.bounds.min[i].toFixed(0)}–
                     {safety.bounds.max[i].toFixed(0)}
                   </span>}
@@ -230,7 +230,7 @@ export function Control() {
                 {d}
               </button>
             ))}
-            <span aria-hidden="true" className="self-center px-1.5 text-[10px] text-[var(--color-fg-muted)]">
+            <span aria-hidden="true" className="self-center px-1.5 text-[11px] text-[var(--color-fg-muted)]">
               mm
             </span>
           </div>
@@ -288,7 +288,7 @@ export function Control() {
             </span>
           </Row>
           <div className="pt-2 border-t border-[var(--color-border)] mt-2">
-            <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold mb-1">
+            <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold mb-1">
               Travel limits
             </div>
             <div className="grid grid-cols-3 gap-3 font-mono tabular-nums text-[11px]">
@@ -335,10 +335,10 @@ function BedView({
     <div className="space-y-3">
       <div className="relative aspect-[4/3] overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-bg)]">
         {/* Origin label */}
-        <div className="absolute bottom-1 left-1 text-[8px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+        <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
           Front · 0,0
         </div>
-        <div className="absolute top-1 right-1 text-[8px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+        <div className="absolute top-1 right-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
           {maxX.toFixed(0)},{maxY.toFixed(0)}
         </div>
         {/* Center crosshair */}
@@ -363,7 +363,7 @@ function BedView({
           />
         )}
         {!homed && (
-          <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/50 font-mono">
+          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/50 font-mono">
             Not homed
           </div>
         )}
@@ -371,7 +371,7 @@ function BedView({
       {/* Live coords */}
       <div className="grid grid-cols-3 gap-2 text-[11px]">
         <div>
-          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             X
           </div>
           <div className="text-[14px] font-semibold tabular-nums font-mono">
@@ -379,7 +379,7 @@ function BedView({
           </div>
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             Y
           </div>
           <div className="text-[14px] font-semibold tabular-nums font-mono">
@@ -387,7 +387,7 @@ function BedView({
           </div>
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             Z
           </div>
           <div className="text-[14px] font-semibold tabular-nums font-mono">
@@ -444,7 +444,7 @@ function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <span
       className={cn(
-        "px-2 py-0.5 rounded-sm border text-[10px] font-bold uppercase tracking-[0.1em]",
+        "px-2 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
         ok
           ? "text-[var(--color-success)] bg-[rgba(16,185,129,0.10)] border-[rgba(16,185,129,0.3)]"
           : "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",

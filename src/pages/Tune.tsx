@@ -401,12 +401,12 @@ function ActionRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium">{action.title}</span>
-          <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded-sm">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded-sm">
             {action.duration}
           </span>
           {action.movesPrinthead && (
             <span
-              className="text-[10px] text-[var(--color-warning)]"
+              className="text-[11px] text-[var(--color-warning)]"
               title="Moves the printhead"
             >
               ⚠

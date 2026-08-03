@@ -272,7 +272,7 @@ export function Files() {
                       ? safety.busyReason
                       : "Start print"}
               </Button>
-              <div className="text-[10px] text-[var(--color-fg-muted)] text-center mt-1.5 leading-tight">
+              <div className="text-[11px] text-[var(--color-fg-muted)] text-center mt-1.5 leading-tight">
                 Confirms before sending. Make sure the bed is clear and your
                 start gcode handles homing.
               </div>
@@ -310,7 +310,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1 text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="flex items-center gap-1 text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {icon && (
           <span className="text-[var(--color-fg-muted)]">{icon}</span>
         )}

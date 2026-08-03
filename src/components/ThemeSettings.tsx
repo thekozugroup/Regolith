@@ -37,7 +37,7 @@ export function ThemeSettings() {
         <div>
           <label
             htmlFor={deviceNameId}
-            className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5"
+            className="block text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5"
           >
             Device name
           </label>
@@ -60,14 +60,14 @@ export function ThemeSettings() {
               Save
             </Button>
           </div>
-          <div className="text-[10px] text-[var(--color-fg-muted)] mt-1.5">
+          <div className="text-[11px] text-[var(--color-fg-muted)] mt-1.5">
             Shown in the top bar and browser tab.
           </div>
         </div>
 
         {/* Accent color */}
         <fieldset>
-          <legend className="block text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
+          <legend className="block text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold mb-1.5">
             Accent color
           </legend>
 
@@ -151,7 +151,7 @@ export function ThemeSettings() {
               );
             })}
           </div>
-          <div className="text-[10px] text-[var(--color-fg-muted)] mt-1.5 font-mono">
+          <div className="text-[11px] text-[var(--color-fg-muted)] mt-1.5 font-mono">
             Current: {accent.toUpperCase()}
           </div>
           {!hexValid && (

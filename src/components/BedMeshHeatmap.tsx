@@ -150,7 +150,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
                     className="aspect-square relative group flex items-center justify-center"
                     style={{ backgroundColor: colorFor(v) }}
                   >
-                    <span className="font-mono text-[8px] tabular-nums text-white/85 mix-blend-luminosity pointer-events-none">
+                    <span className="font-mono text-[11px] tabular-nums text-white/85 mix-blend-luminosity pointer-events-none">
                       {deviation >= 0 ? "+" : ""}
                       {deviation.toFixed(2)}
                     </span>
@@ -173,7 +173,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
       </div>
 
       {/* Discrete legend keeps the scale readable. */}
-      <div className="flex items-center gap-2 text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+      <div className="flex items-center gap-2 text-[11px] tabular-nums text-[var(--color-fg-muted)]">
         <span>{min.toFixed(2)}</span>
         <div aria-hidden="true" className="flex h-1.5 flex-1 overflow-hidden">
           <span className="flex-1 bg-[var(--color-info)]" />
@@ -197,7 +197,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
       <div

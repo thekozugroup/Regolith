@@ -186,7 +186,7 @@ export function PrinterCard() {
 function Stat({ label, value }: { label: string; value: string | undefined }) {
   return (
     <div className="min-w-0">
-      <div className="instrument-label text-[9px]">
+      <div className="instrument-label text-[11px]">
         {label}
       </div>
       <div

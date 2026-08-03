@@ -214,7 +214,7 @@ export function BrandLogo({
       >
         {renderIcon() ?? (
           <span
-            className="text-[10px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]"
+            className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]"
             style={{ minWidth: size }}
           >
             ·
@@ -234,7 +234,7 @@ export function BrandLogo({
           }}
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
-            <span className="text-[10px] uppercase tracking-[0.15em] text-[var(--color-fg-muted)] font-semibold">
+            <span className="text-[11px] uppercase tracking-[0.15em] text-[var(--color-fg-muted)] font-semibold">
               Brand icon
             </span>
             <button
@@ -286,7 +286,7 @@ export function BrandLogo({
               <Upload className="w-3 h-3 text-[var(--color-accent)]" />
               <span>Upload image…</span>
               {brand.type === "image" && (
-                <span className="ml-auto text-[var(--color-accent)] text-[10px] uppercase tracking-[0.1em]">
+                <span className="ml-auto text-[var(--color-accent)] text-[11px] uppercase tracking-[0.1em]">
                   current
                 </span>
               )}
@@ -305,7 +305,7 @@ export function BrandLogo({
               <span className="w-3 h-3 inline-block border border-current rounded-sm" />
               <span>None</span>
               {brand.type === "none" && (
-                <span className="ml-auto text-[10px] uppercase tracking-[0.1em]">
+                <span className="ml-auto text-[11px] uppercase tracking-[0.1em]">
                   current
                 </span>
               )}

@@ -116,7 +116,7 @@ export function Timelapses() {
                   <span className="block truncate text-[12px] font-medium">
                     {f.path}
                   </span>
-                  <span className="block text-[10px] text-[var(--color-fg-muted)] tabular-nums">
+                  <span className="block text-[11px] text-[var(--color-fg-muted)] tabular-nums">
                     {formatBytes(f.size)} ·{" "}
                     {new Date(f.modified * 1000).toLocaleString()}
                   </span>

@@ -99,7 +99,7 @@ export function ProfileSettings() {
                   </span>
                   <div>
                     <div className="font-medium">{p.name}</div>
-                    <div className="text-[10px] text-[var(--color-fg-muted)] font-mono">
+                    <div className="text-[11px] text-[var(--color-fg-muted)] font-mono">
                       {p.id}
                       {builtin ? " · built-in" : " · custom"}
                     </div>

@@ -143,7 +143,7 @@ export function CameraStream({
       />
       <div
         aria-live="polite"
-        className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm"
+        className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm"
       >
         <span
           className={cn(

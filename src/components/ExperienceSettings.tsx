@@ -59,7 +59,7 @@ export function ExperienceSettings() {
                   </span>
                   {option.title}
                   {option.mode === "basic" && (
-                    <span className="ml-auto text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-success)]">
+                    <span className="ml-auto text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-success)]">
                       Recommended
                     </span>
                   )}

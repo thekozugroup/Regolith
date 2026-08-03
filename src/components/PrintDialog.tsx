@@ -138,7 +138,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
                 <div className="text-[12px] font-mono font-medium break-words">
                   {file.path}
                 </div>
-                <div className="text-[10px] text-[var(--color-fg-muted)] mt-1 tabular-nums">
+                <div className="text-[11px] text-[var(--color-fg-muted)] mt-1 tabular-nums">
                   {formatBytes(file.size)} ·{" "}
                   {new Date(file.modified * 1000).toLocaleString()}
                 </div>
@@ -284,7 +284,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1 text-[9px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+      <div className="flex items-center gap-1 text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {icon && <span className="text-[var(--color-fg-muted)]">{icon}</span>}
         {label}
       </div>
@@ -332,7 +332,7 @@ function Toggle({
         <span className="block text-[12px] font-medium leading-tight">
           {label}
         </span>
-        <span className="block text-[10.5px] text-[var(--color-fg-muted)] leading-tight mt-0.5">
+        <span className="block text-[11px] text-[var(--color-fg-muted)] leading-tight mt-0.5">
           {description}
         </span>
       </span>

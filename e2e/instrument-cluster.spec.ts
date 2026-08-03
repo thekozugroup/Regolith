@@ -92,6 +92,35 @@ async function assertTopStateAudit(page: Page) {
   expect(clipped).toEqual([]);
 }
 
+async function assertMinimumVisibleText(page: Page) {
+  const undersized = await page.locator("body *").evaluateAll((items) => items.flatMap((item) => {
+    if (item.closest("svg") || item.getAttribute("aria-hidden") === "true") return [];
+    const style = getComputedStyle(item);
+    const box = item.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0 || box.width === 0 || box.height === 0) return [];
+
+    const directText = Array.from(item.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent?.trim() ?? "")
+      .filter(Boolean)
+      .join(" ");
+    const controlText = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement
+      ? item.value || item.getAttribute("placeholder") || ""
+      : "";
+    const text = directText || controlText;
+    const fontSize = Number.parseFloat(style.fontSize);
+    if (!text || fontSize >= 11) return [];
+
+    return [{
+      tag: item.tagName.toLowerCase(),
+      text: text.slice(0, 80),
+      fontSize: style.fontSize,
+      className: item.className,
+    }];
+  }));
+  expect(undersized, `Visible text below 11px:\n${undersized.map((item) => `<${item.tag} class="${item.className}"> ${item.text} (${item.fontSize})`).join("\n")}`).toEqual([]);
+}
+
 async function assertFinalControlReachability(page: Page) {
   const lastControl = page.locator("main button:visible, main a:visible, main input:visible, main select:visible").last();
   if (await lastControl.count()) {
@@ -164,6 +193,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       for (const route of routes) {
         await page.goto(route);
         await assertTopStateAudit(page);
+        await assertMinimumVisibleText(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
         await assertFinalControlReachability(page);
       }
@@ -175,6 +205,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       for (const route of routes) {
         await page.goto(route);
         await assertTopStateAudit(page);
+        await assertMinimumVisibleText(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
         await assertFinalControlReachability(page);
       }

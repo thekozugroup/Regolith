@@ -35,7 +35,7 @@ export function AppBar() {
         {printState && printState !== "standby" && printState !== "complete" && (
           <span
             className={cn(
-              "flex items-center gap-1.5 border px-2 py-1 text-[10px] font-semibold tracking-[0.08em] uppercase",
+              "flex items-center gap-1.5 border px-2 py-1 text-[11px] font-semibold tracking-[0.08em] uppercase",
               printState === "printing" &&
                 "text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]",
               printState === "paused" &&

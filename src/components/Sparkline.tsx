@@ -43,7 +43,7 @@ export function Sparkline({
         style={{ height }}
         role="img"
         aria-label="Temperature trend collecting data"
-        className="flex items-center justify-center text-[10px] text-[var(--color-fg-muted)]/60"
+        className="flex items-center justify-center text-[11px] text-[var(--color-fg-muted)]/60"
       >
         ──
       </div>
