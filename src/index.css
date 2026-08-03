@@ -92,6 +92,14 @@
   --color-gauge-tick: oklch(0.556 0 0);
   --color-gauge-tick-minor: oklch(0.34 0 0);
   --color-gauge-target: oklch(0.88 0.014 85);
+  /* Segment strip (S2 §2.3). Lit segments ride currentColor from the tile's
+     state color; unlit segments reuse the dial track (alias, no new
+     literal). The warn-zone cap is a flat oklab mix — a permanently visible
+     threshold band on bounded instruments. Both are deliberately
+     sub-threshold decoration: the adjacent HTML number is the accessible
+     truth, same trade as the dial track. */
+  --color-segment-unlit: var(--color-gauge-track);
+  --color-segment-zone: color-mix(in oklab, var(--color-warning) 18%, var(--color-gauge-track));
 
   /* --- 80s digital, bounded --- */
   --color-ghost-segment: oklch(0.94 0.012 85 / 0.07);

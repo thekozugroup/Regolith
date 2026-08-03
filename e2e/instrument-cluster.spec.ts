@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  assertNoBrokenReadouts,
+  installActiveMock,
+  useExperience,
+} from "./support/active-state-harness";
 
 const printerState = {
   webhooks: { state: "ready", state_message: "Ready" },
@@ -91,14 +96,18 @@ async function assertInstrumentShell(page: Page, experienceMode: ExperienceMode)
  * Dials must be honest instruments: never rendered below the 148px floor
  * (the bar renderer takes over via container query), and never carrying SVG
  * <text> — SVG text scales with the viewBox and would silently slip under
- * the 11px legibility gate, which excludes SVG geometry.
+ * the 11px legibility gate, which excludes SVG geometry. The same <text>
+ * gate applies to every segment strip: SegmentGauge's SVG is geometry only,
+ * all readouts are HTML.
  */
 async function assertHonestDials(page: Page) {
-  const dishonest = await page.locator(".gauge-dial").evaluateAll((items) =>
+  const dishonest = await page.locator(".gauge-dial, .segment-gauge").evaluateAll((items) =>
     items.flatMap((item) => {
       const issues: string[] = [];
+      const isDial = item.classList.contains("gauge-dial");
       const svgText = item.querySelectorAll("text").length;
-      if (svgText > 0) issues.push(`dial contains ${svgText} SVG <text> node(s)`);
+      if (svgText > 0) issues.push(`${isDial ? "dial" : "segment gauge"} contains ${svgText} SVG <text> node(s)`);
+      if (!isDial) return issues;
       const box = item.getBoundingClientRect();
       if (box.width > 0 && box.height > 0 && box.width < 148) {
         issues.push(`dial rendered at ${box.width.toFixed(1)}px — below the 148px floor instead of falling back to the bar renderer`);
@@ -353,5 +362,155 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     }
     expect(audit.escaped).toEqual([]);
     expect(audit.writes).toEqual([]);
+  });
+
+  test("segment gauges stay legible and honest at 320, the K1 panel, and 1280", async ({ page }) => {
+    const audit = await installStrictMock(page);
+    await page.addInitScript(() => localStorage.setItem("forge.experience-mode", "basic"));
+    for (const viewport of [
+      { width: 320, height: 720 },
+      { width: 800, height: 480 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      await assertInstrumentShell(page, "basic");
+      await assertMinimumVisibleText(page);
+      // Chamber, Part Fan, Speed Factor, Flow Factor — the four basic strips.
+      await expect(page.locator(".segment-gauge")).toHaveCount(4);
+      const gauges = await page.locator(".segment-gauge").evaluateAll((items) =>
+        items.map((item) => ({
+          label: item.querySelector(".instrument-label")?.textContent?.trim() ?? "",
+          value: item.querySelector(".instrument-value")?.textContent?.trim() ?? "",
+          lit: Number(item.getAttribute("data-lit")),
+          rects: item.querySelectorAll("svg rect").length,
+          width: item.getBoundingClientRect().width,
+        })),
+      );
+      for (const gauge of gauges) {
+        expect(gauge.value, `${gauge.label}: raw JS placeholder on the glass`).not.toMatch(/NaN|undefined|null|Infinity/);
+        expect(gauge.value.length, `${gauge.label}: readout must render`).toBeGreaterThan(0);
+        expect(Number.isInteger(gauge.lit), `${gauge.label}: lit count must be a whole segment count`).toBe(true);
+        expect(gauge.width, `${gauge.label}: strip must occupy layout at ${viewport.width}px`).toBeGreaterThan(0);
+      }
+      const byLabel = Object.fromEntries(gauges.map((gauge) => [gauge.label, gauge]));
+      // 20 segments each; the factor strips carry the extra center-index rect.
+      expect(byLabel["Part Fan"].rects).toBe(20);
+      expect(byLabel["Speed Factor"].rects).toBe(21);
+      expect(byLabel["Flow Factor"].rects).toBe(21);
+      expect(byLabel["Chamber"].rects).toBe(20);
+      // Idle fixture truths: fan off, both factors at nominal 100% (the strip
+      // midpoint of the 50-150 scale), chamber sensor absent from the mock —
+      // an honest em-dash with an unlit strip, never a guessed bar.
+      expect(byLabel["Part Fan"].lit).toBe(0);
+      expect(byLabel["Speed Factor"].lit).toBe(10);
+      expect(byLabel["Flow Factor"].lit).toBe(10);
+      expect(byLabel["Chamber"].value).toBe("—");
+      expect(byLabel["Chamber"].lit).toBe(0);
+    }
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
+  test("segment gauges track a live print: lit counts, warn states, zone cap, center index", async ({ page }) => {
+    const mock = await installActiveMock(page, {
+      state: {
+        webhooks: { state: "ready", state_message: "Printer is ready" },
+        idle_timeout: { state: "Printing" },
+        print_stats: {
+          state: "printing",
+          filename: "calibration/benchy_0.2mm_PLA_K1Max.gcode",
+          total_duration: 4_120,
+          print_duration: 4_021,
+          filament_used: 8_432.5,
+          message: "",
+          info: { total_layer: 250, current_layer: 118 },
+        },
+        virtual_sdcard: { progress: 0.4732, is_active: true, file_position: 4_732_000, file_size: 10_000_000 },
+        extruder: { temperature: 219.8, target: 220, power: 0.42, pressure_advance: 0.042 },
+        heater_bed: { temperature: 60.1, target: 60, power: 0.28 },
+        toolhead: {
+          position: [96.2, 187.4, 23.6, 0],
+          homed_axes: "xyz",
+          print_time: 4_021,
+          estimated_print_time: 8_040,
+          max_velocity: 600,
+          max_accel: 20_000,
+          axis_minimum: [-2, -2, -10, 0],
+          axis_maximum: [306.5, 306, 305, 0],
+        },
+        display_status: { progress: 0.4732, message: "Printing" },
+        fan: { speed: 0.8 },
+        gcode_move: {
+          position: [96.2, 187.4, 23.6, 0],
+          gcode_position: [96.2, 187.4, 23.6, 0],
+          speed: 3_000,
+          speed_factor: 1.2,
+          extrude_factor: 0.95,
+          homing_origin: [0, 0, -0.045, 0],
+        },
+        motion_report: { live_position: [96.2, 187.4, 23.6, 0], live_velocity: 148.3, live_extruder_velocity: 3.1 },
+        "temperature_sensor chamber_temp": { temperature: 63.4 },
+        "temperature_sensor mcu_temp": { temperature: 44.2 },
+        "temperature_fan chamber_fan": { temperature: 38.4, target: 0, speed: 0 },
+        "temperature_fan soc_fan": { temperature: 46.1, target: 50, speed: 0.6 },
+      },
+      thumbnail: true,
+    });
+    await useExperience(page, "expert");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
+    await assertNoBrokenReadouts(page, "segment gauges mid-print");
+    // Expert adds the two PWM heater-power strips to the four basic ones.
+    await expect(page.locator(".segment-gauge")).toHaveCount(6);
+    const gauges = await page.locator(".segment-gauge").evaluateAll((items) =>
+      items.map((item) => ({
+        label: item.querySelector(".instrument-label")?.textContent?.trim() ?? "",
+        value: item.querySelector(".instrument-value")?.textContent?.trim() ?? "",
+        valueColor: item.querySelector<HTMLElement>(".instrument-value")?.style.color ?? "",
+        lit: Number(item.getAttribute("data-lit")),
+        rects: Array.from(item.querySelectorAll("svg rect")).map((rect) => rect.getAttribute("fill") ?? ""),
+        svgText: item.querySelectorAll("text").length,
+      })),
+    );
+    const byLabel = Object.fromEntries(gauges.map((gauge) => [gauge.label, gauge]));
+
+    for (const gauge of gauges) {
+      expect(gauge.svgText, `${gauge.label}: SVG carries geometry only`).toBe(0);
+      // Discrete truth: the first `lit` segments are currentColor, and the
+      // strip never lights a fractional segment.
+      for (const [index, fill] of gauge.rects.slice(0, 20).entries()) {
+        if (index < gauge.lit) expect(fill, `${gauge.label} segment ${index} must be lit`).toBe("currentColor");
+        else expect(fill, `${gauge.label} segment ${index} must be unlit`).not.toBe("currentColor");
+      }
+    }
+
+    // Part fan 80% → 16 of 20, accent-lit (active).
+    expect(byLabel["Part Fan"].value).toBe("80%");
+    expect(byLabel["Part Fan"].lit).toBe(16);
+    // Speed factor 120% on the 50-150 scale → 14 segments, past the center
+    // index, warn-colored value (no color-only state: number + index agree).
+    expect(byLabel["Speed Factor"].value).toBe("120%");
+    expect(byLabel["Speed Factor"].lit).toBe(14);
+    expect(byLabel["Speed Factor"].valueColor).toContain("--color-warning");
+    expect(byLabel["Speed Factor"].rects).toHaveLength(21);
+    // Flow factor 95% → 9 segments, short of the center index, warn value.
+    expect(byLabel["Flow Factor"].value).toBe("95%");
+    expect(byLabel["Flow Factor"].lit).toBe(9);
+    expect(byLabel["Flow Factor"].valueColor).toContain("--color-warning");
+    // Chamber 63.4°C is inside the 60-80 warn zone: warning value, and the
+    // unlit tail of the strip keeps the permanent zone cap.
+    expect(byLabel["Chamber"].value).toBe("63.4°C");
+    expect(byLabel["Chamber"].lit).toBe(16);
+    expect(byLabel["Chamber"].valueColor).toContain("--color-warning");
+    expect(byLabel["Chamber"].rects[19]).toBe("var(--color-segment-zone)");
+    // Heater power is a literal PWM duty strip.
+    expect(byLabel["Hotend Power"].value).toBe("42%");
+    expect(byLabel["Hotend Power"].lit).toBe(8);
+    expect(byLabel["Bed Power"].value).toBe("28%");
+    expect(byLabel["Bed Power"].lit).toBe(6);
+
+    mock.assertSealed();
   });
 });

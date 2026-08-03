@@ -1,4 +1,5 @@
 import { Card } from "@/components/Card";
+import { SegmentGauge } from "@/components/SegmentGauge";
 import { ThermalGauge } from "@/components/ThermalGauge";
 import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
@@ -137,15 +138,26 @@ function TelemetryPanel({
   const chamberTemp = chamber
     ? state[chamber.klipper as `temperature_sensor ${string}`]?.temperature
     : undefined;
+  const chamberMax = chamber?.maxTemp ?? 80;
+  const chamberWarn =
+    chamber?.warnAbove != null && chamberTemp != null && chamberTemp >= chamber.warnAbove;
   const filamentMm = state.print_stats?.filament_used ?? 0;
+  const speedFactor = state.gcode_move?.speed_factor;
+  const flowFactor = state.gcode_move?.extrude_factor;
+  const hotendPower = state.extruder?.power;
+  const bedPower = state.heater_bed?.power;
+  /* Segment strips (SD1 spec §2.1) carry the stepped quantities — duty
+     cycles, factor offsets, the bounded chamber with its warn-zone cap.
+     Scalar readouts (Z-offset, filament, MCU temp) stay numeric tiles: a
+     strip for an unbounded number would be false precision. */
   return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
-    {chamber && <MetricTile label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} />}
-    <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
+    {chamber && <SegmentGauge label={chamber.label} display={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} value={chamberTemp} max={chamberMax} warnFrom={chamber.warnAbove} stateColor={chamberWarn ? "var(--color-warning)" : undefined} description={`Scale 0 to ${chamberMax} degrees Celsius${chamber.warnAbove != null ? `, warning above ${chamber.warnAbove}` : ""}.`} />}
+    <SegmentGauge label="Part Fan" display={`${(fanSpeed * 100).toFixed(0)}%`} value={fanSpeed * 100} max={100} stateColor={fanSpeed > 0 ? "var(--color-accent)" : undefined} description="Duty cycle, 0 to 100 percent." />
     {/* Strict !==1 latched a permanent false warning off M220/M221 float
         noise (0.9999999 renders as "100%" yet warned forever). The epsilon
         in factorDeviates matches the display resolution instead. */}
-    <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={factorDeviates(state.gcode_move?.speed_factor)} />
-    <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={factorDeviates(state.gcode_move?.extrude_factor)} />
+    <SegmentGauge label="Speed Factor" display={`${((speedFactor ?? 1) * 100).toFixed(0)}%`} value={(speedFactor ?? 1) * 100} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
+    <SegmentGauge label="Flow Factor" display={`${((flowFactor ?? 1) * 100).toFixed(0)}%`} value={(flowFactor ?? 1) * 100} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
     <MetricTile label="Z-Offset" value={formatZOffset(state.gcode_move?.homing_origin?.[2])} />
     <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
     {isExpert && <>
@@ -154,6 +166,9 @@ function TelemetryPanel({
       <MetricTile label="Max Accel" value={state.toolhead?.max_accel ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k` : "—"} />
       <MetricTile label="Position Z" value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"} />
       <MetricTile label="Homed" value={state.toolhead?.homed_axes?.toUpperCase() || "none"} active={!!state.toolhead?.homed_axes} />
+      {/* Heater power IS a PWM duty strip — the spec's clearest segment case. */}
+      <SegmentGauge label="Hotend Power" display={hotendPower != null ? `${Math.round(hotendPower * 100)}%` : "—"} value={hotendPower != null ? hotendPower * 100 : null} max={100} stateColor={(hotendPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />
+      <SegmentGauge label="Bed Power" display={bedPower != null ? `${Math.round(bedPower * 100)}%` : "—"} value={bedPower != null ? bedPower * 100 : null} max={100} stateColor={(bedPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />
     </>}
   </div></Card>;
 }

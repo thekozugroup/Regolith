@@ -263,14 +263,20 @@ export async function assertNoBrokenReadouts(page: Page, label: string) {
  * Dials stay honest: never below the 148px floor (the `.dial-slot` container
  * query is supposed to hand off to the bar renderer instead), and never
  * carrying SVG <text>, which scales with the viewBox and would slip under the
- * 11px legibility gate unnoticed.
+ * 11px legibility gate unnoticed. Segment strips share the <text> gate —
+ * SegmentGauge's SVG is geometry only, every readout is HTML (they need no
+ * width floor: segments degrade gracefully, that is their point).
  */
 export async function assertDialFloor(page: Page, label: string) {
-  const dishonest = await page.locator(".gauge-dial").evaluateAll((items) =>
+  const dishonest = await page.locator(".gauge-dial, .segment-gauge").evaluateAll((items) =>
     items.flatMap((item) => {
       const issues: string[] = [];
+      const isDial = item.classList.contains("gauge-dial");
       const svgText = item.querySelectorAll("text").length;
-      if (svgText > 0) issues.push(`dial contains ${svgText} SVG <text> node(s)`);
+      if (svgText > 0) {
+        issues.push(`${isDial ? "dial" : "segment gauge"} contains ${svgText} SVG <text> node(s)`);
+      }
+      if (!isDial) return issues;
       const box = item.getBoundingClientRect();
       if (box.width > 0 && box.height > 0 && box.width < 148) {
         issues.push(
