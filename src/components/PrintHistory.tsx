@@ -66,7 +66,7 @@ export function PrintHistory() {
     >
       {/* Top stats */}
       {stats && (
-        <div className="grid grid-cols-4 gap-3 pb-3 border-b border-[var(--color-border)] mb-2">
+        <div className="grid grid-cols-4 gap-[var(--grid-gap)] pb-3 border-b border-[var(--color-border)] mb-2">
           <Stat label="Total prints" value={stats.total_jobs.toString()} />
           <Stat
             label="Total time"

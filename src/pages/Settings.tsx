@@ -125,14 +125,14 @@ export function SettingsPage() {
       ? (info.memUsed / info.memTotal) * 100
       : 0;
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-3">
       <ExperienceSettings />
       <ThemeSettings />
       {isExpert && <ProfileSettings />}
       {isExpert && <BackupSettings />}
 
       <Card title="System" icon={<Cog />} className="lg:col-span-2">
-        <div className="space-y-3">
+        <div className="space-y-[var(--stack)]">
           <p className="text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
             Emergency stop is only for immediate physical danger. It remains available in both experience modes.
           </p>
@@ -188,7 +188,7 @@ export function SettingsPage() {
       </Card>
 
       {isExpert && <Card title="Host" icon={<Cpu />} className="lg:col-span-1">
-        <div className="space-y-2 text-[12px]">
+        <div className="space-y-[var(--stack-tight)] text-[12px]">
           {infoError && (
             <div role="status" className="rounded-inner border border-(--color-warning)/35 bg-(--color-warning)/8 p-3 text-[13px] text-[var(--color-warning)]">
               Host details unavailable. {infoError}
@@ -232,7 +232,7 @@ export function SettingsPage() {
       </Card>}
 
       {isExpert && <Card title="About" icon={<Activity />} className="lg:col-span-1">
-        <div className="space-y-2 text-[12px]">
+        <div className="space-y-[var(--stack-tight)] text-[12px]">
           <Row label="UI">
             <span className="font-mono">Regolith v0.1</span>
           </Row>

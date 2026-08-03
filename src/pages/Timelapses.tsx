@@ -60,7 +60,7 @@ export function Timelapses() {
     `/server/files/timelapse/${encodeURIComponent(file.path)}`;
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       <Card
         title="Timelapses"
         icon={<Film />}
@@ -131,11 +131,11 @@ export function Timelapses() {
 
       <Card title="Preview" icon={<Play />} className="md:col-span-5 lg:col-span-7">
         {!selected ? (
-          <div className="py-12 text-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em]">
+          <div className="py-8 text-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em]">
             Select a timelapse to play
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-[var(--stack)]">
             <video
               key={selected.path}
               src={downloadUrl(selected)}

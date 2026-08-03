@@ -74,7 +74,7 @@ export function Files() {
   };
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* File list */}
       <Card
         title="Files"
@@ -121,7 +121,7 @@ export function Files() {
           </div>
         )}
         {!err && filtered.length === 0 && !loading && (
-          <div className="text-[12px] text-[var(--color-fg-muted)] py-6 text-center uppercase tracking-[0.1em]">
+          <div className="text-[12px] text-[var(--color-fg-muted)] py-8 text-center uppercase tracking-[0.1em]">
             {filter ? "No matches" : "No files"}
           </div>
         )}
@@ -167,11 +167,11 @@ export function Files() {
       {/* Detail panel */}
       <Card title="Details" icon={<HardDrive />} className="md:col-span-5 lg:col-span-7">
         {!selected ? (
-          <div className="py-12 text-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em]">
+          <div className="py-8 text-center text-[var(--color-fg-muted)] text-[12px] uppercase tracking-[0.1em]">
             Select a file to preview
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-[var(--stack)]">
             {/* Big thumbnail */}
             <div className="aspect-square w-full max-w-[200px] mx-auto rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
               <img
@@ -196,7 +196,7 @@ export function Files() {
             </div>
 
             {/* Metadata grid */}
-            <div className="grid grid-cols-2 gap-3 text-[11px]">
+            <div className="grid grid-cols-2 gap-[var(--grid-gap)] text-[11px]">
               <Stat
                 icon={<HardDrive className="w-3 h-3" />}
                 label="Size"

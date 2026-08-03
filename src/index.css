@@ -285,7 +285,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-auto-flow: row dense;
-    gap: 0.5rem;
+    gap: var(--grid-gap);
   }
   /* Stretched rows must reach the panel itself, not stop at the zone
      wrapper, so a shorter card in a row fills its lane instead of leaving
@@ -318,7 +318,7 @@
      a lower two-up threshold; the same floor arithmetic holds.) */
   .thermal-grid {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--grid-gap);
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 174px), 1fr));
   }
 
@@ -348,7 +348,7 @@
      enough that the timeline keeps the ~300px its five checkpoints need. */
   .mission-media-grid {
     display: grid;
-    gap: 1rem;
+    gap: var(--grid-gap);
     grid-template-columns: minmax(0, 1fr);
   }
   @container (min-width: 440px) {

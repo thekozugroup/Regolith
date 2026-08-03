@@ -66,7 +66,7 @@ export function Control() {
     canJog(state, safety, axis, sign * dist).allowed;
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* Status banner */}
       {(safety.isBusy || !safety.klipperReady || !safety.fullyHomed) && (
         <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">
@@ -104,9 +104,9 @@ export function Control() {
       )}
 
       <Card title="Toolhead" icon={<Move />} className="md:col-span-5 lg:col-span-7">
-        <div className="space-y-3">
+        <div className="space-y-[var(--stack)]">
           {/* Position display */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-[var(--grid-gap)]">
             {(["X", "Y", "Z"] as const).map((axis, i) => (
               <div key={axis}>
                 <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold flex items-center gap-1">
@@ -133,7 +133,7 @@ export function Control() {
           </div>
 
           {/* Jog grid */}
-          <div className="grid grid-cols-[1fr_auto] gap-3 pt-2">
+          <div className="grid grid-cols-[1fr_auto] gap-[var(--grid-gap)] pt-2">
             <div className="grid grid-cols-3 gap-1 w-fit">
               <span />
               <JogBtn
@@ -156,7 +156,7 @@ export function Control() {
                 variant="primary"
                 onClick={() => dispatch({ type: "home", axis: "all" })}
                 disabled={safety.isBusy}
-                className="w-9 h-9 p-0"
+                className="min-h-11 min-w-11 p-0"
                 title="Home all"
               >
                 <Home className="w-4 h-4" />
@@ -192,7 +192,7 @@ export function Control() {
                 variant="primary"
                 disabled={safety.isBusy}
                 onClick={() => dispatch({ type: "home", axis: "z" })}
-                className="w-9 h-9 p-0"
+                className="min-h-11 min-w-11 p-0"
                 title="Home Z"
               >
                 Z
@@ -255,7 +255,7 @@ export function Control() {
       </Card>
 
       {isExpert && <Card title="Bounds & Safety" icon={<Lock />} className="md:col-span-8 lg:col-span-12">
-        <div className="space-y-2 text-[12px]">
+        <div className="space-y-[var(--stack-tight)] text-[12px]">
           <Row label="Klipper">
             <Pill ok={safety.klipperReady}>
               {state.webhooks?.state ?? "—"}
@@ -291,7 +291,7 @@ export function Control() {
             <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold mb-1">
               Travel limits
             </div>
-            <div className="grid grid-cols-3 gap-3 font-mono tabular-nums text-[11px]">
+            <div className="grid grid-cols-3 gap-[var(--grid-gap)] font-mono tabular-nums text-[11px]">
               {(["X", "Y", "Z"] as const).map((a, i) => (
                 <div key={a}>
                   <div className="text-[var(--color-fg-muted)]">{a}</div>
@@ -332,7 +332,7 @@ function BedView({
     state.print_stats?.state === "paused";
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-[var(--stack)]">
       <div className="relative aspect-[4/3] overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-bg)]">
         {/* Origin label */}
         <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
@@ -369,7 +369,7 @@ function BedView({
         )}
       </div>
       {/* Live coords */}
-      <div className="grid grid-cols-3 gap-2 text-[11px]">
+      <div className="grid grid-cols-3 gap-[var(--grid-gap)] text-[11px]">
         <div>
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             X

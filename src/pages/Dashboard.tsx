@@ -92,7 +92,7 @@ function ThermalsPanel({
         <ThermalGauge label={bedH?.label ?? "Bed"} actual={bed?.temperature} target={bed?.target} power={bed?.power} maxTemp={bedH?.maxTemp ?? 120} icon={<ThermometerSun className="w-3 h-3" />} />
       </div>
       {isExpert && <>
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3">
+        <div className="mt-3 grid grid-cols-2 gap-[var(--grid-gap)] border-t border-[var(--color-border)] pt-3">
           <Trend label="Hotend trend" value={ext?.temperature} />
           <Trend label="Bed trend" value={bed?.temperature} color="var(--color-info)" />
         </div>

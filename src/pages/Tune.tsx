@@ -244,7 +244,7 @@ export function Tune() {
   };
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-4">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-4">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
         <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">
@@ -290,10 +290,10 @@ export function Tune() {
           <h2 id="calibration-groups" className="text-[14px] font-semibold">Calibration & maintenance</h2>
           <span className="instrument-label">Guarded expert tools</span>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] sm:grid-cols-2">
           {Object.entries(ACTIONS).map(([section, actions]) => (
             <Card key={section} title={section} icon={SECTION_ICONS[section]} className={SECTION_LAYOUT[section]}>
-              <div className="space-y-2">
+              <div className="space-y-[var(--stack-tight)]">
                 {actions.map((action) => (
                   <ActionRow
                     key={action.id}
@@ -310,7 +310,7 @@ export function Tune() {
 
       {/* Pressure Advance — interactive card, bottom */}
       <Card title="Pressure Advance" icon={<Sliders />} className="lg:col-span-4 xl:col-span-1">
-        <div className="space-y-2">
+        <div className="space-y-[var(--stack-tight)]">
           <div className="text-[12px] text-[var(--color-fg-muted)]">
             Live tunable. Apply temporarily or save permanently.
           </div>
@@ -456,7 +456,7 @@ function ConfirmModal({
             <X className="w-5 h-5" />
           </button>
         </header>
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-[var(--stack)]">
           <p id={descriptionId} className="text-[13px] leading-relaxed">
             {action.confirm}
           </p>
