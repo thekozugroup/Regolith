@@ -26,8 +26,8 @@ function walk(dir: string): string[] {
 
 describe("default accent single source of truth", () => {
   // The initial-load bug: the CSS design default and the JS boot fallback
-  // drifted apart (#f7a224 vs #f97316), and the JS value — applied as an
-  // inline style on <html> — silently won on every fresh profile. These
+  // drifted apart (a legacy #f7a224 vs #f97316), and the JS value — applied
+  // as an inline style on <html> — silently won on every fresh profile. These
   // assertions make any future drift a test failure instead of a shipped bug.
   test("CSS --color-accent matches DEFAULT_ACCENT exactly", () => {
     expect(cssToken("--color-accent")).toBe(DEFAULT_ACCENT);
@@ -37,6 +37,19 @@ describe("default accent single source of truth", () => {
     const tokens = computeAccentTokens(DEFAULT_ACCENT);
     expect(cssToken("--color-accent-fg")).toBe(tokens.fg);
     expect(cssToken("--color-accent-hover")).toBe(tokens.hover);
+  });
+
+  test("the e2e accent spec pins the same default, not a stale copy", () => {
+    // e2e/accent.spec.ts duplicates the literal (it cannot import app code at
+    // collection time without coupling Playwright to the Vite graph). That
+    // copy is exactly the drift shape this suite exists to prevent, so pin it.
+    const spec = readFileSync(
+      join(import.meta.dir, "../e2e/accent.spec.ts"),
+      "utf8",
+    );
+    const match = spec.match(/const DEFAULT_ACCENT = "(#[0-9a-f]{6})"/);
+    if (!match) throw new Error("DEFAULT_ACCENT literal not found in e2e/accent.spec.ts");
+    expect(match[1]).toBe(DEFAULT_ACCENT);
   });
 
   test("the designed default is reachable as a preset chip", () => {

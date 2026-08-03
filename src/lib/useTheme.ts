@@ -4,26 +4,29 @@ const NAME_KEY = "forge.device.name";
 const ACCENT_KEY = "forge.theme.accent";
 
 /**
- * The designed default accent (Regolith amber). Single source of truth —
- * `--color-accent` in src/index.css must stay byte-identical to this value.
- * Enforced by tests/accentDefault.test.ts so the two can never drift again.
+ * The designed default accent (Regolith amber — Tailwind v4 amber-400).
+ * Single source of truth — `--color-accent` in src/index.css must stay
+ * byte-identical to this value. Enforced by tests/accentDefault.test.ts so
+ * the two can never drift again.
  */
-export const DEFAULT_ACCENT = "#f7a224";
+export const DEFAULT_ACCENT = "#ffb900";
 
 /**
  * Quick-pick swatches. The accent itself is a free-form hex — these
  * are just convenience presets shown as chips alongside the hex input.
  * The designed default comes first so it is reachable as a one-click reset.
+ * Every preset is the Tailwind v4 shade-400 of its name, matching the
+ * installed tailwindcss so preset chips and utility classes never disagree.
  */
 export const ACCENT_PRESETS = {
   amber: DEFAULT_ACCENT,
-  orange: "#f97316",
-  emerald: "#10b981",
-  blue: "#3b82f6",
-  violet: "#8b5cf6",
-  rose: "#f43f5e",
-  cyan: "#06b6d4",
-  zinc: "#71717a",
+  orange: "#ff8904",
+  emerald: "#00d492",
+  blue: "#51a2ff",
+  violet: "#a684ff",
+  rose: "#ff637e",
+  cyan: "#00d3f2",
+  zinc: "#9f9fa9",
 } as const;
 
 export type AccentPreset = keyof typeof ACCENT_PRESETS;

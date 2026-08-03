@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const PREVIEW_ORIGIN = "http://127.0.0.1:4173";
-const DEFAULT_ACCENT = "#f7a224"; // must equal DEFAULT_ACCENT in src/lib/useTheme.ts
+const DEFAULT_ACCENT = "#ffb900"; // must equal DEFAULT_ACCENT in src/lib/useTheme.ts — enforced by tests/accentDefault.test.ts
 const ACCENT_KEY = "forge.theme.accent";
 
 async function blockPrinterTraffic(page: Page) {

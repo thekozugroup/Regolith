@@ -24,8 +24,8 @@
      src/lib/useTheme.ts — these three literals must stay byte-identical to
      computeAccentTokens(DEFAULT_ACCENT). Enforced by tests/accentDefault.test.ts.
      Hex only: dual notation (oklch here, hex in JS) is how they drifted. */
-  --color-accent: #f7a224;
-  --color-accent-hover: #f8ac3d;
+  --color-accent: #ffb900;
+  --color-accent-hover: #ffc11d;
   --color-accent-fg: #120b07;
   /* Accent-derived surfaces — always tint from the live accent, never from a
      hardcoded rgba() literal, so every surface follows the user's accent.
