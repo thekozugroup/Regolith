@@ -74,7 +74,7 @@ export function Files() {
   };
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* File list */}
       <Card
         title="Files"
@@ -126,14 +126,14 @@ export function Files() {
           </div>
         )}
 
-        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto -mx-[clamp(0.75rem,1.4vw,1.25rem)]">
+        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
           {filtered.map((f) => (
             <li key={f.path}>
               <button
                 type="button"
                 aria-pressed={selected?.path === f.path}
                 className={cn(
-                  "w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[clamp(0.75rem,1.4vw,1.25rem)] text-left transition-colors",
+                  "w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[var(--card-pad)] text-left transition-colors",
                   selected?.path === f.path
                     ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",

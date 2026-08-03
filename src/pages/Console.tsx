@@ -91,7 +91,7 @@ export function ConsolePage() {
     : { allowed: false, reason: "Enter a command." };
 
   return (
-    <div className="h-[calc(100dvh-60px-5rem)] p-[clamp(0.75rem,2vw,1.5rem)] md:h-[calc(100dvh-60px)]">
+    <div className="h-[calc(100dvh-60px-5rem)] p-[var(--page-gutter)] md:h-[calc(100dvh-60px)]">
       <Card
         title="Console"
         icon={<Terminal />}
@@ -136,7 +136,7 @@ export function ConsolePage() {
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] -mt-[clamp(0.75rem,1.4vw,1.25rem)] min-h-[200px] flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
+          className="bleed -mt-[var(--card-pad)] min-h-[200px] flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
         >
           {lines.length === 0 && (
             <div className="text-[var(--color-fg-muted)] italic">
@@ -166,7 +166,7 @@ export function ConsolePage() {
         </div>
 
         {/* Status / autoscroll toggle */}
-        <div className="-mx-[clamp(0.75rem,1.4vw,1.25rem)] flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[clamp(0.75rem,1.4vw,1.25rem)] py-1.5 text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+        <div className="bleed flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[var(--card-pad)] py-1.5 text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
           <span>{lines.length} lines</span>
           <button
             type="button"

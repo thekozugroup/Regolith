@@ -102,14 +102,14 @@ export function PrintHistory() {
       )}
 
       {jobs.length > 0 && (
-        <ul className="divide-y divide-[var(--color-border)] -mx-3.5">
+        <ul className="divide-y divide-[var(--color-border)] bleed">
           {jobs.map((j) => {
             const success = j.status === "completed";
             const date = j.end_time ?? j.start_time;
             return (
               <li
                 key={j.job_id}
-                className="flex items-center gap-3 py-2 px-3.5 hover:bg-[var(--color-accent-faint)]"
+                className="flex items-center gap-3 py-2 px-[var(--card-pad)] hover:bg-[var(--color-accent-faint)]"
               >
                 <span
                   className={cn(

@@ -125,7 +125,7 @@ export function SettingsPage() {
       ? (info.memUsed / info.memTotal) * 100
       : 0;
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-3">
       <ExperienceSettings />
       <ThemeSettings />
       {isExpert && <ProfileSettings />}

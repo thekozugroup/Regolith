@@ -60,7 +60,7 @@ export function Timelapses() {
     `/server/files/timelapse/${encodeURIComponent(file.path)}`;
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       <Card
         title="Timelapses"
         icon={<Film />}
@@ -96,14 +96,14 @@ export function Timelapses() {
             </div>
           </div>
         )}
-        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto -mx-[clamp(0.75rem,1.4vw,1.25rem)]">
+        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
           {files.map((f) => (
             <li key={f.path}>
               <button
                 type="button"
                 aria-pressed={selected?.path === f.path}
                 className={cn(
-                  "flex min-h-11 w-full items-center gap-3 border-l-2 border-transparent px-[clamp(0.75rem,1.4vw,1.25rem)] py-2 text-left transition-colors",
+                  "flex min-h-11 w-full items-center gap-3 border-l-2 border-transparent px-[var(--card-pad)] py-2 text-left transition-colors",
                   selected?.path === f.path
                     ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",

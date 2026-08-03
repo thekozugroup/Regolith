@@ -66,7 +66,7 @@ export function Control() {
     canJog(state, safety, axis, sign * dist).allowed;
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* Status banner */}
       {(safety.isBusy || !safety.klipperReady || !safety.fullyHomed) && (
         <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">

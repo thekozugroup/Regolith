@@ -244,7 +244,7 @@ export function Tune() {
   };
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-4">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-4">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
         <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">
