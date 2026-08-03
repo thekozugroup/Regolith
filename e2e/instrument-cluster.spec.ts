@@ -71,7 +71,16 @@ async function assertInstrumentShell(page: Page) {
   expect(undersized).toEqual([]);
 }
 
+async function resetTopState(page: Page) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForFunction(() => window.scrollY === 0);
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+
 async function assertRouteAudit(page: Page) {
+  await resetTopState(page);
   await assertInstrumentShell(page);
   const clipped = await page.locator("main h2, main h3, main p, main button, main label, main output, main .instrument-label").evaluateAll((items) =>
     items.filter((item) => {
@@ -91,6 +100,7 @@ async function assertRouteAudit(page: Page) {
     });
     expect(hiddenByNav).toBe(false);
   }
+  await resetTopState(page);
 }
 
 test.describe("Regolith Instrument Cluster — strict local mock", () => {
@@ -152,7 +162,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       for (const route of routes) {
         await page.goto(route);
         await assertRouteAudit(page);
-        await page.screenshot({ path: testInfo.outputPath(`audit-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
+        await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
       }
       await page.goto("/");
       await page.evaluate(() => {
@@ -162,7 +172,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       for (const route of routes) {
         await page.goto(route);
         await assertRouteAudit(page);
-        await page.screenshot({ path: testInfo.outputPath(`audit-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
+        await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
       }
     }
     expect(audit.escaped).toEqual([]);
