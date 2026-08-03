@@ -261,6 +261,41 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     expect(audit.writes).toEqual([]);
   });
 
+  test("both dials sit fully above the fold on the 800x480 K1 Max panel", async ({ page }) => {
+    // Playwright's `:visible` means "participates in layout", not "inside the
+    // viewport" — the dial-count assertions elsewhere pass even with the Bed
+    // dial a full screen below the fold. Measure real geometry against the
+    // bottom nav's top edge, the actual fold on the printer's own 480px-tall
+    // panel, in both experience modes.
+    await page.setViewportSize({ width: 800, height: 480 });
+    const audit = await installStrictMock(page);
+    await page.goto("/");
+    for (const experienceMode of ["basic", "expert"] as const) {
+      await page.evaluate((mode) => {
+        localStorage.setItem("forge.experience-mode", mode);
+        window.dispatchEvent(new Event("forge:experience-mode-changed"));
+      }, experienceMode);
+      await page.goto("/");
+      await assertInstrumentShell(page, experienceMode);
+      const foldTop = await page
+        .getByRole("navigation", { name: "Mobile primary" })
+        .evaluate((nav) => nav.getBoundingClientRect().top);
+      const dials = await page.locator(".gauge-dial").evaluateAll((items) =>
+        items.map((item) => {
+          const box = item.getBoundingClientRect();
+          return { top: box.top, bottom: box.bottom };
+        }),
+      );
+      expect(dials, `${experienceMode}: both dials must be in the layout`).toHaveLength(2);
+      for (const box of dials) {
+        expect(box.top, `${experienceMode}: dial clipped by the top of the viewport`).toBeGreaterThanOrEqual(0);
+        expect(box.bottom, `${experienceMode}: dial at/under the fold (bottom-nav top ${foldTop})`).toBeLessThanOrEqual(foldTop);
+      }
+    }
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
   test("offline camera is locally intercepted and offers recovery without a printer request", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const audit = await installStrictMock(page);

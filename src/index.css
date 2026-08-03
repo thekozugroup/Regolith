@@ -203,9 +203,11 @@
     .dashboard-grid { flex: 1 1 auto; align-content: stretch; }
   }
 
-  /* Gauge pair: 174px = 148px dial floor + p-3 padding + border, so a track
-     is only ever created when the dial inside it can render at or above the
-     floor — two-up exactly when two-up fits, never one pixel sooner. */
+  /* Gauge pair: 174px = 148px dial floor + 12px padding ×2 + 1px border ×2,
+     so a track is only ever created when the dial inside it can render at or
+     above the floor — two-up exactly when two-up fits, never one pixel
+     sooner. (The short-viewport override below trades instrument chrome for
+     a lower two-up threshold; the same floor arithmetic holds.) */
   .thermal-grid {
     display: grid;
     gap: 0.5rem;
@@ -248,8 +250,10 @@
   /* Dial ⇄ bar renderer switch. Each thermal instrument is its own inline-size
      container; the query measures its content box, so a matching container
      guarantees the dial renders at or above the 148px hard floor. CSS-only —
-     no JS resize listeners. */
-  .thermal-instrument { container-type: inline-size; }
+     no JS resize listeners. Padding lives here (not a utility class on the
+     component) so the short-viewport override below can retune the two-up
+     arithmetic in one place. */
+  .thermal-instrument { container-type: inline-size; padding: 0.75rem; }
   .dial-slot { display: none; }
   @container (min-width: 148px) {
     .dial-slot { display: block; }
@@ -259,6 +263,23 @@
   .dial-ticks-minor { display: none; }
   @container (min-width: 190px) {
     .dial-ticks-minor { display: initial; }
+  }
+
+  /* Short landscape panels — most importantly the K1 Max's own 800x480
+     touchscreen (the same <600px height boundary the chrome variants key
+     on). Nothing else in the cascade reads viewport HEIGHT, so a 480px-tall
+     panel used to stack two 280px-cap dials and push the Bed dial entirely
+     below the fold (the bottom nav's top edge). Trading instrument chrome —
+     8px padding instead of 12px, 4px gap instead of 8px — lowers the two-up
+     threshold to 166px = 148px dial floor + 8px padding ×2 + 1px border ×2,
+     so the ~352px Thermals content box carries two ~156px dials side by
+     side: at or above the hard floor, and above the fold. */
+  @media (max-height: 599.98px) {
+    .thermal-grid {
+      gap: 0.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 166px), 1fr));
+    }
+    .thermal-instrument { padding: 0.5rem; }
   }
 }
 
