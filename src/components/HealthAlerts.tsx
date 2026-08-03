@@ -1,17 +1,28 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, WifiOff } from "lucide-react";
 import { usePrinter } from "@/lib/usePrinter";
+import {
+  WATCHDOG_TICK_MS,
+  heatersHoldHeat,
+  isTelemetryStale,
+} from "@/lib/telemetryWatchdog";
 import { cn } from "@/lib/utils";
 
 /**
  * Floating alert stack — pinned to top of viewport, low opacity until
  * something demands attention. Aggregates:
  *   - Thermal runaway: actual diverging from target by ±15°C for >30s
+ *   - Stale telemetry: no data for 10s while heaters were last known hot
  *   - MCU temp watchdog: SoC > 70°C (K1 throttles around there)
  *   - Network: moonraker WS dropped
  *
  * Each alert is dismissible per-page-load; reappears if the condition
  * persists across page reloads.
+ *
+ * Every condition here re-evaluates on a WATCHDOG TIMER, not only when
+ * WebSocket data arrives. Data-driven evaluation alone has a fatal blind
+ * spot: a dropped feed stops the evaluation exactly when the heaters may be
+ * running unmonitored — the precise scenario the thermal alert exists for.
  */
 export function HealthAlerts() {
   const { state, connected, profile } = usePrinter();
@@ -21,6 +32,29 @@ export function HealthAlerts() {
     drift: number;
     since: number;
   } | null>(null);
+  // Watchdog clock. Ticking this re-renders and re-runs every alert check
+  // below even when no telemetry arrives at all.
+  const [now, setNow] = useState(() => Date.now());
+  // When telemetry last arrived, and whether the heaters were hot then.
+  // Initialized "fresh and cold" so a page just loading does not alarm.
+  const [telemetry, setTelemetry] = useState(() => ({
+    at: Date.now(),
+    hot: false,
+  }));
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), WATCHDOG_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Record telemetry arrival. Moonraker's merge produces fresh object
+  // identities for every heater diff, so this runs on every status push.
+  useEffect(() => {
+    const ext = state.extruder;
+    const bed = state.heater_bed;
+    if (!ext && !bed) return; // nothing has ever arrived yet
+    setTelemetry({ at: Date.now(), hot: heatersHoldHeat(ext, bed) });
+  }, [state.extruder, state.heater_bed]);
 
   // Thermal runaway: track divergence over time
   useEffect(() => {
@@ -80,8 +114,24 @@ export function HealthAlerts() {
     });
   }
 
-  // Thermal runaway (only if persisting >15s to avoid flapping)
-  if (thermalIssue && Date.now() - thermalIssue.since > 15_000) {
+  // Stale telemetry while hot. Fires whether or not the socket still CLAIMS
+  // to be connected: a silently wedged link and a dropped link both leave the
+  // heaters unmonitored, and the owner has to hear about it either way.
+  const staleForMs = now - telemetry.at;
+  if (telemetry.hot && isTelemetryStale(now, telemetry.at)) {
+    alerts.push({
+      id: "stale-data",
+      severity: "error",
+      message: `No printer data for ${Math.floor(staleForMs / 1000)}s while heaters were hot — temperatures are no longer being monitored`,
+      announcement:
+        "Printer telemetry is stale while heaters are hot — temperatures are no longer being monitored.",
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  }
+
+  // Thermal runaway (only if persisting >15s to avoid flapping). Gated on the
+  // watchdog clock, so it fires on time even if the feed died mid-divergence.
+  if (thermalIssue && now - thermalIssue.since > 15_000) {
     // `drift` is frozen at first detection, so this text is stable.
     const message = `${thermalIssue.heater} temperature diverging by ${thermalIssue.drift.toFixed(1)}°C — possible thermal runaway`;
     alerts.push({
@@ -139,6 +189,7 @@ export function HealthAlerts() {
       {visible.map((a) => (
         <div
           key={a.id}
+          data-alert-id={a.id}
           className={cn(
             "flex items-start gap-2 px-3 py-2 rounded-md border backdrop-blur-sm shadow-lg",
             a.severity === "error"
