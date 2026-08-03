@@ -391,6 +391,82 @@
     }
   }
 
+  /* Tell-tale cluster (S2 §3) — the SD1 warning-lamp block. A hairline lamp
+     grid (same 1px-gap-over-border technique as .telemetry-grid) inside an
+     .instrument-well. Cells are opaque in the well's own recession mix so
+     the gaps read as hairlines, not slots. Latched cells render as 44px
+     acknowledge <button>s; their <li> host collapses to display:contents so
+     the button itself is the grid item. */
+  .telltale-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 1px;
+    background: var(--color-border);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .telltale-cell-host { display: contents; }
+  .telltale-cell {
+    min-height: var(--binnacle-row);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    /* Same mix as .instrument-well — cells must stay opaque for the grid. */
+    background: color-mix(in oklab, var(--color-bg) 55%, var(--color-surface));
+    border: 0;
+    font: inherit;
+    text-align: left;
+    color: var(--color-fg-muted);
+  }
+  button.telltale-cell { cursor: pointer; }
+  /* Lit cells carry their severity color; the label rides along (the icon
+     and lamp already use currentColor). Unlit labels stay fg-muted. */
+  .telltale-cell[data-lit="true"] .instrument-label { color: inherit; }
+  .telltale-lamp {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: var(--radius-lamp);
+    /* UNLIT = outlined, LIT = filled: the shape channel that keeps lamp
+       state readable without color (and under forced colors). */
+    border: 1px solid var(--color-border-strong);
+    background: transparent;
+  }
+  .telltale-lamp[data-lit="true"] {
+    background: currentColor;
+    border-color: currentColor;
+  }
+  .telltale-ack {
+    margin-left: 6px;
+    color: var(--color-fg-muted);
+    font-size: 0.6875rem;
+    letter-spacing: 0.075em;
+  }
+  .telltale-detail {
+    font-size: 0.6875rem;
+    line-height: 1.25;
+    color: var(--color-fg-muted);
+    overflow-wrap: anywhere;
+  }
+  /* Unhomed axis letters: dimmer AND struck through — text carries partial
+     homing with a non-color channel. */
+  .telltale-axis-unhomed {
+    color: var(--color-fg-subtle);
+    text-decoration: line-through;
+  }
+  @media (forced-colors: active) {
+    /* Filled-vs-outlined must survive forced colors. Author backgrounds are
+       stripped but system colors are honored — the same CanvasText pattern
+       as .status-lamp: the outline always paints, and a lit lamp fills with
+       CanvasText. Labels and icons remain the second and third channels. */
+    .telltale-lamp { border: 1px solid CanvasText; background: transparent; }
+    .telltale-lamp[data-lit="true"] { background: CanvasText; }
+  }
+
   /* Mission media split: thumbnail rail only when the Card itself is wide
      enough that the timeline keeps the ~300px its five checkpoints need. */
   .mission-media-grid {

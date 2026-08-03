@@ -1,5 +1,6 @@
 import { Card } from "@/components/Card";
 import { SegmentGauge } from "@/components/SegmentGauge";
+import { TellTaleCluster } from "@/components/TellTaleCluster";
 import { ThermalGauge } from "@/components/ThermalGauge";
 import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
@@ -61,10 +62,12 @@ export function Dashboard() {
             Z-offset, filament — with the deeper motion internals kept for
             expert mode. Wide slot so the tiles spread across a full row. */}
         <div className="dash-wide">
-          {/* Binnacle strip (S2 §1.3): Telemetry now, the Systems tell-tale
-              cluster later — side by side ≥720px, headers on one baseline. */}
+          {/* Binnacle strip (S2 §1.3): Telemetry beside the Systems
+              tell-tale cluster — side by side ≥720px, headers on one
+              baseline. */}
           <div className="binnacle-strip">
             <TelemetryPanel state={state} profile={profile} fanSpeed={fanSpeed} isExpert={isExpert} />
+            <TellTaleCluster />
           </div>
         </div>
 

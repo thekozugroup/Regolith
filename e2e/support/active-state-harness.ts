@@ -19,7 +19,12 @@
  */
 
 import { Buffer } from "node:buffer";
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type WebSocketRoute,
+} from "@playwright/test";
 
 const PREVIEW_ORIGIN = "http://127.0.0.1:4173";
 const CAMERA_PORT = "8080";
@@ -50,6 +55,17 @@ export interface ActiveMock {
    * for a fresh route installation per state.
    */
   use: (next: ActiveMockOptions) => void;
+  /**
+   * Push a live `notify_status_update` diff to every open socket — the same
+   * shape Moonraker streams, so mid-session transitions (a lamp trigger, a
+   * recovery, a latch release) can be exercised without a reload.
+   */
+  push: (diff: MockPrinterState) => void;
+  /**
+   * Server-side close of every open socket — simulates a dropped link. The
+   * app's own backoff reconnects to the still-installed route.
+   */
+  dropLink: () => void;
   /** Fails the test if the browser talked to anything outside the fixture. */
   assertSealed: () => void;
   cameraRequests: () => number;
@@ -62,10 +78,15 @@ export async function installActiveMock(
   const writes: string[] = [];
   const escaped: string[] = [];
   const subscriptions: string[] = [];
+  const sockets = new Set<WebSocketRoute>();
   let cameraRequestCount = 0;
   let options = initial;
 
   await page.routeWebSocket("**/websocket", (socket) => {
+    sockets.add(socket);
+    socket.onClose(() => {
+      sockets.delete(socket);
+    });
     socket.onMessage((payload) => {
       const request = JSON.parse(String(payload)) as {
         id?: number;
@@ -167,6 +188,20 @@ export async function installActiveMock(
   return {
     use: (next) => {
       options = next;
+    },
+    push: (diff) => {
+      const message = JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notify_status_update",
+        params: [diff],
+      });
+      for (const socket of sockets) socket.send(message);
+    },
+    dropLink: () => {
+      for (const socket of sockets) {
+        socket.close({ code: 1001, reason: "fixture link drop" });
+      }
+      sockets.clear();
     },
     cameraRequests: () => cameraRequestCount,
     assertSealed: () => {

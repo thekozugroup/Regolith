@@ -3,6 +3,7 @@ import {
   assertNoBrokenReadouts,
   installActiveMock,
   useExperience,
+  type MockPrinterState,
 } from "./support/active-state-harness";
 
 const printerState = {
@@ -510,6 +511,298 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     expect(byLabel["Hotend Power"].lit).toBe(8);
     expect(byLabel["Bed Power"].value).toBe("28%");
     expect(byLabel["Bed Power"].lit).toBe(6);
+
+    mock.assertSealed();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Tell-tale cluster (SD1 §3) — every lamp reachable through the active-state
+ * harness: prove each lamp lights on its trigger and latches/clears per the
+ * final table. Time is fake-clocked where a confirmation window or the
+ * bulb-test sweep matters.
+ * ------------------------------------------------------------------------ */
+
+/** Cold, idle, UNHOMED, no mesh loaded — the all-lamps-dark baseline. */
+const coldIdleUnhomed: MockPrinterState = {
+  webhooks: { state: "ready", state_message: "Printer is ready" },
+  idle_timeout: { state: "Ready" },
+  print_stats: { state: "standby", filename: "", total_duration: 0, print_duration: 0, filament_used: 0, message: "" },
+  virtual_sdcard: { progress: 0, is_active: false, file_position: 0, file_size: 0 },
+  extruder: { temperature: 27.4, target: 0, power: 0, pressure_advance: 0.042 },
+  heater_bed: { temperature: 25.9, target: 0, power: 0 },
+  toolhead: {
+    position: [0, 0, 0, 0],
+    homed_axes: "",
+    print_time: 0,
+    estimated_print_time: 0,
+    max_velocity: 600,
+    max_accel: 20_000,
+    axis_minimum: [-2, -2, -10, 0],
+    axis_maximum: [306.5, 306, 305, 0],
+  },
+  display_status: { progress: 0, message: "" },
+  fan: { speed: 0 },
+  gcode_move: {
+    position: [0, 0, 0, 0],
+    gcode_position: [0, 0, 0, 0],
+    speed: 0,
+    speed_factor: 1,
+    extrude_factor: 1,
+    homing_origin: [0, 0, 0, 0],
+  },
+  "temperature_sensor chamber_temp": { temperature: 38.6 },
+  "temperature_sensor mcu_temp": { temperature: 44.2 },
+  "temperature_fan chamber_fan": { temperature: 38.4, target: 0, speed: 0 },
+  "temperature_fan soc_fan": { temperature: 46.1, target: 50, speed: 0.6 },
+};
+
+const LAMP_ORDER = [
+  "thermal-runaway",
+  "heater-fault",
+  "firmware",
+  "link-lost",
+  "fan-fault",
+  "mcu-hot",
+  "mesh-active",
+  "homed",
+];
+
+const lamp = (page: Page, id: string) =>
+  page.locator(`.telltale-cell[data-lamp="${id}"]`);
+const litLamps = (page: Page) => page.locator('.telltale-cell[data-lit="true"]');
+
+async function openSystems(page: Page) {
+  await page.goto("/");
+  await expect(
+    page.locator("main").getByRole("heading", { name: "Systems", exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+}
+
+test.describe("Tell-tale cluster — SD1 lamp block", () => {
+  test("cold idle unhomed: eight table lamps, severity-ordered, none lit after the bulb test", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: coldIdleUnhomed });
+    await openSystems(page);
+
+    // Exactly the v1 table for a K1 Max: no FILAMENT lamp (the profile
+    // declares no sensor — an unlit lamp would promise monitoring that is
+    // not happening), no MAINTENANCE (deferred, no honest data source).
+    await expect(page.locator(".telltale-cell")).toHaveCount(8);
+    await expect(page.locator('.telltale-cell[data-lamp^="filament-"]')).toHaveCount(0);
+    const order = await page
+      .locator(".telltale-cell")
+      .evaluateAll((cells) => cells.map((cell) => cell.getAttribute("data-lamp")));
+    expect(order).toEqual(LAMP_ORDER);
+
+    // 1s after the mocked subscribe the 700ms bulb test has released and the
+    // idle fixture holds zero lit lamps — including HOMED (axes unhomed).
+    await expect(litLamps(page)).toHaveCount(0);
+    await expect(page.locator(".telltale-lamp.phosphor-glow")).toHaveCount(0);
+
+    // Labels are the always-visible third channel, 11px floor and up.
+    const cells = await page.locator(".telltale-cell").evaluateAll((items) =>
+      items.map((cell) => {
+        const box = cell.getBoundingClientRect();
+        const label = cell.querySelector(".instrument-label");
+        return {
+          id: cell.getAttribute("data-lamp"),
+          height: box.height,
+          width: box.width,
+          label: label?.textContent?.trim() ?? "",
+          labelPx: label ? Number.parseFloat(getComputedStyle(label).fontSize) : 0,
+          icons: cell.querySelectorAll("svg").length,
+        };
+      }),
+    );
+    for (const cell of cells) {
+      expect(cell.height, `${cell.id}: cell below the 44px row module`).toBeGreaterThanOrEqual(44);
+      expect(cell.width, `${cell.id}: cell narrower than a finger`).toBeGreaterThanOrEqual(44);
+      expect(cell.label.length, `${cell.id}: label must be visible`).toBeGreaterThan(0);
+      expect(cell.labelPx, `${cell.id}: label below the 11px floor`).toBeGreaterThanOrEqual(11);
+      expect(cell.icons, `${cell.id}: icon channel missing`).toBeGreaterThanOrEqual(1);
+    }
+
+    // Nothing lit ⇒ nothing announced.
+    await expect(
+      page.locator('section:has(h2:text-is("Systems")) [role="alert"], section:has(h2:text-is("Systems")) [role="status"]'),
+    ).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("bulb-test sweep: one discrete lit step on first connect, silent to SR, never re-run on reconnect", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, { state: coldIdleUnhomed });
+    await openSystems(page);
+
+    // The clock is frozen inside the 700ms window: every cell renders lit in
+    // its own severity color — a single simultaneous step, no stagger.
+    await expect(litLamps(page)).toHaveCount(8);
+    // The sweep must not read as eight simultaneous faults to a screen reader.
+    await expect(
+      page.locator('section:has(h2:text-is("Systems")) [role="alert"], section:has(h2:text-is("Systems")) [role="status"]'),
+    ).toHaveCount(0);
+
+    // Release: all lamps drop to their true (dark) states at once.
+    await page.clock.fastForward(1_000);
+    await expect(litLamps(page)).toHaveCount(0);
+
+    // Drop the link server-side: LINK LOST is momentary and lights alone.
+    mock.dropLink();
+    await expect(lamp(page, "link-lost")).toHaveAttribute("data-lit", "true");
+    await expect(litLamps(page)).toHaveCount(1);
+
+    // The app's own backoff reconnects; the lamp clears and the ref-guarded
+    // bulb test does NOT run a second sweep.
+    await page.clock.fastForward(2_500);
+    await expect(lamp(page, "link-lost")).toHaveAttribute("data-lit", "false");
+    await expect(litLamps(page)).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("every lamp lights on its trigger and latches or clears per the table", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, { state: coldIdleUnhomed });
+    await openSystems(page);
+    await page.clock.fastForward(1_000); // bulb test released
+    await expect(litLamps(page)).toHaveCount(0);
+
+    // HOMED XYZ — momentary success; the label text carries partial homing.
+    mock.push({ toolhead: { homed_axes: "xyz" } });
+    await expect(lamp(page, "homed")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "homed")).toHaveAttribute("data-severity", "success");
+    mock.push({ toolhead: { homed_axes: "xy" } });
+    await expect(lamp(page, "homed")).toHaveAttribute("data-lit", "false");
+    await expect(lamp(page, "homed").locator(".telltale-axis-unhomed")).toHaveText("Z");
+    mock.push({ toolhead: { homed_axes: "" } });
+    await expect(lamp(page, "homed").locator(".telltale-axis-unhomed")).toHaveCount(3);
+
+    // MESH ACTIVE — momentary info; a loaded profile name is the only proof.
+    mock.push({ bed_mesh: { profile_name: "adaptive" } });
+    await expect(lamp(page, "mesh-active")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "mesh-active")).toHaveAttribute("data-severity", "info");
+    mock.push({ bed_mesh: { profile_name: "" } });
+    await expect(lamp(page, "mesh-active")).toHaveAttribute("data-lit", "false");
+
+    // MCU HOT — momentary, escalating warning → error at the 80°C critical.
+    mock.push({ "temperature_sensor mcu_temp": { temperature: 72 } });
+    await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-severity", "warning");
+    mock.push({ "temperature_sensor mcu_temp": { temperature: 85 } });
+    await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-severity", "error");
+    mock.push({ "temperature_sensor mcu_temp": { temperature: 44.2 } });
+    await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-lit", "false");
+
+    // FAN FAULT — the honest strain proxy, latched until acknowledged.
+    mock.push({ "temperature_fan chamber_fan": { temperature: 55, target: 40, speed: 1 } });
+    await expect(lamp(page, "fan-fault")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "fan-fault")).toHaveAttribute("data-phase", "on");
+    mock.push({ "temperature_fan chamber_fan": { temperature: 40.2, target: 40, speed: 0.2 } });
+    await expect(lamp(page, "fan-fault")).toHaveAttribute("data-phase", "latched");
+    await expect(lamp(page, "fan-fault")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "fan-fault").getByText("ACK")).toBeVisible();
+    const fanAck = page.getByRole("button", { name: "Acknowledge Fan Fault" });
+    expect((await fanAck.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await fanAck.click();
+    await expect(lamp(page, "fan-fault")).toHaveAttribute("data-lit", "false");
+    await expect(page.getByRole("button", { name: "Acknowledge Fan Fault" })).toHaveCount(0);
+
+    // HEATER FAULT + FIRMWARE — klippy shutdown with heater wording lights
+    // both; recovery to ready parks BOTH latched (a mid-print restart must
+    // be noticed); each clears on its own acknowledge.
+    mock.push({
+      webhooks: { state: "shutdown", state_message: "Heater extruder not heating at expected rate" },
+    });
+    await expect(lamp(page, "heater-fault")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "firmware")).toHaveAttribute("data-lit", "true");
+    // FIRMWARE carries the first 40 chars of klippy's message as sub-text.
+    await expect(lamp(page, "firmware")).toContainText("Heater extruder not heating at expected");
+    mock.push({ webhooks: { state: "ready", state_message: "Printer is ready" } });
+    await expect(lamp(page, "heater-fault")).toHaveAttribute("data-phase", "latched");
+    await expect(lamp(page, "firmware")).toHaveAttribute("data-phase", "latched");
+    await page.getByRole("button", { name: "Acknowledge Heater Fault" }).click();
+    await expect(lamp(page, "heater-fault")).toHaveAttribute("data-lit", "false");
+    await page.getByRole("button", { name: "Acknowledge Firmware" }).click();
+    await expect(lamp(page, "firmware")).toHaveAttribute("data-lit", "false");
+
+    // THERMAL RUNAWAY — shared detector, 15s anti-flap window on the
+    // watchdog clock, latched until acknowledged.
+    mock.push({ extruder: { temperature: 254.2, target: 220, power: 0 } });
+    await expect(lamp(page, "thermal-runaway")).toHaveAttribute("data-lit", "false");
+    await page.clock.fastForward(16_000);
+    await expect(lamp(page, "thermal-runaway")).toHaveAttribute("data-lit", "true");
+    await expect(lamp(page, "thermal-runaway")).toHaveAttribute("data-severity", "error");
+    // Condition clears — a runaway that "went away" must still be seen.
+    mock.push({ extruder: { temperature: 219.9, target: 220, power: 0.4 } });
+    await expect(lamp(page, "thermal-runaway")).toHaveAttribute("data-phase", "latched");
+    await page.getByRole("button", { name: "Acknowledge Thermal Runaway" }).click();
+    await expect(lamp(page, "thermal-runaway")).toHaveAttribute("data-lit", "false");
+
+    await expect(litLamps(page)).toHaveCount(0);
+    await assertNoBrokenReadouts(page, "tell-tale matrix end state");
+    mock.assertSealed();
+  });
+
+  test("lamps keep all three channels under forced colors and glow stays off text", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.emulateMedia({ forcedColors: "active" });
+    const mock = await installActiveMock(page, {
+      state: {
+        ...coldIdleUnhomed,
+        webhooks: { state: "shutdown", state_message: "Emergency stop issued" },
+      },
+    });
+    await openSystems(page);
+    await expect(lamp(page, "firmware")).toHaveAttribute("data-lit", "true");
+    // Settle past the bulb test so only FIRMWARE holds.
+    await expect(litLamps(page)).toHaveCount(1);
+
+    const channels = await page.locator(".telltale-lamp").evaluateAll((items) => {
+      // Resolve what CanvasText actually paints as, same probe technique as
+      // the status-lamp forced-colors regression test.
+      const probe = document.createElement("span");
+      probe.style.color = "CanvasText";
+      document.body.appendChild(probe);
+      const canvasText = getComputedStyle(probe).color;
+      probe.remove();
+      return items.map((item) => {
+        const style = getComputedStyle(item);
+        const box = item.getBoundingClientRect();
+        return {
+          lit: item.getAttribute("data-lit"),
+          borderWidth: style.borderTopWidth,
+          borderStyle: style.borderTopStyle,
+          background: style.backgroundColor,
+          canvasText,
+          filter: style.filter,
+          sized: box.width > 0 && box.height > 0,
+        };
+      });
+    });
+    expect(channels.length).toBe(8);
+    for (const entry of channels) {
+      // The outline is the shape channel that must survive forced colors.
+      expect(entry.sized).toBe(true);
+      expect(entry.borderStyle).toBe("solid");
+      expect(entry.borderWidth).toBe("1px");
+      // Glow is a filter on geometry; forced colors kills it entirely.
+      expect(entry.filter).toBe("none");
+      if (entry.lit === "true") {
+        // Lit = filled with the forced-colors ink (the CanvasText pattern).
+        expect(entry.background).toBe(entry.canvasText);
+      } else {
+        // Unlit = outline only, distinguishable from the filled state.
+        expect(entry.background).not.toBe(entry.canvasText);
+      }
+    }
 
     mock.assertSealed();
   });
