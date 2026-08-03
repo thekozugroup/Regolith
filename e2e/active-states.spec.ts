@@ -67,7 +67,12 @@ async function loadScenario(
     target.experience ?? "basic",
   );
   await page.goto("/");
-  await expect(page.locator("main").getByRole("heading", { name: "Camera", exact: true })).toBeVisible();
+  // Mount marker for the lazy Dashboard chunk. The generous timeout is
+  // patience for a loaded CI machine, not a weaker assertion: each test owns
+  // a single scenario (see below), so its 30s budget easily absorbs this.
+  await expect(
+    page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
   return target;
 }
 
@@ -83,14 +88,19 @@ async function openDashboard(page: Page): Promise<ActiveMock> {
 }
 
 test.describe("Regolith — live printer states", () => {
+  // One test per (viewport, scenario) pair — NOT one 10-scenario loop per
+  // viewport. The loop form shared a single default 30s test budget across
+  // ten reloads plus ten whole-DOM owner-trust sweeps; on a loaded machine
+  // the aggregate occasionally blew that budget and the gate failed on
+  // whichever scenario the clock ran out on. Splitting gives every scenario
+  // its own budget and pinpoints failures without weakening any assertion.
   for (const viewport of VIEWPORTS) {
-    test(`every live printer state stays trustworthy at ${viewport.width}x${viewport.height}`, async ({
-      page,
-    }, testInfo) => {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      const mock = await openDashboard(page);
-
-      for (const target of SCENARIOS) {
+    for (const target of SCENARIOS) {
+      test(`${target.id} stays trustworthy at ${viewport.width}x${viewport.height}`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const mock = await openDashboard(page);
         await loadScenario(page, mock, target.id);
         const label = `${target.id} @ ${viewport.width}x${viewport.height}`;
 
@@ -134,10 +144,10 @@ test.describe("Regolith — live printer states", () => {
           fullPage: false,
           animations: "disabled",
         });
-      }
 
-      mock.assertSealed();
-    });
+        mock.assertSealed();
+      });
+    }
   }
 
   test("an actively printing job shows real, actionable numbers", async ({ page }) => {
