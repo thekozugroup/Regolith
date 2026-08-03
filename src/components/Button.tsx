@@ -19,11 +19,11 @@ export function Button({
     default:
       "bg-[var(--color-elevated)] border border-[var(--color-border)] text-[var(--color-fg)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)]",
     primary:
-      "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-[color-mix(in_oklch,var(--color-accent)_72%,black)] hover:bg-[var(--color-accent-hover)]",
+      "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-[color-mix(in_oklab,var(--color-accent)_72%,black)] hover:bg-[var(--color-accent-hover)]",
     ghost:
       "text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)] hover:text-[var(--color-fg)]",
     danger:
-      "bg-[rgba(239,68,68,0.12)] border border-[rgba(239,68,68,0.4)] text-[var(--color-error)] hover:bg-[rgba(239,68,68,0.2)] hover:border-[rgba(239,68,68,0.6)]",
+      "bg-(--color-error)/12 border border-(--color-error)/40 text-[var(--color-error)] hover:bg-(--color-error)/20 hover:border-(--color-error)/60",
   } as const;
 
   const sizeClasses = {

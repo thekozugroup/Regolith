@@ -247,7 +247,7 @@ export function Tune() {
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-4">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
-        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
           <span className="text-[var(--color-warning)] font-medium">
             {safety.busyReason ?? "Busy"} — calibration actions disabled.
@@ -255,7 +255,7 @@ export function Tune() {
         </div>
       )}
       {!safety.klipperReady && (
-        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-(--color-error)/40 bg-(--color-error)/10 px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
           <span className="text-[var(--color-error)] font-medium">
             Klipper not ready ({state.webhooks?.state ?? "?"}) — fix before
@@ -266,7 +266,7 @@ export function Tune() {
       {actionError && (
         <div
           role="alert"
-          className="md:col-span-2 lg:col-span-4 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
+          className="md:col-span-2 lg:col-span-4 border border-(--color-error)/40 bg-(--color-error)/10 px-3 py-2 text-[13px] text-[var(--color-error)]"
         >
           {actionError}
         </div>
@@ -397,7 +397,7 @@ function ActionRow({
   onClick: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-[rgba(63,63,70,0.4)] last:border-0">
+    <div className="flex items-center gap-3 py-2 border-b border-[var(--color-border)] last:border-0">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium">{action.title}</span>
@@ -461,7 +461,7 @@ function ConfirmModal({
             {action.confirm}
           </p>
           {action.movesPrinthead && (
-            <div className="flex items-center gap-2 p-2 bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.3)] rounded-sm">
+            <div className="flex items-center gap-2 p-2 bg-(--color-warning)/8 border border-(--color-warning)/30 rounded-sm">
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)]" />
               <span className="text-[11px] text-[var(--color-warning)]">
                 Will move the printhead aggressively.
@@ -482,7 +482,7 @@ function ConfirmModal({
             Estimated duration: {action.duration}
           </div>
         </div>
-        <footer className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)] bg-[rgba(255,255,255,0.01)]">
+        <footer className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)] bg-(--color-fg)/1">
           <Button size="md" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>

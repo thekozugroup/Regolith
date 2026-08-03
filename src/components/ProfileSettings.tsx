@@ -120,7 +120,7 @@ export function ProfileSettings() {
           })}
         </div>
 
-        <div className="flex gap-2 pt-2 border-t border-[rgba(63,63,70,0.4)]">
+        <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
           <Button size="sm" variant="default" onClick={() => fileInput.current?.click()}>
             <Upload className="w-3 h-3" /> Upload profile
           </Button>

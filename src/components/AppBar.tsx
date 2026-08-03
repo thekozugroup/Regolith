@@ -39,9 +39,9 @@ export function AppBar() {
               printState === "printing" &&
                 "text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]",
               printState === "paused" &&
-                "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",
+                "text-[var(--color-warning)] bg-(--color-warning)/10 border-(--color-warning)/30",
               printState === "error" &&
-                "text-[var(--color-error)] bg-[rgba(239,68,68,0.10)] border-[rgba(239,68,68,0.3)]"
+                "text-[var(--color-error)] bg-(--color-error)/10 border-(--color-error)/30"
             )}
           >
             <span aria-hidden="true" className="status-lamp" />{printState}

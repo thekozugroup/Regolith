@@ -143,7 +143,7 @@ export function MissionTimeline() {
         }
       >
         {actionError && (
-          <div role="alert" className="mb-3 rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-3 text-[13px] text-[var(--color-error)]">
+          <div role="alert" className="mb-3 rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
             {actionError}
           </div>
         )}
@@ -282,7 +282,7 @@ export function MissionTimeline() {
       }
     >
       {actionError && (
-        <div role="alert" className="mb-3 rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-3 text-[13px] text-[var(--color-error)]">
+        <div role="alert" className="mb-3 rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
           {actionError}
         </div>
       )}
@@ -419,13 +419,13 @@ function StateBadge({ state }: { state: string }) {
     printing:
       "text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]",
     paused:
-      "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",
+      "text-[var(--color-warning)] bg-(--color-warning)/10 border-(--color-warning)/30",
     complete:
-      "text-[var(--color-success)] bg-[rgba(16,185,129,0.10)] border-[rgba(16,185,129,0.3)]",
+      "text-[var(--color-success)] bg-(--color-success)/10 border-(--color-success)/30",
     cancelled:
       "text-[var(--color-fg-muted)] bg-[var(--color-elevated)] border-[var(--color-border)]",
     error:
-      "text-[var(--color-error)] bg-[rgba(239,68,68,0.10)] border-[rgba(239,68,68,0.3)]",
+      "text-[var(--color-error)] bg-(--color-error)/10 border-(--color-error)/30",
     standby:
       "text-[var(--color-fg-muted)] bg-[var(--color-elevated)] border-[var(--color-border)]",
   };

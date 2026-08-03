@@ -222,7 +222,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             className={cn(
               "w-full min-h-11 flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
               acknowledged
-                ? "border-[var(--color-success)] bg-[rgba(16,185,129,0.08)]"
+                ? "border-[var(--color-success)] bg-(--color-success)/8"
                 : "border-[var(--color-border-strong)] bg-[var(--color-bg)]",
             )}
           >
@@ -235,7 +235,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </button>
 
           {!preflight.allowed && (
-            <div role="status" className="flex items-start gap-2 p-3 bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.35)] rounded-lg">
+            <div role="status" className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-lg">
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
               <span className="text-[13px] text-[var(--color-warning)]">
                 {preflight.reason}
@@ -244,7 +244,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           )}
 
           {error && (
-            <div role="alert" className="flex items-start gap-2 p-3 bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.3)] rounded-lg">
+            <div role="alert" className="flex items-start gap-2 p-3 bg-(--color-error)/8 border border-(--color-error)/30 rounded-lg">
               <AlertTriangle className="w-3.5 h-3.5 text-[var(--color-error)] shrink-0 mt-0.5" />
               <span className="text-[11px] text-[var(--color-error)]">
                 {error}
@@ -346,7 +346,7 @@ function Toggle({
       >
         <span
           className={cn(
-            "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform",
+            "absolute top-0.5 w-3 h-3 rounded-full bg-[var(--color-fg)] transition-transform",
             checked ? "translate-x-3.5" : "translate-x-0.5",
           )}
         />

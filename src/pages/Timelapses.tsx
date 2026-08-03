@@ -104,7 +104,7 @@ export function Timelapses() {
                 className={cn(
                   "flex min-h-11 w-full items-center gap-3 border-l-2 border-transparent px-[clamp(0.75rem,1.4vw,1.25rem)] py-2 text-left transition-colors",
                   selected?.path === f.path
-                    ? "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)]"
+                    ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",
                 )}
                 onClick={() => setSelected(f)}

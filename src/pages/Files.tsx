@@ -109,7 +109,7 @@ export function Files() {
         </div>
 
         {safety.isBusy && (
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-warning)] mb-2 px-2 py-1.5 bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.25)] rounded-sm">
+          <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-warning)] mb-2 px-2 py-1.5 bg-(--color-warning)/6 border border-(--color-warning)/25 rounded-sm">
             <AlertTriangle className="w-3 h-3" />
             <span>{safety.busyReason} — start blocked.</span>
           </div>
@@ -135,7 +135,7 @@ export function Files() {
                 className={cn(
                   "w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[clamp(0.75rem,1.4vw,1.25rem)] text-left transition-colors",
                   selected?.path === f.path
-                    ? "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)]"
+                    ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",
                 )}
                 onClick={() => setSelected(f)}

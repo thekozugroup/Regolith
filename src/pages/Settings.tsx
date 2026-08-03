@@ -175,12 +175,12 @@ export function SettingsPage() {
             </Button>
           </Row>
           {actionError && (
-            <div role="alert" className="rounded-lg border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] p-3 text-[13px] text-[var(--color-error)]">
+            <div role="alert" className="rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
               {actionError}
             </div>
           )}
           {actionStatus && (
-            <div role="status" className="rounded-lg border border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.08)] p-3 text-[13px] text-[var(--color-success)]">
+            <div role="status" className="rounded-lg border border-(--color-success)/30 bg-(--color-success)/8 p-3 text-[13px] text-[var(--color-success)]">
               {actionStatus}
             </div>
           )}
@@ -190,7 +190,7 @@ export function SettingsPage() {
       {isExpert && <Card title="Host" icon={<Cpu />} className="lg:col-span-1">
         <div className="space-y-2 text-[12px]">
           {infoError && (
-            <div role="status" className="rounded-lg border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] p-3 text-[13px] text-[var(--color-warning)]">
+            <div role="status" className="rounded-lg border border-(--color-warning)/35 bg-(--color-warning)/8 p-3 text-[13px] text-[var(--color-warning)]">
               Host details unavailable. {infoError}
             </div>
           )}
@@ -281,7 +281,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-[rgba(63,63,70,0.4)] last:border-0">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-[var(--color-border)] last:border-0">
       <div className="min-w-0">
         <div className="text-[13px] font-medium">{label}</div>
         {subtitle && (

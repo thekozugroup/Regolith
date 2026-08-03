@@ -69,7 +69,7 @@ export function Control() {
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
       {/* Status banner */}
       {(safety.isBusy || !safety.klipperReady || !safety.fullyHomed) && (
-        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-(--color-warning)/40 bg-(--color-warning)/10 px-3 py-2 text-[12px]">
           {safety.isBusy ? (
             <>
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
@@ -97,7 +97,7 @@ export function Control() {
 
       {/* Toast */}
       {error && (
-        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-8 lg:col-span-12 flex items-center gap-2 border border-(--color-error)/40 bg-(--color-error)/10 px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
           <span className="text-[var(--color-error)] font-medium">{error}</span>
         </div>
@@ -431,7 +431,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-[rgba(63,63,70,0.3)] last:border-0">
+    <div className="flex items-center justify-between py-1.5 border-b border-[var(--color-border)] last:border-0">
       <span className="text-[11px] text-[var(--color-fg-muted)] uppercase tracking-[0.1em] font-semibold">
         {label}
       </span>
@@ -446,8 +446,8 @@ function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
       className={cn(
         "px-2 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
         ok
-          ? "text-[var(--color-success)] bg-[rgba(16,185,129,0.10)] border-[rgba(16,185,129,0.3)]"
-          : "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",
+          ? "text-[var(--color-success)] bg-(--color-success)/10 border-(--color-success)/30"
+          : "text-[var(--color-warning)] bg-(--color-warning)/10 border-(--color-warning)/30",
       )}
     >
       {children}

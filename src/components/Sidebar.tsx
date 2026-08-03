@@ -82,7 +82,7 @@ export function Sidebar() {
                 cn(
                   "relative min-h-11 border-l-2 border-transparent px-3 flex items-center gap-3 text-[13px] font-medium transition-colors",
                   "hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]",
-                  isActive && "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)] text-[var(--color-fg)]",
+                  isActive && "border-l-[var(--color-accent)] bg-(--color-accent)/8 text-[var(--color-fg)]",
                   !isActive && "text-[var(--color-fg-muted)]",
                 )
               }
@@ -123,7 +123,7 @@ export function Sidebar() {
                     cn(
                       "min-h-14 border-l-2 border-transparent px-3 flex items-center gap-3 text-[13px] font-medium",
                       isActive
-                        ? "border-l-[var(--color-accent)] bg-[color-mix(in_oklch,var(--color-accent)_8%,transparent)] text-[var(--color-fg)]"
+                        ? "border-l-[var(--color-accent)] bg-(--color-accent)/8 text-[var(--color-fg)]"
                         : "text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]",
                     )
                   }

@@ -102,7 +102,7 @@ export function PrintHistory() {
       )}
 
       {jobs.length > 0 && (
-        <ul className="divide-y divide-[rgba(63,63,70,0.4)] -mx-3.5">
+        <ul className="divide-y divide-[var(--color-border)] -mx-3.5">
           {jobs.map((j) => {
             const success = j.status === "completed";
             const date = j.end_time ?? j.start_time;
@@ -115,8 +115,8 @@ export function PrintHistory() {
                   className={cn(
                     "shrink-0 w-5 h-5 rounded-full flex items-center justify-center",
                     success
-                      ? "bg-[rgba(16,185,129,0.15)] text-[var(--color-success)]"
-                      : "bg-[rgba(239,68,68,0.15)] text-[var(--color-error)]",
+                      ? "bg-(--color-success)/15 text-[var(--color-success)]"
+                      : "bg-(--color-error)/15 text-[var(--color-error)]",
                   )}
                   title={j.status}
                 >
@@ -142,8 +142,8 @@ export function PrintHistory() {
                   className={cn(
                     "px-1.5 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
                     success
-                      ? "text-[var(--color-success)] bg-[rgba(16,185,129,0.10)] border-[rgba(16,185,129,0.3)]"
-                      : "text-[var(--color-error)] bg-[rgba(239,68,68,0.10)] border-[rgba(239,68,68,0.3)]",
+                      ? "text-[var(--color-success)] bg-(--color-success)/10 border-(--color-success)/30"
+                      : "text-[var(--color-error)] bg-(--color-error)/10 border-(--color-error)/30",
                   )}
                 >
                   {j.status.replace(/_/g, " ")}

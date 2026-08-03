@@ -243,10 +243,10 @@ export function ConsolePage() {
             className={cn(
               "mt-2 flex items-start gap-2 rounded-lg border p-2.5 text-[12px]",
               error || !candidateCheck.allowed
-                ? "border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] text-[var(--color-error)]"
+                ? "border-(--color-error)/35 bg-(--color-error)/8 text-[var(--color-error)]"
                 : commandRisk?.risk === "routine"
-                  ? "border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.06)] text-[var(--color-success)]"
-                  : "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-[var(--color-warning)]",
+                  ? "border-(--color-success)/30 bg-(--color-success)/6 text-[var(--color-success)]"
+                  : "border-(--color-warning)/35 bg-(--color-warning)/8 text-[var(--color-warning)]",
             )}
           >
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

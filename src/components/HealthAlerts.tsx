@@ -142,8 +142,8 @@ export function HealthAlerts() {
           className={cn(
             "flex items-start gap-2 px-3 py-2 rounded-md border backdrop-blur-sm shadow-lg",
             a.severity === "error"
-              ? "bg-[rgba(239,68,68,0.12)] border-[rgba(239,68,68,0.5)]"
-              : "bg-[rgba(245,158,11,0.12)] border-[rgba(245,158,11,0.5)]",
+              ? "bg-(--color-error)/12 border-(--color-error)/50"
+              : "bg-(--color-warning)/12 border-(--color-warning)/50",
           )}
         >
           <span
@@ -172,7 +172,7 @@ export function HealthAlerts() {
             onClick={() =>
               setDismissed((d) => new Set([...d, a.id]))
             }
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-black/10 hover:text-[var(--color-fg)]"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
             aria-label="Dismiss alert"
           >
             ×
