@@ -30,7 +30,8 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 ## UI and accessibility
 
 - Design direction: **Regolith Instrument Cluster** — disciplined 1980s digital automotive instrumentation governed by Apple HIG clarity. Rectangular segmented readouts, labeled lamps, rules, opaque bezels, tabular values, and a calm status spine carry the visual language. Amber is active/selected, cyan is system information, and every semantic color is paired with text or shape.
-- Home is a mission-control dashboard (2026-08-03): a full-width status rail (print state lamp + word, file, progress, remaining, link health) sits above the grid and is sticky under the app bar on compact screens with an opaque background. Desktop places the honest thermal dial cluster top-left (5 columns) beside the job panel (7 columns); the camera drops to a 7-column monitoring surface below with secondary vitals and readiness in the 5-column rail. Mobile follows task order: status → job → thermals → camera → vitals → readiness. Thermal instruments render dials at ≥148px and fall back to the rectangular bar renderer below that via CSS container queries.
+- Home is a mission-control cockpit (updated 2026-08-03, `7dd3c0d`): mission status lives in a full-bleed **`MissionBar` pinned to the bottom of the viewport on every route** (print state lamp + word, file, progress %, remaining, link health, plus the full-width progress strip that replaced the old app-bar sliver). On compact chrome the bar stacks directly above the bottom nav — flush, never overlapping — with shared `--mission-h` / `--bottomnav-h` tokens driving bar height, sidebar edge, and combined content clearance. The grid is the content-driven container-query `.dashboard-grid` (1 lane, 2 lanes at 720px, 3 at 1560px), not the former 5/7/12-column desktop split. Mobile follows task order: job → thermals → camera → vitals → readiness, with the mission bar always in view. Thermal instruments render dials at ≥148px and fall back to the rectangular bar renderer below that via CSS container queries.
+  - Superseded: before `e538aab` this was a top status rail sticky under the app bar. Any reference to a top rail or a 5/7-column desktop grid describes a build older than `e538aab`, not a regression.
 - Shared panels are restrained `InstrumentPanel` surfaces with ruled headers, 6px panel geometry, 44px targets, visible focus, safe-area navigation, and reduced-motion-safe 150ms state changes. Frost remains limited to the app bar and navigation chrome.
 - Files and Timelapses use a 5/7 desktop master-detail composition and amber selection rails rather than filled selected cards. Print History uses ruled rows. Control uses a precise control matrix and recessed coordinate plane. Console uses an opaque ruled log surface. Settings uses grouped zones and preserves Basic/Expert behavior.
 - No decorative gradients, shimmer, continuous pulse, Liquid Glass, or color-only states remain in the redesigned surfaces. The former blanket bans on "glow" and "fake semicircular thermal gauges" are narrowly amended below (2026-08-03); every other ban stands.
@@ -106,7 +107,7 @@ Deployed with the repo's own `deploy.sh` (no hand-rolled copy) at printer clock 
 Live UI verification, headless Chromium against the deployed build on the real printer (9/10 checks; the one failure is a printer-file data condition, not a code defect):
 
 - StatusRail present, exactly two visible thermal dials, no white screen, no uncaught page errors.
-- **Default accent verified on the device**: in a genuinely fresh profile (`localStorage forge.theme.accent` = `null`), computed `--color-accent` is `#f7a224`. This is the owner-reported accent bug, confirmed fixed on real hardware rather than only in mocks.
+- **Default accent verified on the device**: in a genuinely fresh profile (`localStorage forge.theme.accent` = `null`), computed `--color-accent` is `#f7a224`. This is the owner-reported accent bug, confirmed fixed on real hardware rather than only in mocks. *(Accurate as of `68181d0`. The accent was later snapped to Tailwind v4 amber-400 `#ffb900` in `9ac7ccf`; see the `7dd3c0d` release record below for the current on-device value.)*
 - Zero horizontal overflow at 1280x800 and at 800x480 (the K1's own panel size). Both dials render 200x172, above the 148px floor.
 - The only console error is a read-only HTTP 404 for `.thumbs/Filament_Swatch_PETG_19m37s-300x300.png`, the same missing-thumbnail metadata condition already tracked under Remaining issues. The UI renders its intentional placeholder.
 - macOS local-network privacy blocks Playwright's Chromium from reaching LAN addresses directly, so the browser reached the printer through a loopback reverse proxy. Every byte still came from the printer's own nginx, including the Moonraker WebSocket; nothing on the printer was modified to enable this.
@@ -220,6 +221,50 @@ Fix (`src/lib/printerActions.ts`, `src/lib/moonraker.ts`):
 - The live-state re-gate between setup and `startPrint` is unchanged; that is a safety check, not a setup step.
 
 Regression coverage in `tests/printerActions.test.ts` fails if anything ever sends `MACRO=PRINT_START`, `SET_GCODE_VARIABLE`, or `use_kamp` during print setup.
+
+## Live release — 2026-08-03, `7dd3c0d` (cockpit, amber-400 palette, oklab glow, active-print defects)
+
+Deployed sha `7dd3c0de03ef19336d9ad0fbd9d557e426393561` (branch `main`, even with `origin/main`).
+Printer clock at deploy: **Mon 2026-08-03 15:47:54 EST**; on-device verification 15:52 EST.
+Live `index.html` sha256 moved `7abea8ff2296…1919` → `de1175ff35e8…de59`.
+
+Rollback (armed and verified — `/usr/data/fluidd.previous/index.html` is exactly the pre-deploy `7abea8ff…`):
+
+```
+PRINTER_HOST=192.168.50.179 ./deploy.sh --rollback
+```
+
+Persistent backup `/usr/data/regolith-backups/fluidd-before-20260803T204754Z.tgz` (143133 bytes, sha256 `74dd0a29e92e…f3e2`, 21 files, 5 retained, 1 pruned).
+
+What shipped:
+
+- **Bottom `MissionBar` cockpit** (`e538aab`) — mission status pinned bottom on every route, density pass, more vitals in basic mode.
+- **Tailwind v4 amber-400 palette + oklab glow fix** (`89c1e43` and 5 earlier atomic commits) — the owner's *green dial glowing amber* bug. Every `color-mix` with a `transparent` operand moved from polar `oklch` to rectangular `oklab`, so a source hue can no longer be dragged toward 0° by the powerless-hue rule.
+- **Five active-print read-out defects** (`7dd3c0d`) — phantom progress on a stopped job, wrong "Remaining" derived from Klipper's monotonic clock, discarded current-layer-only readings, unsurfaced `print_stats.message`, and forced-colors glow contract pinned by tests.
+
+Independent pre-deploy verification (read-only, all re-run rather than trusted): `bun run lint`, `bun run test` (49 pass), `bun run test:e2e` (91 pass), `bun run build` — all exit 0. `git diff 64e943d -- src/lib/printerActions.ts src/lib/moonraker.ts` empty, so the hardware-proven print fix has not drifted; `git diff 6d11e3e -- deploy.sh scripts/` empty. `PRINT_START`, `SET_GCODE_VARIABLE`, `use_kamp` absent from executable `src/`; `ADAPTIVE_BED_MESH` present.
+
+Measured, not read from source (fresh profile, mocked scenarios):
+
+- Computed `--color-accent` = `rgb(255,185,0)` = `#ffb900`.
+- **Glow halo hue proven at the pixel level** by differencing a filter-on against a filter-off screenshot, which isolates the glow's own contribution from the blue-tinted panel. At-temperature: arc pixel `rgb(5,223,114)`, halo delta `(-2,+40,+17)` — decisively **G > R, the halo is green**. Heating arc `rgb(255,185,0)` halo delta `(+41,+28,-5)`; cooling arc `rgb(255,100,103)` halo delta `(+44,+14,+14)`; each halo matches its own arc. Computed filter is `oklab(… / 0.45)` in every state, never `oklch`.
+- `--color-gauge-track` relative luminance 0.0013 — an empty gauge still reads empty; it was not brightened to a 400 shade.
+- Floors at 320, 800x480, 1024, 1100, 1280, 2560: zero horizontal overflow, 2 dials at every width (151–312px, all ≥148), smallest font 11px, smallest hit target 44px, mission bar `position: fixed` and full-bleed at every width with content clearing its top edge. At 320 and 800x480 the bar's bottom edge equals the bottom nav's top edge exactly — flush, zero overlap.
+
+On-device verification against the deployed build (headless Chromium via an SSH loopback tunnel, since macOS local-network privacy still blocks Chromium from LAN addresses; every byte came from the printer's own nginx and nothing on the printer was modified):
+
+- 1280x800 and 800x480: dashboard renders, exactly 2 dials (211px / 162px), one `h1`, no white screen, zero horizontal overflow, **zero page errors and zero failed requests**, live camera streaming.
+- Fresh-profile computed `--color-accent` on the device = `rgb(255,185,0)` = `#ffb900`.
+- Dial halo pixel-sampled on the device matches the arc hue at both sizes (idle/cold arc is the cool desaturated state; halo never renders warmer than its arc).
+- The printer was genuinely idle before deploy (`webhooks: ready`, `print_stats: cancelled`, `idle_timeout: Idle`, `virtual_sdcard.is_active: false`, nozzle 25.6/0, bed 23.7/0, toolhead position identical across two samples 10s apart). **No print was started.**
+- Real-hardware proof of the read-out fixes: the lingering `cancelled` job now reports "STOPPED AT 0.0%", an honest `—` for Remaining, and offers "Print again" — previously it rendered phantom live progress with no affordance.
+- Only console error is the read-only HTTP 404 for `.thumbs/Filament_Swatch_PLA-CF_18m36s-300x300.png`, the same missing-thumbnail data condition already tracked under Remaining issues. The UI renders its placeholder.
+
+Known-minor items accepted at this release (none block deployment; all confirmed real but downgraded to minor during refutation):
+
+- `public/favicon.svg` still strokes the legacy orange `#f97316`; the shipped UI accent is unaffected.
+- `.status-lamp` paints `background: currentColor`, which forced-colors collapses onto the canvas colour — measured lamp-vs-backdrop contrast is **0**, so lamps are invisible in high-contrast mode. Every lamp is `aria-hidden` and sits beside the same state word as text, so no information is lost, and this release is still strictly better than the previous build, which used `display: none` and erased the dial arcs entirely in that mode.
+- Wide-viewport density: hollow card interiors persist at 1920/2560 and a tall empty band remains under the dials at 800x480–1100. Cosmetic; nothing clipped, hidden, or unreachable.
 
 ## Remaining issues
 
