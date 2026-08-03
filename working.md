@@ -6,14 +6,14 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
-- Exact-current Regolith through `5826002` is deployed and verified on the K1 Max. The first release attempt correctly stopped when `Ivar_Skadis_Hook_PETG_34m53s.gcode` was active; after that print completed successfully, every local, identity, idle, zero-power, backup, rollback-readiness, static-hash, route, camera, and zero-write gate was rerun from fresh evidence before deployment.
-- Regolith Instrument Cluster cosmetic redesign and responsive refinement are committed and pushed on `main` through `a74d2ac`, with handoff reconciliation through `5826002`. These exact static assets are now live.
+- **Exact-current Regolith through `68181d0` is deployed and verified on the K1 Max (2026-08-03 13:22:35 printer clock), and the print-start bug is proven fixed on real hardware.** A print was started from the deployed UI, klipper accepted it, and no `key69` error appeared anywhere. See "Live release and print-start proof" below.
+- Regolith Instrument Cluster cosmetic redesign and responsive refinement are committed and pushed on `main` through `a74d2ac`; the print-start fix, mission-control dashboard, accent fix, responsive rework, and active-state e2e coverage land through `68181d0`. These exact static assets are now live.
 - Home uses Mission → Camera → Thermals → Readiness on compact screens, full-width tablet composition through 1024px, and a balanced desktop camera/telemetry zone with the thermal/status rail. The compact PrinterCard metadata uses two wrapped rows, Settings has weighted groups, and Tune is organized as a calibration band plus pressure-advance and mesh surfaces.
 - The approved `Skadis Ivar Halter_PETG_2h49m.gcode` print completed successfully under read-only watch at 100%. Virtual SD became inactive, heater targets and power reached zero, cooling was monotonic, snapshots stayed available, and no new Klipper errors appeared. Any future deployment still needs fresh identity, idle, zero-power, backup, and rollback proof.
 - Camera stability, aligned card rhythm, bounded backup retention, printer-isolated browser QA, and neutral connection loading states are committed and pushed on `main` at `f2acff5`.
-- Static assets from `5826002` are deployed on the live K1 Max and include the Instrument Cluster redesign, camera reconnect fix, layout polish, backup retention, neutral loading states, and browser harness.
+- Static assets from `68181d0` are deployed on the live K1 Max and include the print-start fix, mission-control dashboard, default-accent fix, content-driven responsive layout, Instrument Cluster redesign, camera reconnect fix, backup retention, neutral loading states, and browser harness.
 - Delivery is fail-closed: key-first authentication, conclusive idle gates, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
-- No G-code or hardware-affecting printer action occurred during preflight, deployment, or validation.
+- No G-code or hardware-affecting printer action occurred during preflight or deployment. The one authorized exception is the 2026-08-03 print-start proof recorded below, which the owner explicitly requested; it was cancelled within seconds and the machine was returned to a cold, clear state.
 
 ## Safety boundaries
 
@@ -92,6 +92,56 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - The completed G-code references a missing `Ivar_Skadis_Hook_PETG_34m53s-300x300.png` thumbnail. Four repeated read-only HTTP 404s produced resource-console errors; the UI rendered its intentional placeholder. This is printer-file metadata, not a static deployment mismatch, so rollback was not triggered.
 - Final read-only state remained complete/Ready/inactive at `2,446,934/2,446,934`, with hotend `39.23 C` and bed `41.24 C`, both targets/power zero. No G-code, motion, homing, heating, extrusion, calibration, print control, firmware/service restart, or printer configuration change occurred.
 
+## Live release and print-start proof — 2026-08-03, `68181d0`
+
+Deployed with the repo's own `deploy.sh` (no hand-rolled copy) at printer clock 2026-08-03 13:22:35 EST, against `PRINTER_HOST=192.168.50.179`. `forge.local` does not resolve through this Mac's HTTP client, so the verified resolver address was used.
+
+- Pre-deploy gate, re-confirmed immediately before the swap: `webhooks=ready`, `print_stats=complete`, `idle_timeout=Idle`, `virtual_sdcard.is_active=false`, hotend `28.29 C`/0, bed `26.17 C`/0, plate visually clear on camera. `--preflight` exited 0 and changed no remote files.
+- The first deploy attempt failed closed at "Create persistent known-good backup" when dropbear refused a mid-run SSH auth (the printer has 209 MB RAM, ~67 MB free). **Live assets were never touched**: `/usr/data/fluidd/index.html` still hashed `fbfa8d9c…`, the staging slot and upload archive were both cleaned up. The retry succeeded end to end.
+- Deployment archive 145,032 bytes, SHA-256 `cdf00b0a4fde24a006cb34536f51bb7b6823f235212df4c60b3a4d33b8f26101`. Remote size/hash and staged file list matched before swap.
+- New verified backup `/usr/data/regolith-backups/fluidd-before-20260803T182235Z.tgz`, 139,747 bytes, SHA-256 `c49f75adf21cee318f6719331666a2872d664f8f0a903bd79e383edcbbf756c0`, 21 entries; retention kept five and pruned one oldest only after the new archive verified.
+- Atomic swap and required-asset HTTP verification passed; automatic rollback was not triggered. Live `index.html` is now `7abea8ff22966f6440a3d9e3446b838890dd41c517e7a8b5089a3f281cf31919` (was `fbfa8d9c7160f1377c9d74ca36ac3a129cda26be4197c903b7624f993f529a7d`). Live bundles are `index-BDcwHCix.js` / `index-t7XHCBCK.css` / `Dashboard-DOP69ueL.js`.
+- **Rollback is armed:** `/usr/data/fluidd.previous` holds the exact prior build (`index.html` = `fbfa8d9c…`, `index-DMN7bzFR.js`, `index-xuuYb8Er.css`, `Dashboard-JWPuMzEa.js`).
+
+Live UI verification, headless Chromium against the deployed build on the real printer (9/10 checks; the one failure is a printer-file data condition, not a code defect):
+
+- StatusRail present, exactly two visible thermal dials, no white screen, no uncaught page errors.
+- **Default accent verified on the device**: in a genuinely fresh profile (`localStorage forge.theme.accent` = `null`), computed `--color-accent` is `#f7a224`. This is the owner-reported accent bug, confirmed fixed on real hardware rather than only in mocks.
+- Zero horizontal overflow at 1280x800 and at 800x480 (the K1's own panel size). Both dials render 200x172, above the 148px floor.
+- The only console error is a read-only HTTP 404 for `.thumbs/Filament_Swatch_PETG_19m37s-300x300.png`, the same missing-thumbnail metadata condition already tracked under Remaining issues. The UI renders its intentional placeholder.
+- macOS local-network privacy blocks Playwright's Chromium from reaching LAN addresses directly, so the browser reached the printer through a loopback reverse proxy. Every byte still came from the printer's own nginx, including the Moonraker WebSocket; nothing on the printer was modified to enable this.
+
+**Print-start proof — the owner's top bug, driven through the deployed UI, not the API:**
+
+- File chosen: `Filament_Swatch_PLA-CF_18m36s.gcode`, the smallest of the 13 gcode files on the printer (1,291,965 bytes) and among the shortest at 18m36s.
+- User path exercised: nav **Files** → select the file row → page **Start print** → confirmation dialog "Ready to print?" → acknowledgement checkbox → dialog **Start print**.
+- **No `Print setup failed` banner, no `key69`, no "is not valid for MACRO"** — in the rendered UI, in the browser console, or in the 2,339 new `klippy.log` lines. A targeted scan for `key69|not valid for MACRO|SET_GCODE_VARIABLE|PRINT_START` over those new lines returned **zero hits**.
+- Klipper accepted the job: `print_stats.state=printing` with `virtual_sdcard.is_active=true` within ~3 s of the click. Verbatim `klippy.log`:
+
+```
+13:29:21,794 [virtual_sdcard:work_handler:560] work_handler start print, filename:/usr/data/printer_data/gcodes/Filament_Swatch_PLA-CF_18m36s.gcode
+13:29:21,817 [virtual_sdcard:work_handler:667] Starting SD card print (position 0)
+13:29:22,757 [verify_heater:check_event:63] Heater extruder approaching new target of 130.000
+13:29:22,759 [verify_heater:check_event:63] Heater heater_bed approaching new target of 45.000
+13:30:29,836 [verify_heater:check_event:63] Heater extruder approaching new target of 170.000
+13:30:56,874 [verify_heater:check_event:63] Heater extruder approaching new target of 200.000
+13:35:06,327 [verify_heater:check_event:63] Heater extruder approaching new target of 220.000
+13:36:12,469 [virtual_sdcard:work_handler:922] Exiting SD card print (position 9382)
+13:36:12,617 [gcode:respond_info:301] action:cancel
+```
+
+- The run was cancelled deliberately at position 9382 of 1,291,965 bytes (~0.7%). It completed `START_PRINT` preheat, G28 homing, and the bed-probe self-tests (all five logged `Pass!!`); no part was made and nothing was extruded onto the plate.
+- Peak temperatures reached: hotend **222.5 C**, bed **46.1 C**. `M104 S0` and `M140 S0` were then sent explicitly and both returned `ok`.
+- Final resting state: `print_stats=cancelled`, `virtual_sdcard.is_active=false`, `idle_timeout=Ready`, both heater targets **0**, cooling monotonically (hotend 95.8 C and falling, bed 40.3 C and falling at last reading), Klipper `ready`. A camera snapshot confirms a clean plate and a parked toolhead.
+- The only error-shaped lines in the new log are the K1's routine probe self-tests, each explicitly `Pass!!`.
+- Printer configuration was not modified; klipper and moonraker were not restarted; the owner's `scripts/` watchdog and its cron were not touched.
+
+Rollback command for this release:
+
+```sh
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+```
+
 ## Verification
 
 Exact-current local evidence:
@@ -113,7 +163,7 @@ Instrument Cluster evidence, local only:
 - `bun run lint`, `bun run build`, `bun run test`, `bun run test:deploy`, `bun run test:setup`, and `bun run test:e2e` pass on the cosmetic batch. The full browser suite has 10 passing tests.
 - `e2e/instrument-cluster.spec.ts` registers HTTP and WebSocket interception before navigation. It permits static localhost assets, only a mocked `printer.objects.subscribe` RPC, and a mocked camera image; it aborts and records all other external requests and all non-GET/HEAD writes. It proves zero escaped requests and zero writes for Basic 320px, Expert 1280px/reduced-motion, and offline-camera states.
 - Exact-current local captures in ignored `test-results/` cover all seven routes in Basic/Expert at 320, 390, 768, 1024, and 1280px. The responsive audit produces 70 canonical viewport top-state captures: it resets to `scrollY=0`, waits two animation frames, checks top-state geometry, and captures before any final-control scrolling. This preserves fixed chrome in its actual runtime position. Full-page expansion is intentionally not used as fixed-navigation evidence; a separate post-capture step checks mobile final-control reachability above the fixed navigation. It also checks horizontal bounds, visible text right-edge clipping, and 44px targets. Existing strict-mock coverage also exercises offline camera recovery, neutral telemetry, and stale-chunk recovery.
-- The strict local typography gate scans every visible direct text node and form control across those 70 route/mode/viewport states, excludes SVG geometry, and reports the tag, class, text, and computed size for any failure. It found 302 visible text occurrences below 11px across 12 of 14 route/view states before this cosmetic correction; exact-current local result is 0 below 11px. Live deployment verification remains pending a separately authorized redeploy.
+- The strict local typography gate scans every visible direct text node and form control across those 70 route/mode/viewport states, excludes SVG geometry, and reports the tag, class, text, and computed size for any failure. It found 302 visible text occurrences below 11px across 12 of 14 route/view states before this cosmetic correction; exact-current local result is 0 below 11px. Live deployment verification is complete as of the `68181d0` release recorded above.
 - Forbidden production safety and transport files were SHA-256 baselined before UI edits and remain unchanged. No printer, Moonraker, camera-device, forge.local, external network, deployment, service, or remote-file interaction occurred during this cosmetic batch.
 
 Read-only exact-current local Chrome smoke covered every route in Basic and Expert mode at 390x844 and 1280x900:
@@ -143,16 +193,16 @@ Read-only exact-current local Chrome smoke covered every route in Basic and Expe
 Recovery commands; provide the password only at runtime or through the silent prompt:
 
 ```sh
-./deploy.sh --preflight
-./deploy.sh --rollback
-curl --fail --show-error --connect-timeout 5 --max-time 12 http://forge.local/
+PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight
+PRINTER_HOST=192.168.50.179 ./deploy.sh --rollback
+curl --fail --show-error --connect-timeout 5 --max-time 12 http://192.168.50.179/
 ```
 
 If mDNS fails, resolve `forge.local`, verify that address against the stored ECDSA fingerprint above, then use `PRINTER_HOST=<verified-resolver-address> ./deploy.sh --preflight` or `--rollback`. Never hard-code an unverified address. Rollback swaps live and previous slots and verifies HTTP; failed verification restores the original slot automatically.
 
 ## Resolved: print start blocked by `PRINT_START`/`use_kamp` setup
 
-The owner's top bug — no print would start from Regolith — is fixed in code. Not yet deployed to the printer.
+The owner's top bug — no print would start from Regolith — is fixed in code, deployed in `68181d0`, and **proven on the live K1 Max on 2026-08-03**: a print started from the deployed UI, klipper accepted it, and no `key69` appeared in the UI, the console, or `klippy.log`. Full evidence in "Live release and print-start proof" above.
 
 Root cause, verified read-only on `forge.local`. Before every print Regolith sent
 `SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=0|1`. Two independent errors:
@@ -176,7 +226,9 @@ Regression coverage in `tests/printerActions.test.ts` fails if anything ever sen
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
-- The completed `Ivar_Skadis_Hook_PETG_34m53s.gcode` job references a missing 300x300 thumbnail. Regolith falls back to a clear placeholder, but the browser still reports a read-only 404. Avoid generating or writing printer thumbnails during release QA; fix this only in the slicer/upload pipeline or through a separately authorized printer-file workflow.
+- Several uploaded jobs reference a missing 300x300 thumbnail; as of the `68181d0` release the live 404 is `.thumbs/Filament_Swatch_PETG_19m37s-300x300.png`. Regolith falls back to a clear placeholder, but the browser still reports a read-only 404 and it is the only console error on the deployed dashboard. Avoid generating or writing printer thumbnails during release QA; fix this only in the slicer/upload pipeline or through a separately authorized printer-file workflow.
+- `deploy.sh` can fail mid-run when dropbear refuses an SSH auth under memory pressure (209 MB total RAM). It fails closed and leaves live assets untouched, so a plain retry is safe, but a bounded auth retry or a single reused SSH connection would remove the flake.
+- The `Filament_Swatch_PLA-CF_18m36s.gcode` job used for the print-start proof is now recorded on the printer as `cancelled`. That is expected and not a fault.
 
 ## User-owned files
 
