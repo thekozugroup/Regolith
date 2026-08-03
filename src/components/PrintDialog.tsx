@@ -4,7 +4,9 @@ import { ModalSurface } from "./ModalSurface";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
 import { usePrinter } from "@/lib/usePrinter";
 import {
+  KAMP_STORAGE_KEY,
   guardPrinterAction,
+  kampEnabledFromStorage,
   runPrinterAction,
   type PrinterAction,
 } from "@/lib/printerActions";
@@ -42,13 +44,19 @@ export interface GcodeMetadata {
   first_layer_bed_temp?: number;
 }
 
-const KAMP_KEY = "forge.print.kamp";
-
 export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps) {
   const { state, connected, profile } = usePrinter();
-  const [kamp, setKamp] = useState(
-    () => localStorage.getItem(KAMP_KEY) !== "0",
+  // Default ON (basic QoL for kamp-capable profiles); only a persisted,
+  // explicit opt-out disables it — see kampEnabledFromStorage.
+  const [kamp, setKamp] = useState(() =>
+    kampEnabledFromStorage(localStorage.getItem(KAMP_STORAGE_KEY)),
   );
+  // Persist the choice the moment it is TOGGLED, not only when a print
+  // starts — closing the dialog after flipping the switch must still stick.
+  const updateKamp = (value: boolean) => {
+    localStorage.setItem(KAMP_STORAGE_KEY, value ? "1" : "0");
+    setKamp(value);
+  };
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +82,6 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     setBusy(true);
     setError(null);
     try {
-      localStorage.setItem(KAMP_KEY, kamp ? "1" : "0");
       const result = await runPrinterAction(action, {
         confirm: () => acknowledged,
       });
@@ -209,7 +216,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
                 label="Adaptive bed mesh"
                 description="Probe only this model’s print area before printing. Skipped if this printer does not support it; the print still starts."
                 checked={kamp}
-                onChange={setKamp}
+                onChange={updateKamp}
               />
             </div>
           )}

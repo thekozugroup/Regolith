@@ -4,6 +4,7 @@ import {
   createPrinterActionRunner,
   getConsoleCommandRisk,
   guardPrinterAction,
+  kampEnabledFromStorage,
   PrinterActionError,
   type PrinterActionClient,
 } from "../src/lib/printerActions";
@@ -295,6 +296,24 @@ describe("printer action safety", () => {
         { type: "set-pressure-advance", value: 0.04, save: true },
       ).allowed,
     ).toBe(false);
+  });
+});
+
+describe("adaptive bed mesh default", () => {
+  // Owner request: basic print QoL (adaptive bed mesh) is ON by default.
+  // Only an explicit, persisted opt-out may disable it.
+  test("a fresh browser with nothing stored defaults ON", () => {
+    expect(kampEnabledFromStorage(null)).toBe(true);
+  });
+
+  test("an explicit opt-out stays off, an explicit opt-in stays on", () => {
+    expect(kampEnabledFromStorage("0")).toBe(false);
+    expect(kampEnabledFromStorage("1")).toBe(true);
+  });
+
+  test("garbage in storage falls back to the QoL default, ON", () => {
+    expect(kampEnabledFromStorage("")).toBe(true);
+    expect(kampEnabledFromStorage("false")).toBe(true);
   });
 });
 

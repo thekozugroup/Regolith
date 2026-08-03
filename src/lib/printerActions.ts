@@ -3,6 +3,19 @@ import { canJog, getSafetyState, type Axis } from "./safety";
 
 export type PrintSetupOption = "kamp-on" | "kamp-off";
 
+/** Where the print dialog persists the owner's adaptive-bed-mesh choice. */
+export const KAMP_STORAGE_KEY = "forge.print.kamp";
+
+/**
+ * Adaptive bed mesh (KAMP) is a basic print-QoL feature and defaults ON for
+ * profiles that support it. Only an explicit opt-out ("0", persisted the
+ * moment the owner toggles it off) disables it; a fresh browser, a cleared
+ * store, or any unrecognized value all resolve to enabled.
+ */
+export function kampEnabledFromStorage(stored: string | null): boolean {
+  return stored !== "0";
+}
+
 /**
  * Optional pre-print setup steps.
  *
