@@ -4,11 +4,20 @@ import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
 import { MissionTimeline } from "@/components/MissionTimeline";
 import { CameraStream } from "@/components/CameraStream";
+import { StatusRail } from "@/components/StatusRail";
 import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 
+/**
+ * Mission-control dashboard. Zones per the design spec:
+ *   Z1 status rail · Z2 gauge cluster · Z3 job · Z4 viewport ·
+ *   Z5 secondary vitals (expert) · Z6 readiness.
+ * DOM order follows the mobile task order ("is it OK?" → "how hot?" →
+ * "show me" → details); md/lg rearrange with order-* + col-span, the
+ * proven approach — no grid-template-areas.
+ */
 export function Dashboard() {
   const { state, profile } = usePrinter();
   const [experienceMode] = useExperienceMode();
@@ -16,38 +25,49 @@ export function Dashboard() {
   const fanSpeed = state.fan?.speed ?? 0;
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
-      <div className="order-2 md:col-span-8 lg:order-1 lg:col-span-8">
-        <Card title="Camera" icon={<Camera />}>
-          <div className="relative -m-[clamp(0.75rem,1.4vw,1.25rem)] aspect-video overflow-hidden bg-black">
-            <CameraStream className="absolute inset-0" />
-            {isExpert && state.toolhead?.position && (
-              <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[11px] tabular-nums">
-                <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
-                <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
-                <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
-              </div>
-            )}
+    <div className="mx-auto max-w-[1440px] p-[var(--page-gutter)]">
+      {/* Z1 — STATUS RAIL (sticky under the app bar on compact screens) */}
+      <StatusRail />
+
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-8 lg:grid-cols-12">
+        {/* Z3 — JOB / PROGRESS */}
+        <div className="md:order-2 md:col-span-4 lg:order-2 lg:col-start-6 lg:col-span-7">
+          <MissionTimeline />
+        </div>
+
+        {/* Z2 — PRIMARY GAUGE CLUSTER */}
+        <div className="md:order-1 md:col-span-4 lg:order-1 lg:col-span-5">
+          <ThermalsPanel state={state} profile={profile} isExpert={isExpert} />
+        </div>
+
+        {/* Z4 — VIEWPORT */}
+        <div className="md:order-3 md:col-span-8 lg:order-4 lg:col-start-6 lg:col-span-7">
+          <Card title="Camera" icon={<Camera />}>
+            <div className="relative -m-[var(--card-pad)] aspect-video overflow-hidden bg-black">
+              <CameraStream className="absolute inset-0" />
+              {isExpert && state.toolhead?.position && (
+                <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[11px] tabular-nums">
+                  <span>X{state.toolhead.position[0]?.toFixed(1) ?? "—"}</span>
+                  <span>Y{state.toolhead.position[1]?.toFixed(1) ?? "—"}</span>
+                  <span>Z{state.toolhead.position[2]?.toFixed(2) ?? "—"}</span>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Z5 — SECONDARY VITALS (expert) */}
+        {isExpert && (
+          <div className="md:order-4 md:col-span-4 lg:order-3 lg:col-span-5">
+            <TelemetryPanel state={state} fanSpeed={fanSpeed} />
           </div>
-        </Card>
+        )}
+
+        {/* Z6 — READINESS */}
+        <div className={cn("md:order-5 md:col-span-4 lg:col-span-5", isExpert ? "lg:order-5" : "lg:order-3")}>
+          <PrinterCard />
+        </div>
       </div>
-
-      <div className="order-1 md:col-span-8 lg:order-2 lg:col-start-9 lg:col-span-4">
-        <MissionTimeline />
-      </div>
-
-      <div className="order-3 md:col-span-8 lg:order-4 lg:col-start-9 lg:col-span-4">
-        <ThermalsPanel state={state} profile={profile} isExpert={isExpert} />
-      </div>
-
-      <div className="order-4 md:col-span-8 lg:order-5 lg:col-start-9 lg:col-span-4">
-        <PrinterCard />
-      </div>
-
-      {isExpert && <div className="order-5 md:col-span-8 lg:order-3 lg:col-span-8">
-        <TelemetryPanel state={state} fanSpeed={fanSpeed} />
-      </div>}
-
     </div>
   );
 }

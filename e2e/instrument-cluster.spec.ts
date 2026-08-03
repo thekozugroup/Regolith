@@ -16,6 +16,17 @@ const printerState = {
 const mockCameraFrame = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#14191f"/><path d="M0 560h1280M0 360h1280M320 0v720M640 0v720M960 0v720" stroke="#29323c" stroke-width="1"/><rect x="500" y="300" width="280" height="180" fill="#222b34" stroke="#5b6876" stroke-width="2"/><path d="M540 450h200M580 410h120" stroke="#d6a343" stroke-width="4"/></svg>`;
 
 type StrictMock = { writes: string[]; escaped: string[]; subscriptions: string[] };
+type ExperienceMode = "basic" | "expert";
+
+const routeReadyHeadings: Record<string, Record<ExperienceMode, string>> = {
+  "/": { basic: "Camera", expert: "Camera" },
+  "/print": { basic: "Files", expert: "Files" },
+  "/control": { basic: "Toolhead", expert: "Toolhead" },
+  "/tune": { basic: "Expert tool hidden", expert: "Calibration & maintenance" },
+  "/timelapses": { basic: "Timelapses", expert: "Timelapses" },
+  "/console": { basic: "Expert tool hidden", expert: "Console" },
+  "/settings": { basic: "Experience", expert: "Experience" },
+};
 
 async function installStrictMock(page: Page): Promise<StrictMock> {
   const audit: StrictMock = { writes: [], escaped: [], subscriptions: [] };
@@ -57,8 +68,12 @@ async function installStrictMock(page: Page): Promise<StrictMock> {
   return audit;
 }
 
-async function assertInstrumentShell(page: Page) {
-  await page.waitForFunction(() => !document.body.innerText.includes("Loading view…"));
+async function assertInstrumentShell(page: Page, experienceMode: ExperienceMode) {
+  const pathname = new URL(page.url()).pathname;
+  const heading = routeReadyHeadings[pathname]?.[experienceMode];
+  expect(heading, `No lazy-route readiness marker for ${pathname}`).toBeTruthy();
+  await expect(page.locator("main").getByRole("heading", { name: heading, exact: true }), `Lazy route ${pathname} did not settle to ${heading}`).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading view…" })).toHaveCount(0);
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("main > *").first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -69,6 +84,29 @@ async function assertInstrumentShell(page: Page) {
     }).map((item) => item.getAttribute("aria-label") || item.textContent?.trim() || item.tagName),
   );
   expect(undersized).toEqual([]);
+  await assertHonestDials(page);
+}
+
+/**
+ * Dials must be honest instruments: never rendered below the 148px floor
+ * (the bar renderer takes over via container query), and never carrying SVG
+ * <text> — SVG text scales with the viewBox and would silently slip under
+ * the 11px legibility gate, which excludes SVG geometry.
+ */
+async function assertHonestDials(page: Page) {
+  const dishonest = await page.locator(".gauge-dial").evaluateAll((items) =>
+    items.flatMap((item) => {
+      const issues: string[] = [];
+      const svgText = item.querySelectorAll("text").length;
+      if (svgText > 0) issues.push(`dial contains ${svgText} SVG <text> node(s)`);
+      const box = item.getBoundingClientRect();
+      if (box.width > 0 && box.height > 0 && box.width < 148) {
+        issues.push(`dial rendered at ${box.width.toFixed(1)}px — below the 148px floor instead of falling back to the bar renderer`);
+      }
+      return issues;
+    }),
+  );
+  expect(dishonest).toEqual([]);
 }
 
 async function resetTopState(page: Page) {
@@ -79,9 +117,9 @@ async function resetTopState(page: Page) {
   }));
 }
 
-async function assertTopStateAudit(page: Page) {
+async function assertTopStateAudit(page: Page, experienceMode: ExperienceMode) {
   await resetTopState(page);
-  await assertInstrumentShell(page);
+  await assertInstrumentShell(page, experienceMode);
   const clipped = await page.locator("main h2, main h3, main p, main button, main label, main output, main .instrument-label").evaluateAll((items) =>
     items.filter((item) => {
       const style = getComputedStyle(item);
@@ -141,7 +179,8 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     await page.addInitScript(() => localStorage.setItem("forge.experience-mode", "basic"));
     for (const route of ["/", "/print", "/control", "/timelapses", "/settings", "/tune", "/console"]) {
       await page.goto(route);
-      await assertInstrumentShell(page);
+      await assertInstrumentShell(page, "basic");
+      if (route === "/") await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
       await page.screenshot({ path: testInfo.outputPath(`basic-320-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
     }
     expect(audit.escaped).toEqual([]);
@@ -156,7 +195,8 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     await page.addInitScript(() => localStorage.setItem("forge.experience-mode", "expert"));
     for (const route of ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"]) {
       await page.goto(route);
-      await assertInstrumentShell(page);
+      await assertInstrumentShell(page, "expert");
+      if (route === "/") await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
       await page.screenshot({ path: testInfo.outputPath(`expert-1280-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
     }
     expect(audit.escaped).toEqual([]);
@@ -192,7 +232,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       });
       for (const route of routes) {
         await page.goto(route);
-        await assertTopStateAudit(page);
+        await assertTopStateAudit(page, "basic");
         await assertMinimumVisibleText(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
         await assertFinalControlReachability(page);
@@ -204,7 +244,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       });
       for (const route of routes) {
         await page.goto(route);
-        await assertTopStateAudit(page);
+        await assertTopStateAudit(page, "expert");
         await assertMinimumVisibleText(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
         await assertFinalControlReachability(page);

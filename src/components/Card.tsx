@@ -24,7 +24,7 @@ export function Card({
         className
       )}
     >
-      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-[clamp(0.75rem,1.4vw,1.25rem)]">
+      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-[var(--card-pad)]">
         <div className="flex min-w-0 items-center gap-2 text-[14px] font-semibold tracking-[-0.01em]">
           {icon && (
             <span aria-hidden="true" className="text-[var(--color-accent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
@@ -35,7 +35,7 @@ export function Card({
         </div>
         {action}
       </header>
-      <div className="p-[clamp(0.75rem,1.4vw,1.25rem)]">{children}</div>
+      <div className="p-[var(--card-pad)]">{children}</div>
     </section>
   );
 }

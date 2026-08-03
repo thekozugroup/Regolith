@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Dial } from "@/components/Dial";
 
 export interface ThermalGaugeProps {
   label: string;
@@ -10,7 +11,13 @@ export interface ThermalGaugeProps {
   icon?: ReactNode;
 }
 
-/** A rectangular, readable thermal instrument; no decorative gauge geometry. */
+/**
+ * Thermal instrument. Renders an honest dial (labeled scale, ticks, target
+ * index, dominant readout) when its container is at least 148px wide, and
+ * falls back to the rectangular bar renderer below that. The switch is a
+ * CSS container query (`.dial-slot` / `.bar-slot` in index.css) — no JS
+ * measurement.
+ */
 export function ThermalGauge({
   label,
   actual,
@@ -26,9 +33,11 @@ export function ThermalGauge({
   const heating = active && value < setpoint - 2;
   const stable = active && Math.abs(value - setpoint) < 2;
   const overTarget = active && value > setpoint + 5;
+  // Overheat guard: near the absolute limit overrides every other state.
+  const overheat = hasActual && value >= 0.95 * maxTemp;
   const percent = Math.max(0, Math.min(100, (value / maxTemp) * 100));
-  const status = overTarget ? "Above target" : stable ? "Stable" : heating ? "Heating" : active ? "Regulating" : "Standby";
-  const stateColor = overTarget
+  const status = overheat ? "Overheat" : overTarget ? "Above target" : stable ? "Stable" : heating ? "Heating" : active ? "Regulating" : "Standby";
+  const stateColor = overheat || overTarget
     ? "var(--color-error)"
     : stable
       ? "var(--color-success)"
@@ -41,7 +50,8 @@ export function ThermalGauge({
       role="img"
       aria-label={`${label} temperature ${hasActual ? `${value.toFixed(1)} degrees Celsius` : "unavailable"}`}
       aria-description={`${setpoint > 0 ? `Target ${setpoint.toFixed(0)} degrees Celsius. ` : "No target. "}${status}.`}
-      className="min-w-0 border border-[var(--color-border)] bg-[var(--color-elevated)]/38 p-3"
+      className="thermal-instrument min-w-0 border border-[var(--color-border)] bg-[var(--color-elevated)]/38 p-3"
+      style={{ "--gauge-stroke": stateColor } as CSSProperties}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -49,26 +59,34 @@ export function ThermalGauge({
           <h3 className="instrument-label truncate">{label}</h3>
         </div>
         <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium" style={{ color: stateColor }}>
-          <span aria-hidden="true" className="status-lamp" />
+          <span aria-hidden="true" className={cn("status-lamp", active && "phosphor-glow")} />
           {status}
         </span>
       </div>
 
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className={cn("instrument-value text-[clamp(1.65rem,3vw,2.35rem)] font-semibold leading-none tracking-[-0.06em]", !hasActual && "text-[var(--color-fg-muted)]")}>
-            {hasActual ? value.toFixed(1) : "—"}<span className="ml-1 text-[0.45em] tracking-normal">°C</span>
-          </div>
-          <div className="mt-2 flex gap-3 text-[11px] text-[var(--color-fg-muted)]">
-            <span><span className="instrument-label mr-1 text-[11px]">Set</span>{setpoint > 0 ? `${setpoint.toFixed(0)}°` : "—"}</span>
-            <span><span className="instrument-label mr-1 text-[11px]">Power</span>{power != null ? `${Math.round(power * 100)}%` : "—"}</span>
-          </div>
-        </div>
-        <span className="instrument-label shrink-0 text-right">Max<br />{maxTemp}°</span>
+      {/* Dial renderer — shown only when the instrument is ≥148px wide */}
+      <div className="dial-slot mt-3">
+        <Dial actual={actual} target={setpoint} power={power} maxTemp={maxTemp} />
       </div>
 
-      <div className="mt-3 h-1.5 overflow-hidden bg-[var(--color-bg)]" aria-hidden="true">
-        <div className="h-full transition-[width,background-color] duration-150" style={{ width: `${percent}%`, backgroundColor: stateColor }} />
+      {/* Bar renderer — the fallback below the 148px dial floor */}
+      <div className="bar-slot">
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className={cn("instrument-value text-[clamp(1.65rem,3vw,2.35rem)] font-semibold leading-none tracking-[-0.06em]", !hasActual && "text-[var(--color-fg-muted)]")}>
+              {hasActual ? value.toFixed(1) : "—"}<span className="ml-1 text-[0.45em] tracking-normal">°C</span>
+            </div>
+            <div className="mt-2 flex gap-3 text-[11px] text-[var(--color-fg-muted)]">
+              <span><span className="instrument-label mr-1 text-[11px]">Set</span>{setpoint > 0 ? `${setpoint.toFixed(0)}°` : "—"}</span>
+              <span><span className="instrument-label mr-1 text-[11px]">Power</span>{power != null ? `${Math.round(power * 100)}%` : "—"}</span>
+            </div>
+          </div>
+          <span className="instrument-label shrink-0 text-right">Max<br />{maxTemp}°</span>
+        </div>
+
+        <div className="mt-3 h-1.5 overflow-hidden bg-[var(--color-bg)]" aria-hidden="true">
+          <div className="h-full transition-[width,background-color] duration-150" style={{ width: `${percent}%`, backgroundColor: stateColor }} />
+        </div>
       </div>
     </section>
   );

@@ -54,6 +54,10 @@ export function MissionTimeline() {
     klipperEst > elapsed && klipperEst < 86400 ? klipperEst : linearTotal;
   const remaining = totalEst > elapsed ? totalEst - elapsed : 0;
   const filamentMm = ps?.filament_used ?? 0;
+  // Layer N / M — promoted to the job panel; the row is hidden entirely when
+  // the slicer supplies no total (never "— / —").
+  const totalLayer = ps?.info?.total_layer;
+  const currentLayer = ps?.info?.current_layer;
 
   // Track activity start for non-print ops
   useEffect(() => {
@@ -302,7 +306,7 @@ export function MissionTimeline() {
               className="text-[13px] font-medium truncate"
               title={filename}
             >
-              {filename || "—"}
+              {filename ? filename.split("/").pop()?.replace(/\.gcode$/i, "") : "—"}
             </span>
             <StateBadge state={printState} />
           </div>
@@ -352,19 +356,27 @@ export function MissionTimeline() {
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-3 pt-1">
+          <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
             <Stat
               label="Progress"
               value={`${(progress * 100).toFixed(1)}%`}
               accent
             />
+            {totalLayer != null && (
+              <Stat
+                label="Layer"
+                value={`${currentLayer ?? "—"} / ${totalLayer}`}
+                accent
+              />
+            )}
+            <Stat
+              label="Remaining"
+              value={isPrintingFile ? formatDuration(remaining) : "—"}
+              accent={isPrintingFile}
+            />
             <Stat label="Elapsed" value={formatDuration(elapsed)} />
             <Stat
-              label="ETA"
-              value={isPrintingFile ? formatDuration(remaining) : "—"}
-            />
-            <Stat
-              label="Filament"
+              label="Filament used"
               value={
                 filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"
               }

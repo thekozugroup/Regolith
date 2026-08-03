@@ -49,6 +49,18 @@ const IDLE_STATE = {
   },
 };
 
+type ExperienceMode = "basic" | "expert";
+
+const routeReadyHeadings: Record<string, Record<ExperienceMode, string>> = {
+  "/": { basic: "Camera", expert: "Camera" },
+  "/print": { basic: "Files", expert: "Files" },
+  "/control": { basic: "Toolhead", expert: "Toolhead" },
+  "/tune": { basic: "Expert tool hidden", expert: "Calibration & maintenance" },
+  "/timelapses": { basic: "Timelapses", expert: "Timelapses" },
+  "/console": { basic: "Expert tool hidden", expert: "Console" },
+  "/settings": { basic: "Experience", expert: "Experience" },
+};
+
 interface Isolation {
   cameraRequests: () => number;
   failControlChunk: (value: boolean) => void;
@@ -213,7 +225,12 @@ async function isolateFromPrinter(
   };
 }
 
-async function expectLayoutIntegrity(page: Page) {
+async function expectLayoutIntegrity(page: Page, experienceMode: ExperienceMode) {
+  const pathname = new URL(page.url()).pathname;
+  const heading = routeReadyHeadings[pathname]?.[experienceMode];
+  expect(heading, `No lazy-route readiness marker for ${pathname}`).toBeTruthy();
+  await expect(page.locator("main").getByRole("heading", { name: heading, exact: true }), `Lazy route ${pathname} did not settle to ${heading}`).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading view…" })).toHaveCount(0);
   await expect(page.locator("h1")).toHaveCount(1);
   const audit = await page.evaluate(() => {
     const visible = (element: HTMLElement) => {
@@ -250,7 +267,7 @@ for (const viewport of [
 
     for (const path of ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"]) {
       await page.goto(path);
-      await expectLayoutIntegrity(page);
+      await expectLayoutIntegrity(page, "basic");
       await page.screenshot({
         path: testInfo.outputPath(`basic-${path === "/" ? "home" : path.slice(1)}.png`),
         fullPage: true,
@@ -269,7 +286,7 @@ for (const viewport of [
 
     for (const path of ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"]) {
       await page.goto(path);
-      await expectLayoutIntegrity(page);
+      await expectLayoutIntegrity(page, "expert");
       await page.screenshot({
         path: testInfo.outputPath(`expert-${path === "/" ? "home" : path.slice(1)}.png`),
         fullPage: true,
@@ -338,6 +355,6 @@ test("stale route chunk offers one safe reload and recovers", async ({ page }) =
   isolation.failControlChunk(false);
   await page.getByRole("button", { name: "Reload Regolith" }).click();
   await expect(page.getByRole("heading", { name: "Toolhead" })).toBeVisible();
-  await expectLayoutIntegrity(page);
+  await expectLayoutIntegrity(page, "basic");
   isolation.assertSafe();
 });

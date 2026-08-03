@@ -22,6 +22,53 @@
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
+
+  /* --- Gauge instrument --- */
+  --color-gauge-track: oklch(0.26 0.014 250);
+  --color-gauge-tick: oklch(0.46 0.02 250);
+  --color-gauge-tick-minor: oklch(0.34 0.018 250);
+  --color-gauge-target: oklch(0.88 0.014 85);
+
+  /* --- 80s digital, bounded --- */
+  --color-ghost-segment: oklch(0.94 0.012 85 / 0.07);
+  --color-phosphor: var(--color-accent); /* follows the user accent */
+  --color-phosphor-alt: var(--color-info);
+  --glow-radius: 4px;
+  --glow-alpha: 0.45;
+  --crt-scanline-alpha: 0.025;
+  --crt-scanline-period: 2px;
+  --graticule-alpha: 0.4;
+  --graticule-step: 24px;
+
+  /* --- Layout --- */
+  --page-gutter: clamp(0.75rem, 2vw, 1.5rem);
+  --card-pad: clamp(0.75rem, 1.4vw, 1.25rem);
+  --rail-h: 56px;
+  --hit-min: 44px;
+  --panel-radius: 6px;
+
+  /* --- Dial geometry --- */
+  --gauge-size-min: 148px; /* hard floor — below this the bar renderer takes over */
+  --gauge-size-pref: clamp(148px, 42cqi, 232px);
+  --gauge-sweep: 240; /* deg */
+  --gauge-start: 150; /* deg */
+  --gauge-radius: 74; /* user units */
+  --gauge-stroke-w: 12; /* user units */
+
+  /* --- Type --- */
+  --text-instrument-xs: 0.6875rem; /* 11px HARD FLOOR */
+  --text-instrument-sm: 0.8125rem; /* 13px */
+  --text-instrument-md: 0.9375rem; /* 15px */
+  --text-readout-sm: clamp(1.125rem, 5cqi, 1.5rem);
+  --text-readout-md: clamp(1.5rem, 7cqi, 2.1rem);
+  --text-readout-lg: clamp(1.75rem, 9cqi, 2.75rem);
+
+  /* --- Motion --- */
+  --dur-fast: 120ms;
+  --dur-base: 150ms;
+  --dur-slow: 220ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {
@@ -63,6 +110,7 @@
     border: 1px solid var(--color-border);
     border-radius: 6px;
     box-shadow: inset 0 1px 0 color-mix(in oklch, var(--color-fg) 4%, transparent);
+    container-type: inline-size;
   }
 
   .instrument-label {
@@ -77,6 +125,55 @@
   .instrument-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; }
   .ruled-row + .ruled-row { border-top: 1px solid color-mix(in oklch, var(--color-border) 72%, transparent); }
   .status-lamp { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 1px; background: currentColor; flex: none; }
+
+  .readout {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: -0.05em;
+    line-height: 1;
+    color: var(--color-fg);
+  }
+  .readout-ghost { position: absolute; inset: 0; color: var(--color-ghost-segment); pointer-events: none; }
+
+  .phosphor-glow {
+    filter: drop-shadow(0 0 var(--glow-radius)
+      color-mix(in oklch, currentColor calc(var(--glow-alpha) * 100%), transparent));
+  }
+
+  .crt-scanlines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--color-fg) calc(var(--crt-scanline-alpha) * 100%), transparent) 0 1px,
+      transparent 1px var(--crt-scanline-period));
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .crt-scanlines::after { display: none; }
+  }
+  @media (forced-colors: active) {
+    .crt-scanlines::after, .phosphor-glow { display: none; filter: none; }
+  }
+
+  .status-rail { min-height: var(--rail-h); background: var(--color-bg); position: relative; }
+
+  /* Dial ⇄ bar renderer switch. Each thermal instrument is its own inline-size
+     container; the query measures its content box, so a matching container
+     guarantees the dial renders at or above the 148px hard floor. CSS-only —
+     no JS resize listeners. */
+  .thermal-instrument { container-type: inline-size; }
+  .dial-slot { display: none; }
+  @container (min-width: 148px) {
+    .dial-slot { display: block; }
+    .bar-slot { display: none; }
+  }
+  /* Minor ticks alias into mud on small dials. */
+  .dial-ticks-minor { display: none; }
+  @container (min-width: 190px) {
+    .dial-ticks-minor { display: initial; }
+  }
 }
 
 @media (max-width: 47.99rem) {
