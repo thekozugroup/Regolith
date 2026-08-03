@@ -51,7 +51,11 @@
 
   /* --- Gauge instrument --- */
   --color-gauge-track: oklch(0.26 0.014 250);
-  --color-gauge-tick: oklch(0.46 0.02 250);
+  /* Major graduations are informational (the scale a value is read against),
+     so they owe WCAG 1.4.11 its 3:1 non-text floor: slate-500, 3.92:1 vs
+     surface. The old 0.46-L mark measured 2.62:1; slate-600 (2.46) fails too.
+     Minor ticks and the track stay deliberately sub-threshold — decorative. */
+  --color-gauge-tick: oklch(0.554 0.046 257.417);
   --color-gauge-tick-minor: oklch(0.34 0.018 250);
   --color-gauge-target: oklch(0.88 0.014 85);
 

@@ -201,8 +201,11 @@ function Stat({ label, value }: { label: string; value: string | undefined }) {
 
 function StatusDot({ state }: { state: string | undefined }) {
   const ok = state === "ready";
+  // aria-hidden like every other lamp in the app: the sibling text carries
+  // the state, so AT must not be handed a bare unnamed color-only element.
   return (
     <span
+      aria-hidden="true"
       className={cn(
         "status-lamp",
         ok
