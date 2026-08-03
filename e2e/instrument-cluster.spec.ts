@@ -79,7 +79,7 @@ async function resetTopState(page: Page) {
   }));
 }
 
-async function assertRouteAudit(page: Page) {
+async function assertTopStateAudit(page: Page) {
   await resetTopState(page);
   await assertInstrumentShell(page);
   const clipped = await page.locator("main h2, main h3, main p, main button, main label, main output, main .instrument-label").evaluateAll((items) =>
@@ -90,6 +90,9 @@ async function assertRouteAudit(page: Page) {
     }).map((item) => item.textContent?.trim() || item.getAttribute("aria-label") || item.tagName),
   );
   expect(clipped).toEqual([]);
+}
+
+async function assertFinalControlReachability(page: Page) {
   const lastControl = page.locator("main button:visible, main a:visible, main input:visible, main select:visible").last();
   if (await lastControl.count()) {
     await lastControl.scrollIntoViewIfNeeded();
@@ -100,7 +103,6 @@ async function assertRouteAudit(page: Page) {
     });
     expect(hiddenByNav).toBe(false);
   }
-  await resetTopState(page);
 }
 
 test.describe("Regolith Instrument Cluster — strict local mock", () => {
@@ -161,8 +163,9 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       });
       for (const route of routes) {
         await page.goto(route);
-        await assertRouteAudit(page);
+        await assertTopStateAudit(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
+        await assertFinalControlReachability(page);
       }
       await page.goto("/");
       await page.evaluate(() => {
@@ -171,8 +174,9 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       });
       for (const route of routes) {
         await page.goto(route);
-        await assertRouteAudit(page);
+        await assertTopStateAudit(page);
         await page.screenshot({ path: testInfo.outputPath(`top-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: false, animations: "disabled" });
+        await assertFinalControlReachability(page);
       }
     }
     expect(audit.escaped).toEqual([]);
