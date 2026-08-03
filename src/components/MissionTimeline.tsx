@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Square, FileText, Activity, X, RotateCcw, AlertTriangle } from "lucide-react";
+import { ActionConfirmDialog } from "./ActionConfirmDialog";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { usePrinter } from "@/lib/usePrinter";
@@ -12,7 +13,7 @@ import {
   type PrinterAction,
 } from "@/lib/printerActions";
 import { computeJobTiming } from "@/lib/jobProgress";
-import { formatDuration, cn } from "@/lib/utils";
+import { formatDuration, cn, recentMeaningfulLines } from "@/lib/utils";
 
 /**
  * `print_stats.info.current_layer` / `.total_layer` are whatever the slicer
@@ -73,6 +74,10 @@ export function MissionTimeline() {
   const [activityStart, setActivityStart] = useState<number | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<{
+    details: ActionConfirmation;
+    resolve: (accepted: boolean) => void;
+  } | null>(null);
 
   const printState = ps?.state ?? "standby";
   const isPrintingFile = printState === "printing" || printState === "paused";
@@ -133,8 +138,14 @@ export function MissionTimeline() {
     setActionError(null);
     try {
       await runPrinterAction(action, {
+        // The app's own dialog, never `window.confirm`: a native confirm
+        // blocks the main thread, freezing telemetry and the alert stack for
+        // as long as it sits open. runPrinterAction awaits the promise and
+        // re-guards against LIVE state after the owner answers.
         confirm: (details: ActionConfirmation) =>
-          window.confirm(`${details.title}\n\n${details.message}`),
+          new Promise<boolean>((resolve) =>
+            setConfirmRequest({ details, resolve }),
+          ),
       });
     } catch (error) {
       setActionError(
@@ -145,6 +156,20 @@ export function MissionTimeline() {
     }
   };
 
+  const settleConfirm = (accepted: boolean) => {
+    if (!confirmRequest) return;
+    confirmRequest.resolve(accepted);
+    setConfirmRequest(null);
+  };
+
+  const confirmDialog = confirmRequest ? (
+    <ActionConfirmDialog
+      details={confirmRequest.details}
+      onConfirm={() => settleConfirm(true)}
+      onCancel={() => settleConfirm(false)}
+    />
+  ) : null;
+
   const can = (action: PrinterAction) =>
     guardPrinterAction(state, connected, action).allowed;
 
@@ -153,15 +178,15 @@ export function MissionTimeline() {
     const elapsedSec = activityStart
       ? Math.floor((Date.now() - activityStart) / 1000)
       : 0;
-    // Last meaningful command (not just "ok")
-    const recentLines = log
-      .slice()
-      .reverse()
-      .filter((l) => l.text && l.text.trim() !== "ok")
-      .slice(0, 4);
-    const guessedOp = recentLines[recentLines.length - 1]?.text || "—";
+    // Newest-first meaningful lines (bare "ok" acknowledgements dropped).
+    const recentLines = recentMeaningfulLines(log);
+    // What is it doing RIGHT NOW — the newest line, index 0. The old code
+    // read the last element of this newest-first window, i.e. the OLDEST of
+    // the four, so the headline op lagged three commands behind the machine.
+    const guessedOp = recentLines[0]?.text || "—";
 
     return (
+      <>
       <Card
         title="Mission Status"
         icon={<Activity />}
@@ -250,6 +275,8 @@ export function MissionTimeline() {
           </div>
         </div>
       </Card>
+      {confirmDialog}
+      </>
     );
   }
 
@@ -262,6 +289,7 @@ export function MissionTimeline() {
   const hasJob = isPrintingFile || isComplete || isStopped;
   if (!hasJob) {
     return (
+      <>
       <Card title="Mission Status" icon={<FileText />}>
         <div className="flex items-center justify-between py-1">
           <div>
@@ -272,6 +300,10 @@ export function MissionTimeline() {
           </div>
         </div>
       </Card>
+      {/* A confirmation opened from another branch must survive the state
+          flipping to idle underneath it, or its promise never settles. */}
+      {confirmDialog}
+      </>
     );
   }
 
@@ -281,6 +313,7 @@ export function MissionTimeline() {
     : { allowed: false, reason: "No job file to repeat." };
 
   return (
+    <>
     <Card
       title="Mission Status"
       icon={<FileText />}
@@ -466,6 +499,8 @@ export function MissionTimeline() {
         </div>
       </div>
     </Card>
+    {confirmDialog}
+    </>
   );
 }
 
