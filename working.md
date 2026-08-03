@@ -6,6 +6,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
+- Live release was safely deferred on 2026-08-02. Fresh read-only Moonraker state showed `Ivar_Skadis_Hook_PETG_34m53s.gcode` actively printing at 7.67%, with virtual SD active, `idle_timeout.state=Printing`, hotend `255.04/255 C` at power `0.3314`, and bed `60.43/60 C` at power `0.1635`. No SSH authentication, guided preflight, backup, deployment, rollback, or remote write began.
 - Regolith Instrument Cluster cosmetic redesign and responsive refinement are committed and pushed on `main` through `a74d2ac`. They remain local-only until the normal live release gates pass; this batch did not connect to or deploy on the K1 Max.
 - Home uses Mission → Camera → Thermals → Readiness on compact screens, full-width tablet composition through 1024px, and a balanced desktop camera/telemetry zone with the thermal/status rail. The compact PrinterCard metadata uses two wrapped rows, Settings has weighted groups, and Tune is organized as a calibration band plus pressure-advance and mesh surfaces.
 - The approved `Skadis Ivar Halter_PETG_2h49m.gcode` print completed successfully under read-only watch at 100%. Virtual SD became inactive, heater targets and power reached zero, cooling was monotonic, snapshots stayed available, and no new Klipper errors appeared. Any future deployment still needs fresh identity, idle, zero-power, backup, and rollback proof.
@@ -55,6 +56,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Live printer validation — 2026-08-02, `93fcf9b`
 
+- Latest release attempt stopped before authentication or writes: `forge.local` freshly resolved to `192.168.50.179`, its ECDSA fingerprint exactly matched accepted `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`, then a read-only Moonraker query found the active `Ivar_Skadis_Hook_PETG_34m53s.gcode` print described above. The guarded installer, backup inspection, static swap, live browser checks, and camera hold were not run.
 - Target: Creality K1 Max (`# K1-MAX`, 300 x 300 x 300 mm in `printer.cfg`). Firmware `1.3.5.19`; board `CR4CU220812S11`; Moonraker `v0.10.0-19-g1ed102e` / API `1.5.0`; Klipper reported ready.
 - Pre-deploy gate: `print_stats.state=standby`, empty filename/message, `idle_timeout.state=Ready`, `virtual_sdcard.is_active=false`, and no active file.
 - No hardware actions occurred: no G-code, motion, homing, heating, extrusion, fan/light, print control, calibration, firmware update, service restart, or config write.
@@ -133,7 +135,7 @@ If mDNS fails, resolve `forge.local`, verify that address against the stored ECD
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
-- Exact-current cosmetic code is pushed but not live. The printer error is repaired and the retry completed, but deployment must still run a fresh fingerprint, idle, zero-power, verified-backup, and rollback preflight; never reuse an older favorable sample or work around the gate.
+- Exact-current cosmetic code is pushed but not live. A new print is active, so deployment remains blocked. After it completes, deployment must still run a fresh fingerprint, idle, zero-power, verified-backup, and rollback preflight; never reuse an older favorable sample or work around the gate.
 
 ## User-owned files
 
@@ -145,5 +147,5 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 ## Next steps
 
 1. Rotate the exposed historical printer password; decide whether coordinated history rewriting is worth clone disruption.
-2. Run the guided read-only Check. If the printer is freshly proven idle and zero-power, deploy exact-current `main`, then repeat live hash, route, camera-soak, and no-write browser QA. Roll back immediately on any mismatch.
+2. Wait for the active `Ivar_Skadis_Hook_PETG_34m53s.gcode` print to finish. Do not interrupt or retry it. Then run the guided read-only Check; deploy exact-current `main` only if fresh idle, inactive, zero-target, zero-power, verified-backup, and rollback gates all pass. Repeat live hash, route, 30-second camera, and no-write browser QA. Roll back only on deployment verification failure.
 3. Produce a prebuilt macOS-friendly release path; sign and notarize when credentials are available.
