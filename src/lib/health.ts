@@ -140,3 +140,242 @@ export function fanStrainFault(
 export function linkLost(connected: boolean): boolean {
   return !connected;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Thermal slope heuristics (WP-THERM)
+ *
+ * WHAT THIS IS NOT: this is not thermal protection, and it must never be
+ * described as protection in code or in copy. Klipper's `verify_heater` runs
+ * on the MCU, keeps running when this browser tab is closed, asleep, or on
+ * the far side of a dead Wi-Fi link, and it can actually shut the machine
+ * down. THAT is the safety net. These rules are an early EXPLAINER: they fire
+ * before `verify_heater`'s timeout expires and they say why in plain English
+ * instead of dumping a firmware string. Nothing here may ever reach the
+ * printer — alerts only.
+ *
+ * They are also deliberately, unapologetically DEAF. A false thermal warning
+ * costs more than a missed one here, because the thermal channel is the one
+ * the owner must still believe at 3am, and because the real protection is
+ * already running underneath. So every rule below is biased to UNDER-ALARM:
+ *
+ *   · every precondition must hold for EVERY sample in the window, not just
+ *     the newest one — a single odd reading can never trip a rule;
+ *   · the confirmation windows are 45–60s, well past the 30s minimum;
+ *   · the slope thresholds sit far inside the failure, not at its edge
+ *     (a hotend gaining 0.10 °C/s at full power is not "slightly slow", it
+ *     is broken — a healthy one climbs 20–50× faster);
+ *   · a buffer that is not full, or a feed that has stopped delivering new
+ *     readings, produces silence, never a verdict from stale numbers.
+ *
+ * The consequence is accepted on purpose: a slow real fault may go unreported
+ * here and be caught by `verify_heater` instead. That is the correct trade.
+ * ------------------------------------------------------------------------ */
+
+/** One buffered heater reading. `at` is a client clock in milliseconds. */
+export interface TempSample {
+  at: number;
+  temperature: number;
+  target: number;
+  power: number;
+}
+
+export type ThermalSlopeRule =
+  | "stalled-heatup"
+  | "uncommanded-rise"
+  | "losing-heat";
+
+export interface ThermalSlopeIssue {
+  rule: ThermalSlopeRule;
+  /** Display name, matching the drift detector's labels. */
+  heater: "Hotend" | "Bed";
+  /** Measured °C per second across the confirmation window. */
+  slope: number;
+  /** Visible copy — carries the live figure. */
+  message: string;
+  /** Screen-reader copy — STABLE text, no interpolated telemetry. */
+  announcement: string;
+}
+
+/**
+ * Per-heater slope limits. A bed and a hotend differ by an order of
+ * magnitude: a 300W hotend climbs several °C/s, while a large bed at full
+ * power manages a tenth of that. One shared threshold would either alarm on
+ * every healthy bed or never notice a dead hotend.
+ */
+export interface HeaterSlopeLimits {
+  /** At full power and well below target, a climb slower than this is stalled. */
+  stalledBelow: number;
+  /** With the heater commanded off, a climb faster than this is uncommanded. */
+  riseAbove: number;
+  /** At full power and near target, a fall steeper than this is losing heat. */
+  fallBelow: number;
+}
+
+export const HOTEND_SLOPE_LIMITS: HeaterSlopeLimits = {
+  stalledBelow: 0.1,
+  riseAbove: 0.15,
+  fallBelow: -0.2,
+};
+
+export const BED_SLOPE_LIMITS: HeaterSlopeLimits = {
+  stalledBelow: 0.01,
+  riseAbove: 0.05,
+  fallBelow: -0.1,
+};
+
+/** Confirmation window for the two commanded-heat rules. */
+export const SLOPE_CONFIRM_MS = 45_000;
+/**
+ * Uncommanded rise gets the longest window of the three: a heater that has
+ * just switched off soaks residual block heat into its own thermistor for a
+ * few seconds, which looks exactly like an uncommanded climb.
+ */
+export const UNCOMMANDED_CONFIRM_MS = 60_000;
+/** Fewest readings a window may be judged on, whatever its time span. */
+export const SLOPE_MIN_SAMPLES = 20;
+/** Below this gap a heat-up is close enough to target to be finishing, not stalled. */
+export const STALL_MIN_GAP_C = 10;
+/** Full-power threshold: below this the heater is regulating, not struggling. */
+export const FULL_POWER = 0.95;
+/** Commanded-off threshold — PWM noise, not heating. */
+export const OFF_POWER = 0.02;
+
+/**
+ * Least-squares °C/s across the samples, or null when there is nothing to fit
+ * (fewer than two readings, or every reading at the same instant).
+ * Regression rather than endpoint difference so thermistor noise on a single
+ * sample cannot swing the verdict.
+ */
+export function temperatureSlope(
+  samples: readonly TempSample[],
+): number | null {
+  if (samples.length < 2) return null;
+  const n = samples.length;
+  const t0 = samples[0]!.at;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (const sample of samples) {
+    const x = (sample.at - t0) / 1000;
+    const y = sample.temperature;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator <= 0) return null;
+  const slope = (n * sumXY - sumX * sumY) / denominator;
+  return Number.isFinite(slope) ? slope : null;
+}
+
+/** The trailing window of at least `spanMs`, or null when the buffer is short. */
+function window(
+  samples: readonly TempSample[],
+  spanMs: number,
+): readonly TempSample[] | null {
+  if (samples.length < SLOPE_MIN_SAMPLES) return null;
+  const newest = samples[samples.length - 1]!;
+  const cutoff = newest.at - spanMs;
+  const start = samples.findIndex((sample) => sample.at >= cutoff);
+  if (start < 0) return null;
+  const slice = samples.slice(start);
+  if (slice.length < SLOPE_MIN_SAMPLES) return null;
+  // The window must actually SPAN the confirmation time. A dense burst of
+  // readings over three seconds is not a 45-second confirmation.
+  if (newest.at - slice[0]!.at < spanMs) return null;
+  return slice;
+}
+
+const formatSlope = (slope: number) =>
+  `${slope >= 0 ? "+" : "−"}${Math.abs(slope).toFixed(2)} °C/s`;
+
+/**
+ * The one slope verdict for a heater, or null for silence. Rules are checked
+ * most-specific first; at most one fires, because two toasts about the same
+ * heater is noise, not information.
+ *
+ * `null` is the overwhelmingly common answer and the correct default: a
+ * healthy ramp, a heater holding target, a cooling machine, a short buffer
+ * and a stalled feed all return it.
+ */
+export function detectThermalSlope(
+  heater: "Hotend" | "Bed",
+  samples: readonly TempSample[],
+  limits: HeaterSlopeLimits,
+): ThermalSlopeIssue | null {
+  const all = (
+    scope: readonly TempSample[],
+    predicate: (sample: TempSample) => boolean,
+  ) => scope.every(predicate);
+
+  // 1 · Uncommanded rise — heater commanded off, temperature climbing anyway.
+  const offWindow = window(samples, UNCOMMANDED_CONFIRM_MS);
+  if (
+    offWindow &&
+    all(offWindow, (s) => s.target === 0 && s.power <= OFF_POWER)
+  ) {
+    const slope = temperatureSlope(offWindow);
+    if (slope != null && slope > limits.riseAbove) {
+      return {
+        rule: "uncommanded-rise",
+        heater,
+        slope,
+        message: `${heater} is gaining heat with its heater commanded off (${formatSlope(slope)}) — check the heater output.`,
+        announcement: `${heater} is gaining heat with its heater commanded off. Check the heater output.`,
+      };
+    }
+  }
+
+  const hotWindow = window(samples, SLOPE_CONFIRM_MS);
+  if (!hotWindow) return null;
+
+  // Both remaining rules describe a heater that is commanded hot and pinned
+  // at full power for the WHOLE window. A regulating heater dips below full
+  // power constantly, so this alone excludes every normally-behaving machine.
+  if (!all(hotWindow, (s) => s.target > 0 && s.power >= FULL_POWER)) return null;
+
+  const slope = temperatureSlope(hotWindow);
+  if (slope == null) return null;
+
+  // 2 · Losing heat — near the setpoint, flat out, and still falling. Checked
+  // before the stall rule because falling is the more specific story. Bounded
+  // above by the drift band so this stays strictly EARLIER than, and never a
+  // duplicate of, the shipped ±15°C runaway alert.
+  if (
+    slope < limits.fallBelow &&
+    all(
+      hotWindow,
+      (s) =>
+        s.temperature <= s.target && s.temperature > s.target - RUNAWAY_DRIFT_C,
+    )
+  ) {
+    return {
+      rule: "losing-heat",
+      heater,
+      slope,
+      message: `${heater} is at full power and still cooling (${formatSlope(slope)}) — check for a draft or a fan pointed at it.`,
+      announcement: `${heater} is at full power and still cooling. Check for a draft or a fan pointed at it.`,
+    };
+  }
+
+  // 3 · Stalled heat-up — flat out, far from target, and not climbing. The
+  // healthy-ramp suppression IS this comparison: any heater gaining heat at
+  // or above its limit says nothing at all, no matter how large the gap.
+  if (
+    slope < limits.stalledBelow &&
+    all(hotWindow, (s) => s.target - s.temperature > STALL_MIN_GAP_C)
+  ) {
+    return {
+      rule: "stalled-heatup",
+      heater,
+      slope,
+      message: `${heater} is at full power but not gaining heat (${formatSlope(slope)}) — check the thermistor and heater cartridge.`,
+      announcement: `${heater} is at full power but not gaining heat. Check the thermistor and heater cartridge.`,
+    };
+  }
+
+  return null;
+}

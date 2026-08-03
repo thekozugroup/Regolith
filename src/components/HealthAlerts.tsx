@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, WifiOff } from "lucide-react";
 import { usePrinter } from "@/lib/usePrinter";
 import {
+  BED_SLOPE_LIMITS,
   detectHeaterDrift,
+  detectThermalSlope,
+  HOTEND_SLOPE_LIMITS,
   isRunawayConfirmed,
   linkLost,
   sensorVerdict,
 } from "@/lib/health";
+import { useTempHistory } from "@/lib/useTempHistory";
 import {
   WATCHDOG_TICK_MS,
   heatersHoldHeat,
@@ -18,6 +22,10 @@ import { cn } from "@/lib/utils";
  * Floating alert stack — pinned to top of viewport, low opacity until
  * something demands attention. Aggregates:
  *   - Thermal runaway: actual diverging from target by ±15°C for >30s
+ *   - Thermal slope: a heater at full power that is not gaining heat, one
+ *     gaining heat with its heater off, or one losing heat while commanded
+ *     hot. Early EXPLAINERS, not protection — Klipper's own `verify_heater`
+ *     is the safety net; see the WP-THERM block in lib/health.ts.
  *   - Stale telemetry: no data for 10s while heaters were last known hot
  *   - MCU temp watchdog: SoC > 70°C (K1 throttles around there)
  *   - Network: moonraker WS dropped
@@ -32,6 +40,10 @@ import { cn } from "@/lib/utils";
  */
 export function HealthAlerts() {
   const { state, connected, profile } = usePrinter();
+  // Rolling 1 Hz heater buffers, sampled off the render path. Empty until
+  // real data has arrived, and frozen while the feed is quiet — so the slope
+  // rules below stay silent rather than reading a flat line into a fault.
+  const tempHistory = useTempHistory(state.extruder, state.heater_bed);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [thermalIssue, setThermalIssue] = useState<{
     heater: string;
@@ -129,6 +141,26 @@ export function HealthAlerts() {
       severity: "error",
       message,
       announcement: message,
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  }
+
+  // Thermal slope explainers. These sit BELOW the runaway alert on purpose:
+  // they are warnings, not errors. The ±15°C rule above and Klipper's own
+  // verify_heater remain the authorities on "this is a fault" — these three
+  // only get in front of the owner earlier, in words, and they are tuned to
+  // stay quiet through every healthy heat-up (lib/health.ts, WP-THERM).
+  const slopeIssues = [
+    detectThermalSlope("Hotend", tempHistory.hotend, HOTEND_SLOPE_LIMITS),
+    detectThermalSlope("Bed", tempHistory.bed, BED_SLOPE_LIMITS),
+  ];
+  for (const issue of slopeIssues) {
+    if (!issue) continue;
+    alerts.push({
+      id: `thermal-slope-${issue.heater.toLowerCase()}`,
+      severity: "warn",
+      message: issue.message,
+      announcement: issue.announcement,
       icon: <AlertTriangle className="w-4 h-4" />,
     });
   }
