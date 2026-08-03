@@ -152,6 +152,14 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
   "Quick Actions": <Wrench />,
 };
 
+const SECTION_LAYOUT: Record<string, string> = {
+  "Input Shaper": "sm:col-span-2",
+  "Bed Mesh": "",
+  "Probe & Position": "",
+  Heaters: "",
+  "Quick Actions": "",
+};
+
 interface RunningAction {
   id: string;
   title: string;
@@ -236,10 +244,10 @@ export function Tune() {
   };
 
   return (
-    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-2 lg:grid-cols-4">
       {/* Banner: warn if printer is busy (any reason) */}
       {safety.isBusy && (
-        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)] px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0" />
           <span className="text-[var(--color-warning)] font-medium">
             {safety.busyReason ?? "Busy"} — calibration actions disabled.
@@ -247,7 +255,7 @@ export function Tune() {
         </div>
       )}
       {!safety.klipperReady && (
-        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.10)] px-3 py-2 text-[12px]">
           <AlertTriangle className="w-4 h-4 text-[var(--color-error)] shrink-0" />
           <span className="text-[var(--color-error)] font-medium">
             Klipper not ready ({state.webhooks?.state ?? "?"}) — fix before
@@ -258,7 +266,7 @@ export function Tune() {
       {actionError && (
         <div
           role="alert"
-          className="md:col-span-2 lg:col-span-3 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
+          className="md:col-span-2 lg:col-span-4 border border-[rgba(239,68,68,0.4)] bg-[rgba(239,68,68,0.1)] px-3 py-2 text-[13px] text-[var(--color-error)]"
         >
           {actionError}
         </div>
@@ -266,7 +274,7 @@ export function Tune() {
 
       {/* Live action toast */}
       {running && (
-        <div className="md:col-span-2 lg:col-span-3 flex items-center gap-2 border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.10)] px-3 py-2 text-[12px]">
           <Activity className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
           <span className="text-[var(--color-accent)] font-medium flex-1">
             Running: {running.title}
@@ -277,24 +285,31 @@ export function Tune() {
         </div>
       )}
 
-      {/* Sectioned actions first */}
-      {Object.entries(ACTIONS).map(([section, actions]) => (
-        <Card key={section} title={section} icon={SECTION_ICONS[section]}>
-          <div className="space-y-2">
-            {actions.map((action) => (
-              <ActionRow
-                key={action.id}
-                action={action}
-                disabled={!connected || isPrinting || !safety.klipperReady || !!running}
-                onClick={() => setPending(action)}
-              />
-            ))}
-          </div>
-        </Card>
-      ))}
+      <section aria-labelledby="calibration-groups" className="md:col-span-2 lg:col-span-4 xl:col-span-3">
+        <div className="mb-2 flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+          <h2 id="calibration-groups" className="text-[14px] font-semibold">Calibration & maintenance</h2>
+          <span className="instrument-label">Guarded expert tools</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {Object.entries(ACTIONS).map(([section, actions]) => (
+            <Card key={section} title={section} icon={SECTION_ICONS[section]} className={SECTION_LAYOUT[section]}>
+              <div className="space-y-2">
+                {actions.map((action) => (
+                  <ActionRow
+                    key={action.id}
+                    action={action}
+                    disabled={!connected || isPrinting || !safety.klipperReady || !!running}
+                    onClick={() => setPending(action)}
+                  />
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
 
       {/* Pressure Advance — interactive card, bottom */}
-      <Card title="Pressure Advance" icon={<Sliders />}>
+      <Card title="Pressure Advance" icon={<Sliders />} className="lg:col-span-4 xl:col-span-1">
         <div className="space-y-2">
           <div className="text-[12px] text-[var(--color-fg-muted)]">
             Live tunable. Apply temporarily or save permanently.
@@ -356,8 +371,9 @@ export function Tune() {
         </div>
       </Card>
 
-      {/* Bed Mesh — bottom right next to Pressure Advance */}
-      <BedMeshHeatmap />
+      <div className="md:col-span-2 lg:col-span-4 xl:col-span-3">
+        <BedMeshHeatmap />
+      </div>
 
       {/* Confirm modal */}
       {pending && (

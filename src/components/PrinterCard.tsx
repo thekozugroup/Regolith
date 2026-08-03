@@ -165,7 +165,7 @@ export function PrinterCard() {
             </div>
           </div>
 
-          {isExpert && <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-[var(--color-border)] pt-3 text-[11px] tabular-nums sm:grid-cols-4">
+          {isExpert && <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[var(--color-border)] pt-3 text-[11px] tabular-nums">
             <Stat label="Hostname" value={meta.hostname} />
             <Stat label="OS" value={meta.firmware} />
             <Stat
@@ -185,12 +185,12 @@ export function PrinterCard() {
 
 function Stat({ label, value }: { label: string; value: string | undefined }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="instrument-label text-[9px]">
         {label}
       </div>
       <div
-        className="instrument-value mt-0.5 truncate text-[12px] font-medium"
+        className="instrument-value mt-0.5 break-words text-[11px] font-medium leading-snug"
         title={value ?? "—"}
       >
         {value ?? "—"}

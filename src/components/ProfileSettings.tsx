@@ -61,7 +61,7 @@ export function ProfileSettings() {
   };
 
   return (
-    <Card title="Printer Profile" icon={<Boxes />}>
+    <Card title="Printer Profile" icon={<Boxes />} className="lg:col-span-1">
       <div className="space-y-2">
         <div className="text-[11px] text-[var(--color-fg-muted)] leading-relaxed">
           A profile defines your printer's heaters, sensors, fans, and

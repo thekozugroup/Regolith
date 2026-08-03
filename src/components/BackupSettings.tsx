@@ -108,7 +108,7 @@ export function BackupSettings() {
   };
 
   return (
-    <Card title="Backup & Restore" icon={<Database />}>
+    <Card title="Backup & Restore" icon={<Database />} className="lg:col-span-2">
       <div className="space-y-3">
         <div className="text-[11px] text-[var(--color-fg-muted)] leading-relaxed">
           UI preferences (device name, theme, brand icon, custom images, panel

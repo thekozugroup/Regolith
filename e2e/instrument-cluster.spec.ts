@@ -71,6 +71,28 @@ async function assertInstrumentShell(page: Page) {
   expect(undersized).toEqual([]);
 }
 
+async function assertRouteAudit(page: Page) {
+  await assertInstrumentShell(page);
+  const clipped = await page.locator("main h2, main h3, main p, main button, main label, main output, main .instrument-label").evaluateAll((items) =>
+    items.filter((item) => {
+      const style = getComputedStyle(item);
+      const box = item.getBoundingClientRect();
+      return style.visibility !== "hidden" && box.width > 0 && box.height > 0 && (box.left < -1 || box.right > innerWidth + 1);
+    }).map((item) => item.textContent?.trim() || item.getAttribute("aria-label") || item.tagName),
+  );
+  expect(clipped).toEqual([]);
+  const lastControl = page.locator("main button:visible, main a:visible, main input:visible, main select:visible").last();
+  if (await lastControl.count()) {
+    await lastControl.scrollIntoViewIfNeeded();
+    const hiddenByNav = await lastControl.evaluate((item) => {
+      if (!matchMedia("(max-width: 767px)").matches) return false;
+      const box = item.getBoundingClientRect();
+      return box.bottom > innerHeight - 48;
+    });
+    expect(hiddenByNav).toBe(false);
+  }
+}
+
 test.describe("Regolith Instrument Cluster — strict local mock", () => {
   test("Basic routes are coherent at 320px and never escape mocked networking", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 320, height: 720 });
@@ -107,6 +129,42 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     await page.route("http://127.0.0.1:8080/**", (route) => route.abort("connectionrefused"));
     await page.goto("/");
     await expect(page.getByText("Camera unavailable. Retrying…")).toBeVisible();
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
+  test("all routes retain readable geometry from 320px through 1280px", async ({ page }, testInfo) => {
+    const audit = await installStrictMock(page);
+    const routes = ["/", "/print", "/control", "/tune", "/timelapses", "/console", "/settings"];
+    for (const viewport of [
+      { width: 320, height: 720 },
+      { width: 390, height: 844 },
+      { width: 768, height: 900 },
+      { width: 1024, height: 900 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      await page.evaluate(() => {
+        localStorage.setItem("forge.experience-mode", "basic");
+        window.dispatchEvent(new Event("forge:experience-mode-changed"));
+      });
+      for (const route of routes) {
+        await page.goto(route);
+        await assertRouteAudit(page);
+        await page.screenshot({ path: testInfo.outputPath(`audit-${viewport.width}-basic-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
+      }
+      await page.goto("/");
+      await page.evaluate(() => {
+        localStorage.setItem("forge.experience-mode", "expert");
+        window.dispatchEvent(new Event("forge:experience-mode-changed"));
+      });
+      for (const route of routes) {
+        await page.goto(route);
+        await assertRouteAudit(page);
+        await page.screenshot({ path: testInfo.outputPath(`audit-${viewport.width}-expert-${route === "/" ? "home" : route.slice(1)}.png`), fullPage: true, animations: "disabled" });
+      }
+    }
     expect(audit.escaped).toEqual([]);
     expect(audit.writes).toEqual([]);
   });

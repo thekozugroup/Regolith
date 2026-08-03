@@ -7,6 +7,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 ## Current status
 
 - Regolith Instrument Cluster cosmetic redesign is local-only and ready for the normal release gates. It is intentionally not deployed or connected to the K1 Max during this batch.
+- Follow-up responsive refinement is local-only and pending its own atomic commit: Home uses Mission → Camera → Thermals → Readiness on compact screens, full-width tablet composition through 1024px, and a balanced desktop camera/telemetry zone with the thermal/status rail. The compact PrinterCard metadata changed to two wrapped rows, Settings now has weighted groups, and Tune is organized as a calibration band plus pressure-advance and mesh surfaces.
 - The approved `Skadis Ivar Halter_PETG_2h49m.gcode` print completed successfully under read-only watch at 100%. Virtual SD became inactive, heater targets and power reached zero, cooling was monotonic, snapshots stayed available, and no new Klipper errors appeared. Any future deployment still needs fresh identity, idle, zero-power, backup, and rollback proof.
 - Camera stability, aligned card rhythm, bounded backup retention, printer-isolated browser QA, and neutral connection loading states are committed and pushed on `main` at `f2acff5`.
 - Static assets from `93fcf9b` are deployed on the live K1 Max and include the camera reconnect fix, layout polish, backup retention, and browser harness. The follow-up neutral loading-state polish in `f2acff5` is intentionally not deployed: fresh gates first detected calibration/heating and then a latched failed-print state, refusing before writes each time.
@@ -86,9 +87,9 @@ All commands pass on exact-current runtime code: frozen install, lint, 31/31 uni
 
 Instrument Cluster evidence, local only:
 
-- `bun run lint`, `bun run build`, `bun run test`, `bun run test:deploy`, `bun run test:setup`, and `bun run test:e2e` pass on the cosmetic batch. The full browser suite has 9 passing tests.
+- `bun run lint`, `bun run build`, `bun run test`, `bun run test:deploy`, `bun run test:setup`, and `bun run test:e2e` pass on the cosmetic batch. The full browser suite has 10 passing tests.
 - `e2e/instrument-cluster.spec.ts` registers HTTP and WebSocket interception before navigation. It permits static localhost assets, only a mocked `printer.objects.subscribe` RPC, and a mocked camera image; it aborts and records all other external requests and all non-GET/HEAD writes. It proves zero escaped requests and zero writes for Basic 320px, Expert 1280px/reduced-motion, and offline-camera states.
-- Exact-current local captures in ignored `test-results/` cover all seven routes in Basic 320px and Expert 1280px; existing strict-mock coverage also exercises Basic/Expert desktop and mobile routes, offline camera recovery, neutral telemetry, and stale-chunk recovery. Reviewed captures show no horizontal overflow and no visible target smaller than 44px.
+- Exact-current local captures in ignored `test-results/` cover all seven routes in Basic/Expert at 320, 390, 768, 1024, and 1280px. The responsive audit produces 70 captures and checks horizontal bounds, visible text right-edge clipping, 44px targets, and mobile final-control visibility above the fixed navigation. Existing strict-mock coverage also exercises offline camera recovery, neutral telemetry, and stale-chunk recovery.
 - Forbidden production safety and transport files were SHA-256 baselined before UI edits and remain unchanged. No printer, Moonraker, camera-device, forge.local, external network, deployment, service, or remote-file interaction occurred during this cosmetic batch.
 
 Read-only exact-current local Chrome smoke covered every route in Basic and Expert mode at 390x844 and 1280x900:

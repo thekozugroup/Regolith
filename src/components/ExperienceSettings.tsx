@@ -27,7 +27,7 @@ export function ExperienceSettings() {
   const [mode, setMode] = useExperienceMode();
 
   return (
-    <Card title="Experience" icon={<SlidersHorizontal />}>
+    <Card title="Experience" icon={<SlidersHorizontal />} className="lg:col-span-2">
       <fieldset>
         <legend className="sr-only">Interface experience</legend>
         <div className="grid gap-2 sm:grid-cols-2">

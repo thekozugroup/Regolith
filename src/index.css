@@ -48,6 +48,7 @@
   input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   button, [role="button"] { touch-action: manipulation; }
+  main :is(button, a, input, select, textarea) { scroll-margin-block-end: calc(6rem + env(safe-area-inset-bottom)); }
 }
 
 @layer components {

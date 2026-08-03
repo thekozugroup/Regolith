@@ -31,7 +31,7 @@ export function ThemeSettings() {
   };
 
   return (
-    <Card title="Theme" icon={<Palette />}>
+    <Card title="Theme" icon={<Palette />} className="lg:col-span-1">
       <div className="space-y-4">
         {/* Device name */}
         <div>
@@ -41,7 +41,7 @@ export function ThemeSettings() {
           >
             Device name
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               id={deviceNameId}
               value={draftName}
@@ -55,6 +55,7 @@ export function ThemeSettings() {
               variant={dirty ? "primary" : "default"}
               disabled={!dirty}
               onClick={() => setName(draftName)}
+              className="w-full sm:w-auto"
             >
               Save
             </Button>
@@ -71,7 +72,7 @@ export function ThemeSettings() {
           </legend>
 
           {/* Hex input + native color picker swatch */}
-          <div className="flex gap-2 mb-2">
+          <div className="mb-2 grid grid-cols-[2.75rem_minmax(0,1fr)] gap-2 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto]">
             <div className="relative">
               <label htmlFor={accentPickerId} className="sr-only">
                 Choose accent color
@@ -119,13 +120,14 @@ export function ThemeSettings() {
               variant={hexDirty ? "primary" : "default"}
               disabled={!hexDirty}
               onClick={commitHex}
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
             >
               Apply
             </Button>
           </div>
 
           {/* Preset chips */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(2.75rem,1fr))] gap-1.5">
+          <div className="grid grid-cols-5 gap-1.5 min-[380px]:grid-cols-6">
             {Object.entries(ACCENT_PRESETS).map(([key, hex]) => {
               const active = accent.toLowerCase() === hex.toLowerCase();
               return (

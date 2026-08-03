@@ -131,7 +131,7 @@ export function SettingsPage() {
       {isExpert && <ProfileSettings />}
       {isExpert && <BackupSettings />}
 
-      <Card title="System" icon={<Cog />}>
+      <Card title="System" icon={<Cog />} className="lg:col-span-2">
         <div className="space-y-3">
           <p className="text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
             Emergency stop is only for immediate physical danger. It remains available in both experience modes.
@@ -187,7 +187,7 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      {isExpert && <Card title="Host" icon={<Cpu />}>
+      {isExpert && <Card title="Host" icon={<Cpu />} className="lg:col-span-1">
         <div className="space-y-2 text-[12px]">
           {infoError && (
             <div role="status" className="rounded-lg border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] p-3 text-[13px] text-[var(--color-warning)]">
@@ -231,7 +231,7 @@ export function SettingsPage() {
         </div>
       </Card>}
 
-      {isExpert && <Card title="About" icon={<Activity />}>
+      {isExpert && <Card title="About" icon={<Activity />} className="lg:col-span-1">
         <div className="space-y-2 text-[12px]">
           <Row label="UI">
             <span className="font-mono">Regolith v0.1</span>

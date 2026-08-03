@@ -13,15 +13,11 @@ export function Dashboard() {
   const { state, profile } = usePrinter();
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
-  const ext = state.extruder;
-  const bed = state.heater_bed;
   const fanSpeed = state.fan?.speed ?? 0;
-  const hotend = profile.heaters.find((h) => h.klipper === "extruder");
-  const bedH = profile.heaters.find((h) => h.klipper === "heater_bed");
 
   return (
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-3 p-[clamp(0.75rem,2vw,1.5rem)] md:grid-cols-8 lg:grid-cols-12">
-      <div className="order-2 flex min-h-full flex-col gap-3 md:col-span-5 lg:col-span-8 lg:order-1">
+      <div className="order-2 md:col-span-8 lg:order-1 lg:col-span-8">
         <Card title="Camera" icon={<Camera />}>
           <div className="relative -m-[clamp(0.75rem,1.4vw,1.25rem)] aspect-video overflow-hidden bg-black">
             <CameraStream className="absolute inset-0" />
@@ -36,147 +32,77 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <div className="order-1 flex min-h-full flex-col gap-3 md:col-span-3 lg:col-span-4 lg:order-2">
+      <div className="order-1 md:col-span-8 lg:order-2 lg:col-start-9 lg:col-span-4">
         <MissionTimeline />
-        <PrinterCard />
-        <Card title="Thermals" icon={<Flame />}>
-          <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
-            <ThermalGauge
-              label={hotend?.label ?? "Hotend"}
-              actual={ext?.temperature}
-              target={ext?.target}
-              power={ext?.power}
-              maxTemp={hotend?.maxTemp ?? 300}
-              icon={<Flame className="w-3 h-3" />}
-            />
-            <ThermalGauge
-              label={bedH?.label ?? "Bed"}
-              actual={bed?.temperature}
-              target={bed?.target}
-              power={bed?.power}
-              maxTemp={bedH?.maxTemp ?? 120}
-              icon={<ThermometerSun className="w-3 h-3" />}
-            />
-          </div>
-          {isExpert && (
-            <>
-              <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3">
-                <div>
-                  <div className="instrument-label mb-1 flex items-center justify-between text-[9px]">
-                    <span>Hotend trend</span>
-                    <span className="tabular-nums">
-                      {ext?.temperature?.toFixed(1) ?? "—"}°
-                    </span>
-                  </div>
-                  <Sparkline value={ext?.temperature} />
-                </div>
-                <div>
-                  <div className="instrument-label mb-1 flex items-center justify-between text-[9px]">
-                    <span>Bed trend</span>
-                    <span className="tabular-nums">
-                      {bed?.temperature?.toFixed(1) ?? "—"}°
-                    </span>
-                  </div>
-                  <Sparkline value={bed?.temperature} color="var(--color-info)" />
-                </div>
-              </div>
-              {(profile.sensors.length > 0 || profile.fans.length > 0) && (
-                <div className="mt-3 border-t border-[var(--color-border)] pt-3">
-                  <div className="instrument-label mb-2 text-[9px]">
-                    Aux sensors
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    {profile.sensors.map((s) => {
-                      const live = state[s.klipper as `temperature_sensor ${string}`];
-                      return (
-                        <AuxRow
-                          key={s.klipper}
-                          label={s.label}
-                          actual={live?.temperature}
-                          warnAbove={s.warnAbove}
-                          criticalAbove={s.criticalAbove}
-                        />
-                      );
-                    })}
-                    {profile.fans.map((f) => {
-                      const live = state[f.klipper as `temperature_fan ${string}`];
-                      return (
-                        <AuxRow
-                          key={f.klipper}
-                          label={f.label}
-                          actual={live?.temperature}
-                          target={live?.target}
-                          speed={live?.speed}
-                          driftWarn={f.driftWarn}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </Card>
-
-        {isExpert && <Card title="Telemetry" icon={<Wind />}>
-          <div className="divide-y divide-[var(--color-border)]">
-            <MetricTile
-              label="Part Fan"
-              value={`${(fanSpeed * 100).toFixed(0)}%`}
-              active={fanSpeed > 0}
-            />
-            <MetricTile
-              label="Speed Factor"
-              value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`}
-              warn={
-                state.gcode_move?.speed_factor != null &&
-                state.gcode_move.speed_factor !== 1
-              }
-            />
-            <MetricTile
-              label="Flow Factor"
-              value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`}
-              warn={
-                state.gcode_move?.extrude_factor != null &&
-                state.gcode_move.extrude_factor !== 1
-              }
-            />
-            <MetricTile
-              label="Pressure Adv."
-              value={ext?.pressure_advance?.toFixed(4) ?? "—"}
-            />
-            <MetricTile
-              label="Live Vel."
-              value={
-                state.motion_report?.live_velocity != null
-                  ? `${state.motion_report.live_velocity.toFixed(0)} mm/s`
-                  : "—"
-              }
-              active={(state.motion_report?.live_velocity ?? 0) > 1}
-            />
-            <MetricTile
-              label="Max Accel"
-              value={
-                state.toolhead?.max_accel
-                  ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k`
-                  : "—"
-              }
-            />
-            <MetricTile
-              label="Position Z"
-              value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"}
-            />
-            <MetricTile
-              label="Homed"
-              value={state.toolhead?.homed_axes?.toUpperCase() || "none"}
-              active={!!state.toolhead?.homed_axes}
-            />
-          </div>
-        </Card>}
       </div>
+
+      <div className="order-3 md:col-span-8 lg:order-4 lg:col-start-9 lg:col-span-4">
+        <ThermalsPanel state={state} profile={profile} isExpert={isExpert} />
+      </div>
+
+      <div className="order-4 md:col-span-8 lg:order-5 lg:col-start-9 lg:col-span-4">
+        <PrinterCard />
+      </div>
+
+      {isExpert && <div className="order-5 md:col-span-8 lg:order-3 lg:col-span-8">
+        <TelemetryPanel state={state} fanSpeed={fanSpeed} />
+      </div>}
 
     </div>
   );
+}
+
+function ThermalsPanel({
+  state,
+  profile,
+  isExpert,
+}: {
+  state: ReturnType<typeof usePrinter>["state"];
+  profile: ReturnType<typeof usePrinter>["profile"];
+  isExpert: boolean;
+}) {
+  const ext = state.extruder;
+  const bed = state.heater_bed;
+  const hotend = profile.heaters.find((heater) => heater.klipper === "extruder");
+  const bedH = profile.heaters.find((heater) => heater.klipper === "heater_bed");
+  return (
+    <Card title="Thermals" icon={<Flame />}>
+      <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+        <ThermalGauge label={hotend?.label ?? "Hotend"} actual={ext?.temperature} target={ext?.target} power={ext?.power} maxTemp={hotend?.maxTemp ?? 300} icon={<Flame className="w-3 h-3" />} />
+        <ThermalGauge label={bedH?.label ?? "Bed"} actual={bed?.temperature} target={bed?.target} power={bed?.power} maxTemp={bedH?.maxTemp ?? 120} icon={<ThermometerSun className="w-3 h-3" />} />
+      </div>
+      {isExpert && <>
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3">
+          <Trend label="Hotend trend" value={ext?.temperature} />
+          <Trend label="Bed trend" value={bed?.temperature} color="var(--color-info)" />
+        </div>
+        {(profile.sensors.length > 0 || profile.fans.length > 0) && <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+          <div className="instrument-label mb-2 text-[9px]">Aux sensors</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {profile.sensors.map((sensor) => <AuxRow key={sensor.klipper} label={sensor.label} actual={state[sensor.klipper as `temperature_sensor ${string}`]?.temperature} warnAbove={sensor.warnAbove} criticalAbove={sensor.criticalAbove} />)}
+            {profile.fans.map((fan) => <AuxRow key={fan.klipper} label={fan.label} actual={state[fan.klipper as `temperature_fan ${string}`]?.temperature} target={state[fan.klipper as `temperature_fan ${string}`]?.target} speed={state[fan.klipper as `temperature_fan ${string}`]?.speed} driftWarn={fan.driftWarn} />)}
+          </div>
+        </div>}
+      </>}
+    </Card>
+  );
+}
+
+function Trend({ label, value, color }: { label: string; value?: number; color?: string }) {
+  return <div><div className="instrument-label mb-1 flex items-center justify-between text-[9px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} color={color} /></div>;
+}
+
+function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrinter>["state"]; fanSpeed: number }) {
+  return <Card title="Telemetry" icon={<Wind />}><div className="grid divide-y divide-[var(--color-border)] sm:grid-cols-2 sm:divide-x">
+    <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
+    <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.speed_factor != null && state.gcode_move.speed_factor !== 1} />
+    <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.extrude_factor != null && state.gcode_move.extrude_factor !== 1} />
+    <MetricTile label="Pressure Adv." value={state.extruder?.pressure_advance?.toFixed(4) ?? "—"} />
+    <MetricTile label="Live Vel." value={state.motion_report?.live_velocity != null ? `${state.motion_report.live_velocity.toFixed(0)} mm/s` : "—"} active={(state.motion_report?.live_velocity ?? 0) > 1} />
+    <MetricTile label="Max Accel" value={state.toolhead?.max_accel ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k` : "—"} />
+    <MetricTile label="Position Z" value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"} />
+    <MetricTile label="Homed" value={state.toolhead?.homed_axes?.toUpperCase() || "none"} active={!!state.toolhead?.homed_axes} />
+  </div></Card>;
 }
 
 function AuxRow({
@@ -245,7 +171,7 @@ function MetricTile({
 }) {
   return (
     <div
-      className={cn("flex min-h-11 items-center justify-between gap-3 py-2", warn && "text-[var(--color-warning)]")}
+      className={cn("flex min-h-11 items-center justify-between gap-3 px-3 py-2", warn && "text-[var(--color-warning)]")}
     >
       <span className="instrument-label text-[10px]">
         {label}
