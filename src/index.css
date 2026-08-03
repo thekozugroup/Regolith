@@ -199,6 +199,12 @@
        lamp in high-contrast mode. */
     .crt-scanlines::after { display: none; }
     .phosphor-glow { filter: none; }
+    /* A lamp is NOTHING BUT its background, and forced colors strips author
+       backgrounds — measured lamp-vs-backdrop contrast was 0 (invisible).
+       System colors are honored, so paint the lamp in CanvasText: maximum
+       contrast against the forced Canvas backdrop by definition. The border
+       keeps it visible even on engines that still drop the background. */
+    .status-lamp { background: CanvasText; border: 1px solid CanvasText; }
   }
 
   /* MISSION BAR — full-bleed cockpit status strip pinned to the bottom of

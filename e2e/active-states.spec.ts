@@ -734,6 +734,89 @@ test.describe("Regolith — live printer states", () => {
     mock.assertSealed();
   });
 
+  test("status lamps stay visible under forced colors", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.emulateMedia({ forcedColors: "active" });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "printing-midjob");
+
+    // A lamp is NOTHING BUT its background, and forced colors strips author
+    // backgrounds — measured lamp-vs-backdrop contrast used to be 0, i.e.
+    // the lamps were invisible in high-contrast mode. The fix paints them in
+    // the CanvasText system color, which forced colors honors and which has
+    // maximum contrast against the forced Canvas backdrop by definition.
+    const lamps = await page.locator(".status-lamp").evaluateAll((items) => {
+      const probe = document.createElement("span");
+      probe.style.color = "CanvasText";
+      document.body.appendChild(probe);
+      const canvasText = getComputedStyle(probe).color;
+      probe.remove();
+      return items.map((item) => {
+        const style = getComputedStyle(item);
+        const box = item.getBoundingClientRect();
+        return {
+          background: style.backgroundColor,
+          canvasText,
+          sized: box.width > 0 && box.height > 0,
+        };
+      });
+    });
+    expect(lamps.length, "the cockpit must render status lamps").toBeGreaterThan(0);
+    expect(
+      lamps.filter((lamp) => !lamp.sized),
+      "every lamp must keep its geometry under forced colors",
+    ).toEqual([]);
+    expect(
+      lamps.filter((lamp) => lamp.background !== lamp.canvasText),
+      "every lamp must paint the forced-colors ink (CanvasText), not a stripped author color",
+    ).toEqual([]);
+    mock.assertSealed();
+  });
+
+  test("guarded actions confirm through the app's dialog, never window.confirm", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    // `window.confirm` BLOCKS the main thread — telemetry, the alert stack,
+    // and the very state being confirmed against all freeze while it sits
+    // open. If anything falls back to it, fail loudly.
+    await page.addInitScript(() => {
+      window.confirm = () => {
+        throw new Error("window.confirm must never be used");
+      };
+    });
+    // Cold tuning fixture: the calibration layout with its Emergency stop
+    // action, but no stored heat, so the telemetry watchdog cannot overlay
+    // an alert mid-click on a slow machine.
+    const base = scenario("tuning-macro");
+    const mock = await installActiveMock(page, {
+      ...base,
+      state: {
+        ...base.state,
+        extruder: { temperature: 27.4, target: 0, power: 0, pressure_advance: 0.042 },
+        heater_bed: { temperature: 25.9, target: 0, power: 0 },
+      },
+    });
+    await page.goto("/");
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Emergency stop/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Emergency stop?" });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByText(/immediately disables printer control/),
+    ).toBeVisible();
+
+    // Cancel closes the dialog and NO command reaches the printer: the
+    // strict mock records any non-subscribe RPC as a write, so assertSealed
+    // is the proof the stop was never sent.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    mock.assertSealed();
+  });
+
   test("the glow stays a bounded static drop-shadow in normal colors", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await openDashboard(page);

@@ -82,6 +82,29 @@ describe("default accent single source of truth", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("the favicon strokes the designed accent, not the legacy orange", () => {
+    // public/ sits outside the src walk above, and the favicon shipped the
+    // legacy #f97316 long after the app moved to the amber default. The tab
+    // icon is part of the brand surface; pin it to DEFAULT_ACCENT.
+    const favicon = readFileSync(
+      join(import.meta.dir, "../public/favicon.svg"),
+      "utf8",
+    );
+    expect(favicon).not.toContain("#f97316");
+    expect(favicon).toContain(DEFAULT_ACCENT);
+  });
+
+  test("every color-mix interpolates in a rectangular space, never oklch", () => {
+    // Mixing in a polar space drags hues through arcs they were never meant
+    // to cross (see the .phosphor-glow comment in index.css). Raw oklch()
+    // literals are fine — it is only INTERPOLATION that must stay oklab.
+    const polarMix = /color-mix\(\s*in[_ ]+oklch/i;
+    const offenders = walk(SRC_DIR).filter((file) =>
+      polarMix.test(readFileSync(file, "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   test("accent-derived surface tokens exist and derive from the live accent", () => {
     for (const name of [
       "--color-accent-soft",

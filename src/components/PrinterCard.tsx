@@ -82,7 +82,7 @@ export function PrinterCard() {
       className={cn(
         "instrument-panel overflow-hidden transition-colors",
         isPrinting
-          ? "border-[color-mix(in_oklch,var(--color-accent)_62%,var(--color-border))]"
+          ? "border-[color-mix(in_oklab,var(--color-accent)_62%,var(--color-border))]"
           : "",
       )}
     >
