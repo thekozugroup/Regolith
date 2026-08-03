@@ -219,10 +219,14 @@ export async function readPanelText(locator: Locator): Promise<string> {
  * ---------------------------------------------------------------------- */
 
 /**
- * No raw JS placeholder ever reaches the glass. A dial reading `NaN°C` or a
- * job row reading `undefined / 250` is worse than no reading at all: it looks
- * like telemetry. Text nodes AND title attributes are scanned, because the
- * filename tooltip is the owner's only way to read a truncated path.
+ * No raw JS placeholder ever reaches the glass, in ANY state. A dial reading
+ * `NaN°C`, a job row reading `undefined / 250`, or a layer row reading
+ * `null / null` is worse than no reading at all: it looks like telemetry.
+ *
+ * Text nodes, `title`, and the accessible-name attributes are all scanned.
+ * `title` is the owner's only way to read a truncated filename, and a screen
+ * reader user hearing "Remaining undefined" is misled exactly as badly as a
+ * sighted one reading it — the aria surfaces have to be held to the same bar.
  */
 export async function assertNoBrokenReadouts(page: Page, label: string) {
   const offenders = await page.evaluate(() => {
@@ -242,10 +246,12 @@ export async function assertNoBrokenReadouts(page: Page, label: string) {
         found.push(`<${element.tagName.toLowerCase()}> "${text.trim().slice(0, 120)}"`);
       }
     }
-    for (const element of document.querySelectorAll("[title]")) {
-      const title = element.getAttribute("title") ?? "";
-      if (broken.test(title) || title.includes("[object Object]")) {
-        found.push(`title="${title.slice(0, 120)}"`);
+    for (const attribute of ["title", "aria-label", "aria-description", "alt"]) {
+      for (const element of document.querySelectorAll(`[${attribute}]`)) {
+        const value = element.getAttribute(attribute) ?? "";
+        if (broken.test(value) || value.includes("[object Object]")) {
+          found.push(`${attribute}="${value.slice(0, 120)}"`);
+        }
       }
     }
     return found;

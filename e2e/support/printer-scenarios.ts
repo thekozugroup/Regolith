@@ -126,7 +126,7 @@ export const SCENARIOS: PrinterScenario[] = [
       },
     }),
     words: { print: "printing", hotend: "Stable", bed: "Stable" },
-    rail: { progress: "47.3%", remaining: "1:06:59", job: "benchy_0.2mm_PLA_K1Max" },
+    rail: { progress: "47.3%", remaining: "1:14:36", job: "benchy_0.2mm_PLA_K1Max" },
   },
   {
     id: "heating",
@@ -164,7 +164,7 @@ export const SCENARIOS: PrinterScenario[] = [
       fan: { speed: 0 },
     }),
     words: { print: "printing", hotend: "Heating", bed: "Heating" },
-    rail: { progress: "0.6%", remaining: "1:58:24", job: "first_layer_test" },
+    rail: { progress: "0.6%", remaining: "—", job: "first_layer_test" },
   },
   {
     id: "cooling-after-job",
@@ -243,7 +243,7 @@ export const SCENARIOS: PrinterScenario[] = [
       display_status: { progress: 0.3667, message: "Paused" },
     }),
     words: { print: "paused", hotend: "Stable", bed: "Stable" },
-    rail: { progress: "36.7%", remaining: "0:51:40", job: "bracket_v3_hi_infill" },
+    rail: { progress: "36.7%", remaining: "0:51:48", job: "bracket_v3_hi_infill" },
   },
   {
     id: "cancelled",
@@ -307,7 +307,7 @@ export const SCENARIOS: PrinterScenario[] = [
       fan: { speed: 0.8 },
     }),
     words: { print: "printing", hotend: "Stable", bed: "Stable" },
-    rail: { progress: "55.0%", remaining: "0:33:10", job: "slicer_without_layers" },
+    rail: { progress: "55.0%", remaining: "0:32:51", job: "slicer_without_layers" },
   },
   {
     id: "absent-layer-info",
@@ -390,7 +390,7 @@ export const SCENARIOS: PrinterScenario[] = [
       return state;
     })(),
     words: { print: "printing", hotend: "Stable", bed: "Stable" },
-    rail: { progress: "55.0%", remaining: "0:43:20", job: "gantry_spacer" },
+    rail: { progress: "55.0%", remaining: "0:40:54", job: "gantry_spacer" },
   },
   {
     id: "tuning-macro",
@@ -427,6 +427,138 @@ export const SCENARIOS: PrinterScenario[] = [
     // the fourth ThermalGauge branch, "Regulating".
     words: { print: "standby", hotend: "Regulating", bed: "Stable" },
     rail: { progress: "—", remaining: "—", job: "No active job" },
+  },
+  {
+    id: "print-error",
+    title: "a print that FAILED — klipper wrote the reason into print_stats",
+    thumbnail: true,
+    state: withState({
+      print_stats: {
+        state: "error",
+        filename: "overnight/manifold_bracket.gcode",
+        total_duration: 9_240,
+        print_duration: 9_100,
+        filament_used: 21_400,
+        // The whole point of the fixture: this string is the difference
+        // between "it stopped" and knowing the bed heater faulted.
+        message: "Heater heater_bed not heating at expected rate. See the 'verify_heater' section in the docs.",
+        info: { total_layer: 400, current_layer: 291 },
+      },
+      virtual_sdcard: {
+        progress: 0.7275,
+        is_active: false,
+        file_position: 7_275_000,
+        file_size: 10_000_000,
+      },
+      // Klipper shut the heaters down when it faulted the print, but the
+      // host itself is still up and answering — so the machine can be told to
+      // run the job again once the owner has understood why it stopped.
+      extruder: { temperature: 196.4, target: 0, power: 0, pressure_advance: 0.042 },
+      heater_bed: { temperature: 52.3, target: 0, power: 0 },
+      display_status: { progress: 0.7275, message: "Error" },
+    }),
+    words: { print: "error", hotend: "Standby", bed: "Standby" },
+    rail: { progress: "—", remaining: "—", job: "manifold_bracket" },
+  },
+  {
+    id: "monotonic-clock-skew",
+    title: "a long-uptime printer whose klipper clock dwarfs the job",
+    state: withState({
+      idle_timeout: { state: "Printing" },
+      print_stats: {
+        state: "printing",
+        filename: "uptime/long_haul_spacer.gcode",
+        total_duration: 3_680,
+        print_duration: 3_600,
+        filament_used: 7_100,
+        message: "",
+        info: { total_layer: 200, current_layer: 100 },
+      },
+      virtual_sdcard: {
+        progress: 0.5,
+        is_active: true,
+        file_position: 5_000_000,
+        file_size: 10_000_000,
+      },
+      extruder: { temperature: 220.1, target: 220, power: 0.33, pressure_advance: 0.042 },
+      heater_bed: { temperature: 60, target: 60, power: 0.24 },
+      toolhead: {
+        position: [140, 160, 20, 0],
+        homed_axes: "xyz",
+        print_time: 3_600,
+        // The trap. This is Klipper's MONOTONIC clock — the host has been up
+        // for ~11 hours, and the number has nothing to do with this job. The
+        // old derivation preferred it whenever it sat between `elapsed` and
+        // 86400, which is exactly this window, and reported "10h 6m" left on
+        // a job with one hour to go. The honest answer from the job's own
+        // progress (1h elapsed at 50%) is one hour.
+        estimated_print_time: 40_000,
+        max_velocity: 600,
+        max_accel: 20_000,
+        axis_minimum: [-2, -2, -10, 0],
+        axis_maximum: [306.5, 306, 305, 0],
+      },
+      display_status: { progress: 0.5, message: "Printing" },
+      fan: { speed: 0.9 },
+    }),
+    words: { print: "printing", hotend: "Stable", bed: "Stable" },
+    rail: { progress: "50.0%", remaining: "1:00:00", job: "long_haul_spacer" },
+  },
+  {
+    id: "current-layer-only",
+    title: "printing a job whose slicer emits the current layer but no total",
+    state: withState({
+      idle_timeout: { state: "Printing" },
+      print_stats: {
+        state: "printing",
+        filename: "partial/no_total_layer.gcode",
+        total_duration: 1_300,
+        print_duration: 1_260,
+        filament_used: 2_900,
+        message: "",
+        info: { current_layer: 42, total_layer: null },
+      },
+      virtual_sdcard: {
+        progress: 0.35,
+        is_active: true,
+        file_position: 3_500_000,
+        file_size: 10_000_000,
+      },
+      extruder: { temperature: 220.1, target: 220, power: 0.3, pressure_advance: 0.042 },
+      heater_bed: { temperature: 60, target: 60, power: 0.2 },
+      display_status: { progress: 0.35, message: "Printing" },
+      fan: { speed: 0.7 },
+    }),
+    words: { print: "printing", hotend: "Stable", bed: "Stable" },
+    rail: { progress: "35.0%", remaining: "0:39:00", job: "no_total_layer" },
+  },
+  {
+    id: "total-layer-only",
+    title: "printing a job that declares a layer total but no current layer",
+    state: withState({
+      idle_timeout: { state: "Printing" },
+      print_stats: {
+        state: "printing",
+        filename: "partial/no_current_layer.gcode",
+        total_duration: 2_100,
+        print_duration: 2_000,
+        filament_used: 4_100,
+        message: "",
+        info: { current_layer: null, total_layer: 300 },
+      },
+      virtual_sdcard: {
+        progress: 0.4,
+        is_active: true,
+        file_position: 4_000_000,
+        file_size: 10_000_000,
+      },
+      extruder: { temperature: 220.1, target: 220, power: 0.3, pressure_advance: 0.042 },
+      heater_bed: { temperature: 60, target: 60, power: 0.2 },
+      display_status: { progress: 0.4, message: "Printing" },
+      fan: { speed: 0.7 },
+    }),
+    words: { print: "printing", hotend: "Stable", bed: "Stable" },
+    rail: { progress: "40.0%", remaining: "0:50:00", job: "no_current_layer" },
   },
 ];
 

@@ -1,4 +1,5 @@
 import { usePrinter } from "@/lib/usePrinter";
+import { computeJobTiming } from "@/lib/jobProgress";
 import { cn } from "@/lib/utils";
 
 const PRINT_STATE_COLOR: Record<string, string> = {
@@ -10,9 +11,13 @@ const PRINT_STATE_COLOR: Record<string, string> = {
   standby: "var(--color-fg-muted)",
 };
 
-/** Segmented mission clock — h:mm:ss. */
-function formatClock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+/**
+ * Segmented mission clock — h:mm:ss. `null` means "we do not have a
+ * trustworthy estimate", and renders as the same neutral placeholder the rest
+ * of the cockpit uses. A wrong h:mm:ss reads as certainty the data cannot back.
+ */
+function formatClock(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return "—";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -35,12 +40,15 @@ export function MissionBar() {
   const isActive = printState === "printing" || printState === "paused";
   const filename = (ps?.filename ?? "").split("/").pop()?.replace(/\.gcode$/i, "") ?? "";
 
-  const progress = state.virtual_sdcard?.progress ?? 0;
-  const elapsed = ps?.print_duration ?? 0;
-  const klipperEst = state.toolhead?.estimated_print_time ?? 0;
-  const linearTotal = progress > 0.01 ? elapsed / progress : 0;
-  const totalEst = klipperEst > elapsed && klipperEst < 86400 ? klipperEst : linearTotal;
-  const remaining = totalEst > elapsed ? totalEst - elapsed : 0;
+  // Derived from the JOB's own progress and elapsed print time, and null when
+  // no estimate can be trusted — see lib/jobProgress.ts. It must never come
+  // from `toolhead.estimated_print_time`: that is Klipper's monotonic clock
+  // (roughly the machine's uptime), not the duration of this job, so it could
+  // sit here reading confidently wrong for an entire multi-hour print.
+  const { progress, remaining } = computeJobTiming(
+    ps?.print_duration,
+    state.virtual_sdcard?.progress,
+  );
 
   const klipperReady = state.webhooks?.state === "ready";
   const link = !connected

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Square, FileText, Activity, X, RotateCcw } from "lucide-react";
+import { Pause, Play, Square, FileText, Activity, X, RotateCcw, AlertTriangle } from "lucide-react";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { usePrinter } from "@/lib/usePrinter";
@@ -11,7 +11,46 @@ import {
   type ActionConfirmation,
   type PrinterAction,
 } from "@/lib/printerActions";
+import { computeJobTiming } from "@/lib/jobProgress";
 import { formatDuration, cn } from "@/lib/utils";
+
+/**
+ * `print_stats.info.current_layer` / `.total_layer` are whatever the slicer
+ * chose to emit. Plenty of slicers emit neither, some emit only one of the
+ * two, and Klipper forwards explicit `null`s through untouched. Render each
+ * side only when it is a real number, so a partial answer stays a partial
+ * answer instead of becoming "null / 250" or "undefined".
+ *
+ * Returns `null` when nothing is known — the caller drops the whole row rather
+ * than printing an empty one.
+ */
+function formatLayer(
+  current: number | null | undefined,
+  total: number | null | undefined,
+): string | null {
+  const value = (n: number | null | undefined) =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0 ? String(Math.trunc(n)) : null;
+  const c = value(current);
+  const t = value(total);
+  if (c && t) return `${c} / ${t}`;
+  if (c) return c;
+  if (t) return `— / ${t}`;
+  return null;
+}
+
+/**
+ * `print_stats.message` is where Klipper puts the REASON a print stopped —
+ * "Heater extruder not heating at expected rate", "Move out of range",
+ * "Print cancelled by user". It is free text from firmware, so anything could
+ * be in it; drop the JS-placeholder words outright rather than letting them
+ * onto the glass looking like telemetry.
+ */
+function jobReason(message: string | null | undefined): string {
+  const text = (message ?? "").trim();
+  if (!text) return "";
+  if (/^(null|undefined|nan)$/i.test(text)) return "";
+  return text;
+}
 
 /**
  * Mission Status — SpaceX-style mission control.
@@ -38,26 +77,26 @@ export function MissionTimeline() {
   const printState = ps?.state ?? "standby";
   const isPrintingFile = printState === "printing" || printState === "paused";
   const isComplete = printState === "complete";
+  // A job that STOPPED. It is not running, so nothing about it may be
+  // presented as live — but it is also not nothing: it has a reason and it is
+  // the job the owner most wants to run again.
+  const isStopped = printState === "cancelled" || printState === "error";
   const filename = ps?.filename ?? "";
   const klipperBusy = state.idle_timeout?.state === "Printing";
   // Non-print activity: klipper busy but no print file
   const isTuning = klipperBusy && !filename;
 
-  const progress = sd?.progress ?? 0;
-  const elapsed = ps?.print_duration ?? 0;
-  const klipperEst = state.toolhead?.estimated_print_time ?? 0;
-  // Compute ETA two ways and use the better one:
-  //   1. Klipper's estimate (if populated by slicer M73)
-  //   2. Linear extrapolation from elapsed / progress (works after any time)
-  const linearTotal = progress > 0.01 ? elapsed / progress : 0;
-  const totalEst =
-    klipperEst > elapsed && klipperEst < 86400 ? klipperEst : linearTotal;
-  const remaining = totalEst > elapsed ? totalEst - elapsed : 0;
+  // Remaining is derived from the JOB's own progress and elapsed time and
+  // returns null when it cannot be trusted — see lib/jobProgress.ts. It must
+  // never come from `toolhead.estimated_print_time`, which is Klipper's
+  // monotonic clock, not a job duration.
+  const { elapsed, progress, remaining } = computeJobTiming(
+    ps?.print_duration,
+    sd?.progress,
+  );
   const filamentMm = ps?.filament_used ?? 0;
-  // Layer N / M — promoted to the job panel; the row is hidden entirely when
-  // the slicer supplies no total (never "— / —").
-  const totalLayer = ps?.info?.total_layer;
-  const currentLayer = ps?.info?.current_layer;
+  const layerText = formatLayer(ps?.info?.current_layer, ps?.info?.total_layer);
+  const reason = jobReason(ps?.message);
 
   // Track activity start for non-print ops
   useEffect(() => {
@@ -215,7 +254,13 @@ export function MissionTimeline() {
   }
 
   // ---------- IDLE / NO ACTIVITY ----------
-  if (!filename && !isPrintingFile && printState !== "complete") {
+  // Gate on the STATE, not on whether a filename happens to be lying around.
+  // Klipper keeps `print_stats.filename` populated after a job ends, so the
+  // old `!filename` test let every cancelled, errored and leftover-standby job
+  // fall through into the print-active layout below and claim a live-looking
+  // Progress readout for something that was not running.
+  const hasJob = isPrintingFile || isComplete || isStopped;
+  if (!hasJob) {
     return (
       <Card title="Mission Status" icon={<FileText />}>
         <div className="flex items-center justify-between py-1">
@@ -230,7 +275,11 @@ export function MissionTimeline() {
     );
   }
 
-  // ---------- PRINT ACTIVE ----------
+  // ---------- JOB PANEL (running, finished, or stopped) ----------
+  const repeatGuard = filename
+    ? guardPrinterAction(state, connected, { type: "repeat-print", filename })
+    : { allowed: false, reason: "No job file to repeat." };
+
   return (
     <Card
       title="Mission Status"
@@ -266,14 +315,17 @@ export function MissionTimeline() {
               <Square className="w-3 h-3" /> Cancel
             </Button>
           </div>
-        ) : isComplete && filename ? (
+        ) : (isComplete || isStopped) && filename ? (
+          // A stopped job is exactly what the owner most wants to retry, so
+          // "Print again" is offered for cancelled/errored jobs too — not just
+          // for completed ones. When the machine will not accept it yet, the
+          // guard's own reason rides along on the disabled control instead of
+          // leaving a dead button with no explanation.
           <Button
             size="sm"
             variant="primary"
-            disabled={
-              !!actionBusy ||
-              !can({ type: "repeat-print", filename })
-            }
+            disabled={!!actionBusy || !repeatGuard.allowed}
+            title={repeatGuard.allowed ? undefined : repeatGuard.reason}
             onClick={() => dispatch({ type: "repeat-print", filename })}
           >
             <RotateCcw className="w-3 h-3" /> Print again
@@ -311,8 +363,10 @@ export function MissionTimeline() {
             <StateBadge state={printState} />
           </div>
 
-          {/* Timeline */}
-          <div className="relative pt-3 pb-2">
+          {/* Timeline. A stopped job gets none: a part-filled accent track
+              reads as a job that is still advancing. The frozen percentage is
+              still reported below, labelled as the point it stopped at. */}
+          {!isStopped && <div className="relative pt-3 pb-2">
             <div className="absolute left-0 right-0 top-[18px] h-0.5 bg-[var(--color-elevated)]" />
             <div
               className="absolute left-0 top-[18px] h-0.5 bg-[var(--color-accent)] transition-[width] duration-150"
@@ -354,25 +408,52 @@ export function MissionTimeline() {
                 );
               })}
             </div>
-          </div>
+          </div>}
+
+          {/* Why it stopped. Klipper writes the cause into
+              `print_stats.message` — "Heater extruder not heating at expected
+              rate", "Move out of range", "Print cancelled by user". Nothing in
+              this UI used to read it, so every failure looked identical: the
+              job simply vanished mid-print with no explanation anywhere. */}
+          {isStopped && reason && (
+            <div
+              data-job-reason
+              role="status"
+              className={cn(
+                "flex items-start gap-2 border p-2 text-[13px] leading-relaxed",
+                printState === "error"
+                  ? "border-(--color-error)/35 bg-(--color-error)/8 text-[var(--color-error)]"
+                  : "border-[var(--color-border)] bg-[var(--color-elevated)] text-[var(--color-fg)]",
+              )}
+            >
+              <AlertTriangle aria-hidden="true" className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+              <span className="min-w-0">
+                <span className="text-[11px] uppercase tracking-[0.12em] font-semibold text-[var(--color-fg-muted)]">
+                  Reason{" "}
+                </span>
+                {reason}
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
             <Stat
-              label="Progress"
+              // A stopped job is not making progress. Report the point it got
+              // to, under a label that says so, instead of a live "Progress".
+              label={isStopped ? "Stopped at" : "Progress"}
               value={`${(progress * 100).toFixed(1)}%`}
-              accent
+              accent={!isStopped}
             />
-            {totalLayer != null && (
-              <Stat
-                label="Layer"
-                value={`${currentLayer ?? "—"} / ${totalLayer}`}
-                accent
-              />
-            )}
+            {layerText && <Stat label="Layer" value={layerText} accent={!isStopped} />}
             <Stat
+              // Only a running job has time left, and only when the estimate
+              // is trustworthy — see lib/jobProgress.ts. Everything else gets
+              // the honest placeholder rather than a confident wrong number.
               label="Remaining"
-              value={isPrintingFile ? formatDuration(remaining) : "—"}
-              accent={isPrintingFile}
+              value={
+                isPrintingFile && remaining != null ? formatDuration(remaining) : "—"
+              }
+              accent={isPrintingFile && remaining != null}
             />
             <Stat label="Elapsed" value={formatDuration(elapsed)} />
             <Stat

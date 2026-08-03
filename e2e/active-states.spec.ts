@@ -160,8 +160,11 @@ test.describe("Regolith — live printer states", () => {
     expect(job).toContain("printing");
     expect(job, "layer N / M must be populated mid-job").toContain("Layer 118 / 250");
     expect(job).toContain("Progress 47.3%");
+    // 4021s of printing at 47.32% of the file → ~8497s total, ~4476s left.
+    // (It read "1h 6m" while remaining was derived from Klipper's monotonic
+    // clock rather than from the job's own progress.)
     expect(job, "remaining time must be a duration, not a placeholder").toContain(
-      "Remaining 1h 6m",
+      "Remaining 1h 14m",
     );
     expect(job).toContain("Elapsed 1h 7m");
     expect(job).toContain("Filament used 8.43 m");
@@ -267,7 +270,9 @@ test.describe("Regolith — live printer states", () => {
     expect(job).toContain("paused");
     expect(job).toContain("Layer 33 / 90");
     expect(job).toContain("Progress 36.7%");
-    expect(job).toContain("Remaining 51m 40s");
+    // 1800s at 36.67% → ~4909s total, ~3109s left. A pause does not stop the
+    // estimate being derived from the job's own progress.
+    expect(job).toContain("Remaining 51m 48s");
     expect(job).toContain("Elapsed 30m 0s");
 
     await expect(missionCard(page).getByRole("button", { name: "Resume" })).toBeEnabled();
@@ -294,8 +299,8 @@ test.describe("Regolith — live printer states", () => {
     const job = await readPanelText(missionCard(page));
     expect(job).toContain("cancelled");
     expect(job).toContain("Remaining —");
-    // No live-job controls survive a cancellation.
-    for (const name of ["Pause", "Resume", "Cancel", "Print again"]) {
+    // No LIVE-job controls survive a cancellation…
+    for (const name of ["Pause", "Resume", "Cancel"]) {
       await expect(
         missionCard(page).getByRole("button", { name }),
         `a cancelled job must not offer "${name}"`,
@@ -311,6 +316,237 @@ test.describe("Regolith — live printer states", () => {
     ).toBeNull();
 
     await assertOwnerTrust(page, "cancelled detail");
+    mock.assertSealed();
+  });
+
+  /* ---------------------------------------------------------------------
+   * Stopped jobs — cancelled and errored.
+   *
+   * Klipper leaves `print_stats.filename` populated after a job ends. The
+   * job panel used to gate its idle branch on `!filename`, so every stopped
+   * job fell straight through into the print-active layout: a part-filled
+   * accent progress track and a "Progress 7.2%" readout for a machine that
+   * had not moved in an hour, with no control of any kind because the action
+   * slot only knew about running and completed jobs.
+   * ------------------------------------------------------------------ */
+
+  test("a stopped job is presented as stopped, not as live progress", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "cancelled");
+
+    const job = await readPanelText(missionCard(page));
+    // The frozen percentage is still reported — but under a label that says
+    // the job stopped there, never as a live "Progress" readout.
+    expect(job, "a stopped job must not claim live Progress").not.toContain("Progress ");
+    expect(job, "the point the job stopped at is still worth knowing").toContain(
+      "Stopped at 7.2%",
+    );
+    // The checkpoint track is the visual claim that a job is advancing.
+    await expect(
+      missionCard(page).getByText("Done", { exact: true }),
+      "a stopped job must not render the live checkpoint timeline",
+    ).toHaveCount(0);
+
+    // The affordance that was missing entirely: a stopped job is exactly the
+    // one the owner wants to run again.
+    await expect(
+      missionCard(page).getByRole("button", { name: "Print again" }),
+      "a cancelled job must offer a retry",
+    ).toBeEnabled();
+
+    await assertNoBrokenReadouts(page, "cancelled job panel");
+    await assertOwnerTrust(page, "stopped-not-live");
+    mock.assertSealed();
+  });
+
+  test("a failed print shows klipper's reason, not just that it stopped", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "print-error");
+
+    // `print_stats.message` had no reader anywhere in the app, so a thermal
+    // fault and a user cancellation looked identical: the job just vanished.
+    const reason = missionCard(page).locator("[data-job-reason]");
+    await expect(reason, "a failed print must surface why it failed").toBeVisible();
+    await expect(reason).toContainText("Heater heater_bed not heating at expected rate");
+
+    const job = await readPanelText(missionCard(page));
+    expect(job).toContain("error");
+    expect(job).toContain("Stopped at 72.8%");
+    expect(job, "a failed job has no remaining time").toContain("Remaining —");
+    expect(job, "a failed job must not claim live Progress").not.toContain("Progress ");
+    expect(job, "layer info survives the failure").toContain("Layer 291 / 400");
+    await expect(missionCard(page).getByRole("button", { name: "Print again" })).toBeEnabled();
+    for (const name of ["Pause", "Resume", "Cancel"]) {
+      await expect(missionCard(page).getByRole("button", { name })).toHaveCount(0);
+    }
+
+    // The reason is firmware free-text; it must never be the vehicle that
+    // smuggles a JS placeholder onto the glass.
+    await assertNoBrokenReadouts(page, "failed print panel");
+    await assertOwnerTrust(page, "print-error detail");
+    mock.assertSealed();
+  });
+
+  test("a cancelled job's reason reaches the owner", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "cancelled");
+
+    await expect(missionCard(page).locator("[data-job-reason]")).toContainText(
+      "Print cancelled by user",
+    );
+    mock.assertSealed();
+  });
+
+  test("a running job never carries a stopped-job reason or retry", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "printing-midjob");
+
+    await expect(
+      missionCard(page).locator("[data-job-reason]"),
+      "a running job has not stopped and has no reason to show",
+    ).toHaveCount(0);
+    await expect(missionCard(page).getByRole("button", { name: "Print again" })).toHaveCount(0);
+    const job = await readPanelText(missionCard(page));
+    expect(job, "a running job reports live Progress, not 'Stopped at'").not.toContain(
+      "Stopped at",
+    );
+    mock.assertSealed();
+  });
+
+  /* ---------------------------------------------------------------------
+   * Remaining time — derived from the job, never from Klipper's clock.
+   * ------------------------------------------------------------------ */
+
+  test("remaining time ignores klipper's monotonic clock", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    const target = await loadScenario(page, mock, "monotonic-clock-skew");
+
+    // `toolhead.estimated_print_time` is 40000 here — the host's uptime, not
+    // this job's duration. Deriving from it reported "10h 6m" left. The job's
+    // own numbers (1h of printing at 50% of the file) say one hour, and one
+    // hour is what both readouts must say.
+    const job = await readPanelText(missionCard(page));
+    expect(job, "remaining must come from the job, not the machine clock").toContain(
+      "Remaining 1h 0m",
+    );
+    expect(job).toContain("Elapsed 1h 0m");
+    expect(job).toContain("Progress 50.0%");
+    expect(job, "the monotonic clock must not leak into the readout").not.toContain("10h");
+
+    const rail = await readPanelText(statusRail(page));
+    expect(rail).toContain(`Remaining ${target.rail.remaining}`);
+    expect(rail).not.toContain("11:06");
+
+    await assertOwnerTrust(page, "monotonic-clock-skew detail");
+    mock.assertSealed();
+  });
+
+  test("an estimate too early to trust is withheld, not guessed", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "heating");
+
+    // 96 seconds into a job at 0.6% of the file: everything burnt so far was
+    // heat-up, homing and the purge line. Extrapolating from it produced a
+    // confident, precisely-formatted "1:58:24" that was hours out. On a
+    // multi-hour print a wrong time is worse than no time — the owner plans
+    // around it. Say nothing instead.
+    const job = await readPanelText(missionCard(page));
+    expect(job, "an untrustworthy estimate must render as a placeholder").toContain(
+      "Remaining —",
+    );
+    expect(job, "the readout must not invent a duration this early").not.toMatch(
+      /Remaining \d/,
+    );
+    // The numbers we DO know are still reported in full.
+    expect(job).toContain("Progress 0.6%");
+    expect(job).toContain("Elapsed 1m 36s");
+
+    const rail = await readPanelText(statusRail(page));
+    expect(rail).toContain("Remaining —");
+    expect(rail, "the rail clock must not invent a duration either").not.toMatch(
+      /Remaining \d/,
+    );
+
+    await assertNoBrokenReadouts(page, "early-print estimate");
+    await assertOwnerTrust(page, "heating estimate withheld");
+    mock.assertSealed();
+  });
+
+  test("the job panel and the mission bar never disagree about time left", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+
+    // Both readouts are in the owner's eyeline at once. Two different answers
+    // to "how long left?" makes both untrustworthy, so they share one
+    // derivation — this pins that they still do.
+    for (const id of ["printing-midjob", "paused", "monotonic-clock-skew", "heating"]) {
+      const target = await loadScenario(page, mock, id);
+      const rail = await readPanelText(statusRail(page));
+      expect(rail, `${id}: rail remaining`).toContain(`Remaining ${target.rail.remaining}`);
+
+      const job = await readPanelText(missionCard(page));
+      const [, jobRemaining] = job.match(/Remaining (—|\d+[hms][^A-Z]*?)(?= Elapsed)/) ?? [];
+      expect(jobRemaining, `${id}: job panel must state a remaining time`).toBeTruthy();
+      // "—" on one side means "—" on the other; a duration on one side means a
+      // duration on the other. (The two use different formats by design:
+      // h:mm:ss on the glanceable bar, "1h 14m" in the detail panel.)
+      expect(
+        jobRemaining === "—",
+        `${id}: job panel says "${jobRemaining}" while the rail says "${target.rail.remaining}"`,
+      ).toBe(target.rail.remaining === "—");
+    }
+
+    mock.assertSealed();
+  });
+
+  /* ---------------------------------------------------------------------
+   * Layer info — slicers emit all, some, or none of it.
+   * ------------------------------------------------------------------ */
+
+  test("a job with only a current layer shows it without a phantom total", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "current-layer-only");
+
+    const job = await readPanelText(missionCard(page));
+    // The row used to be gated on the TOTAL alone, so a slicer that reported
+    // only the current layer had that reading silently thrown away.
+    expect(job, "a known current layer must be shown").toContain("Layer 42");
+    expect(job, "an unknown total must not be invented").not.toContain("42 /");
+    expect(job).not.toContain("null");
+    expect(job).not.toContain("undefined");
+    expect(job).not.toContain("NaN");
+
+    await assertNoBrokenReadouts(page, "current-layer-only job panel");
+    await assertOwnerTrust(page, "current-layer-only detail");
+    mock.assertSealed();
+  });
+
+  test("a job with only a layer total renders a half-known row, not NaN", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "total-layer-only");
+
+    const job = await readPanelText(missionCard(page));
+    // The old row interpolated `currentLayer ?? "—"` beside the total, which
+    // was right by accident here — but only because the total gated the row.
+    // Pin the honest half-known form so neither half can regress to a raw
+    // placeholder.
+    expect(job, "a known total is worth showing even without a current layer").toContain(
+      "Layer — / 300",
+    );
+    expect(job).not.toContain("null");
+    expect(job).not.toContain("undefined");
+    expect(job).not.toContain("NaN");
+
+    await assertNoBrokenReadouts(page, "total-layer-only job panel");
+    await assertOwnerTrust(page, "total-layer-only detail");
     mock.assertSealed();
   });
 
@@ -439,6 +675,98 @@ test.describe("Regolith — live printer states", () => {
       "the glow filter itself must be off under forced colors",
     ).toEqual([]);
     await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
+    mock.assertSealed();
+  });
+
+  test("the forced-colors glow rule still holds after the cockpit rework", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.emulateMedia({ forcedColors: "active" });
+    const mock = await openDashboard(page);
+
+    // Re-verification of the palette commit's fix, on the states the cockpit
+    // rework actually reshaped: a running job, a stopped job with a reason
+    // block, and an idle machine. The regression being guarded is a rule that
+    // hid `.phosphor-glow` outright — which erased the dial value arcs and
+    // blanked every status lamp, i.e. removed the geometry rather than the
+    // decoration.
+    for (const id of ["printing-midjob", "print-error", "at-temperature"]) {
+      await loadScenario(page, mock, id);
+      const parts = await page.locator(".phosphor-glow").evaluateAll((items) =>
+        items.map((item) => {
+          const style = getComputedStyle(item);
+          const box = item.getBoundingClientRect();
+          return {
+            tag: item.tagName.toLowerCase(),
+            filter: style.filter,
+            display: style.display,
+            visibility: style.visibility,
+            animation: style.animationName,
+            sized: box.width > 0 && box.height > 0,
+            // A glow on a text-bearing element smears the glyphs; the glow
+            // belongs on geometry only.
+            ownText: Array.from(item.childNodes)
+              .filter((node) => node.nodeType === Node.TEXT_NODE)
+              .map((node) => node.textContent?.trim() ?? "")
+              .filter(Boolean)
+              .join(" "),
+          };
+        }),
+      );
+      expect(parts.length, `${id}: nothing carries the glow class`).toBeGreaterThan(0);
+      expect(
+        parts.filter((p) => p.display === "none" || p.visibility === "hidden" || !p.sized),
+        `${id}: forced colors must kill the glow FILTER, never the geometry under it`,
+      ).toEqual([]);
+      expect(
+        parts.filter((p) => p.filter !== "none"),
+        `${id}: the glow filter must be off under forced colors`,
+      ).toEqual([]);
+      expect(
+        parts.filter((p) => p.ownText),
+        `${id}: the glow must never sit on text`,
+      ).toEqual([]);
+      expect(
+        parts.filter((p) => p.animation !== "none"),
+        `${id}: the glow must stay static, never animated`,
+      ).toEqual([]);
+      await assertNoBrokenReadouts(page, `${id} @ forced-colors`);
+    }
+    mock.assertSealed();
+  });
+
+  test("the glow stays a bounded static drop-shadow in normal colors", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "printing-midjob");
+
+    const parts = await page.locator(".phosphor-glow").evaluateAll((items) =>
+      items.map((item) => {
+        const style = getComputedStyle(item);
+        // Largest length in the resolved filter — the blur radius, in px.
+        const radii = [...style.filter.matchAll(/([\d.]+)px/g)].map((m) => Number(m[1]));
+        return {
+          tag: item.tagName.toLowerCase(),
+          filter: style.filter,
+          maxRadius: radii.length ? Math.max(...radii) : 0,
+          animation: style.animationName,
+          transition: style.transitionProperty,
+        };
+      }),
+    );
+    expect(parts.length).toBeGreaterThan(0);
+    expect(
+      parts.filter((p) => !p.filter.startsWith("drop-shadow(")),
+      "the glow must be a drop-shadow, not a box-shadow or text-shadow",
+    ).toEqual([]);
+    expect(
+      parts.filter((p) => p.maxRadius > 6),
+      "the glow must stay bounded at 6px or under",
+    ).toEqual([]);
+    expect(
+      parts.filter((p) => p.animation !== "none" || /filter/.test(p.transition)),
+      "the glow must be static — never animated, never transitioned",
+    ).toEqual([]);
+
     mock.assertSealed();
   });
 
