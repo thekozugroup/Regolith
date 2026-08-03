@@ -12,6 +12,9 @@ import {
 import { useGcodeLog } from "@/lib/useGcodeLog";
 import { AlertTriangle, LockKeyhole, Send, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
+import { AiGloss } from "@/components/AiGloss";
+import { useAiFeatureReady } from "@/lib/ai/flags";
+import { explainKlipperLine, isExplainable } from "@/lib/ai/explain";
 import { cn } from "@/lib/utils";
 
 export function ConsolePage() {
@@ -81,6 +84,16 @@ export function ConsolePage() {
       setSending(false);
     }
   };
+
+  // Explain affordance. One button, for the newest klipper response — not one
+  // per line: a 44px control on every row of a 200-line log would wreck the
+  // feed and the hit-target floor at the same time. User-initiated and
+  // one-shot; the log is never streamed anywhere. Absent unless the owner has
+  // configured and enabled the feature, so by default this renders nothing.
+  const explainReady = useAiFeatureReady("explain");
+  const newestResponse = [...lines]
+    .reverse()
+    .find((line) => line.type === "response" && isExplainable(line.text));
 
   const candidateAction: PrinterAction = {
     type: "console-gcode",
@@ -188,6 +201,15 @@ export function ConsolePage() {
             Autoscroll
           </button>
         </div>
+
+        {explainReady && newestResponse && (
+          <div className="pt-3">
+            <AiGloss
+              label="Explain last message"
+              run={() => explainKlipperLine(newestResponse.text)}
+            />
+          </div>
+        )}
 
         {/* Input row — always visible above keyboard / below feed */}
         <div className="flex gap-2 pt-3 -mb-1">

@@ -12,6 +12,7 @@ import { ThemeSettings } from "@/components/ThemeSettings";
 import { BackupSettings } from "@/components/BackupSettings";
 import { ProfileSettings } from "@/components/ProfileSettings";
 import { ExperienceSettings } from "@/components/ExperienceSettings";
+import { AiSettings } from "@/components/AiSettings";
 import { usePrinter } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 import {
@@ -130,6 +131,8 @@ export function SettingsPage() {
       <ThemeSettings />
       {isExpert && <ProfileSettings />}
       {isExpert && <BackupSettings />}
+      {/* Opt-in, off by default, and the only outbound path in the app. */}
+      <AiSettings />
 
       <Card title="System" icon={<Cog />} className="lg:col-span-2">
         <div className="space-y-[var(--stack)]">
