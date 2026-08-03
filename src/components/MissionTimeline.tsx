@@ -345,7 +345,7 @@ export function MissionTimeline() {
                         "text-[11px] uppercase tracking-[0.1em] font-semibold mt-1",
                         reached
                           ? "text-[var(--color-fg)]"
-                          : "text-[var(--color-fg-muted)]/60",
+                          : "text-[var(--color-fg-muted)]",
                       )}
                     >
                       {cp.label}

@@ -112,6 +112,12 @@ function Trend({ label, value, color }: { label: string; value?: number; color?:
   return <div><div className="instrument-label mb-1 flex items-center justify-between text-[11px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} color={color} /></div>;
 }
 
+/** Z-offset (babystep) per spec §2 row 17: signed, 3 dp, mm — `—` when unknown. */
+function formatZOffset(offset: number | null | undefined): string {
+  if (offset == null || !Number.isFinite(offset)) return "—";
+  return `${offset < 0 ? "" : "+"}${offset.toFixed(3)} mm`;
+}
+
 function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrinter>["state"]; fanSpeed: number }) {
   return <Card title="Telemetry" icon={<Wind />}><div className="grid divide-y divide-[var(--color-border)] sm:grid-cols-2 sm:divide-x">
     <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
@@ -121,6 +127,7 @@ function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrint
     <MetricTile label="Live Vel." value={state.motion_report?.live_velocity != null ? `${state.motion_report.live_velocity.toFixed(0)} mm/s` : "—"} active={(state.motion_report?.live_velocity ?? 0) > 1} />
     <MetricTile label="Max Accel" value={state.toolhead?.max_accel ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k` : "—"} />
     <MetricTile label="Position Z" value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"} />
+    <MetricTile label="Z-Offset" value={formatZOffset(state.gcode_move?.homing_origin?.[2])} />
     <MetricTile label="Homed" value={state.toolhead?.homed_axes?.toUpperCase() || "none"} active={!!state.toolhead?.homed_axes} />
   </div></Card>;
 }

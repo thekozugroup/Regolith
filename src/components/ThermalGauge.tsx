@@ -33,11 +33,9 @@ export function ThermalGauge({
   const heating = active && value < setpoint - 2;
   const stable = active && Math.abs(value - setpoint) < 2;
   const overTarget = active && value > setpoint + 5;
-  // Overheat guard: near the absolute limit overrides every other state.
-  const overheat = hasActual && value >= 0.95 * maxTemp;
   const percent = Math.max(0, Math.min(100, (value / maxTemp) * 100));
-  const status = overheat ? "Overheat" : overTarget ? "Above target" : stable ? "Stable" : heating ? "Heating" : active ? "Regulating" : "Standby";
-  const stateColor = overheat || overTarget
+  const status = overTarget ? "Above target" : stable ? "Stable" : heating ? "Heating" : active ? "Regulating" : "Standby";
+  const stateColor = overTarget
     ? "var(--color-error)"
     : stable
       ? "var(--color-success)"

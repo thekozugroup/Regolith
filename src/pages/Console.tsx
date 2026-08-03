@@ -145,7 +145,7 @@ export function ConsolePage() {
           )}
           {lines.map((l, i) => (
             <div key={i} className="flex gap-3">
-              <span className="text-[var(--color-fg-muted)]/60 shrink-0 tabular-nums">
+              <span className="text-[var(--color-fg-muted)] shrink-0 tabular-nums">
                 {new Date(l.ts).toLocaleTimeString("en-US", { hour12: false })}
               </span>
               <span

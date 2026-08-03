@@ -56,8 +56,15 @@ export function StatusRail() {
         <span className="instrument-label text-[11px]" style={{ color: "inherit" }}>{printState}</span>
       </span>
 
+      {/*
+       * While the link is down, telemetry is unknown — show the neutral `—`
+       * placeholder (the "Link Connecting" lamp on this rail already carries
+       * the connecting state). PrinterCard owns the "Connecting to printer…"
+       * copy; rendering it twice on the Dashboard was a strict-mode trap for
+       * the e2e suite and redundant for users.
+       */}
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={ps?.filename || undefined}>
-        {filename || (connected ? "No active job" : "Connecting to printer…")}
+        {filename || (connected ? "No active job" : "—")}
       </span>
 
       <span className="flex shrink-0 items-baseline gap-1.5">

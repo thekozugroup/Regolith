@@ -58,26 +58,37 @@ export function HealthAlerts() {
     id: string;
     severity: "warn" | "error";
     message: string;
+    /**
+     * Screen-reader announcement. Must be STABLE text — the visible message
+     * may interpolate live telemetry that mutates on every status update,
+     * which would flood an atomic live region with re-announcements.
+     */
+    announcement: string;
     icon: React.ReactNode;
   }> = [];
 
   // Network alert
   if (!connected) {
+    const message =
+      "Moonraker disconnected — UI showing last known state. Reconnecting…";
     alerts.push({
       id: "network",
       severity: "error",
-      message:
-        "Moonraker disconnected — UI showing last known state. Reconnecting…",
+      message,
+      announcement: message,
       icon: <WifiOff className="w-4 h-4" />,
     });
   }
 
   // Thermal runaway (only if persisting >15s to avoid flapping)
   if (thermalIssue && Date.now() - thermalIssue.since > 15_000) {
+    // `drift` is frozen at first detection, so this text is stable.
+    const message = `${thermalIssue.heater} temperature diverging by ${thermalIssue.drift.toFixed(1)}°C — possible thermal runaway`;
     alerts.push({
       id: "thermal",
       severity: "error",
-      message: `${thermalIssue.heater} temperature diverging by ${thermalIssue.drift.toFixed(1)}°C — possible thermal runaway`,
+      message,
+      announcement: message,
       icon: <AlertTriangle className="w-4 h-4" />,
     });
   }
@@ -92,6 +103,7 @@ export function HealthAlerts() {
         id: `sensor-${sensor.klipper}`,
         severity: "error",
         message: `${sensor.label} at ${t.toFixed(1)}°C — critical threshold exceeded.`,
+        announcement: `${sensor.label} above ${sensor.criticalAbove}°C — critical threshold exceeded.`,
         icon: <AlertTriangle className="w-4 h-4" />,
       });
     } else if (sensor.warnAbove != null && t >= sensor.warnAbove) {
@@ -99,6 +111,7 @@ export function HealthAlerts() {
         id: `sensor-${sensor.klipper}`,
         severity: "warn",
         message: `${sensor.label} at ${t.toFixed(1)}°C — running hot.`,
+        announcement: `${sensor.label} above ${sensor.warnAbove}°C — running hot.`,
         icon: <AlertTriangle className="w-4 h-4" />,
       });
     }
@@ -109,6 +122,20 @@ export function HealthAlerts() {
 
   return (
     <div className="fixed top-14 right-3 z-50 flex flex-col gap-2 max-w-md">
+      {/*
+       * Live regions live in a visually-hidden sibling so mounting an alert
+       * is announced (assertive for errors, polite for warnings) while the
+       * visible copy stays free to interpolate live telemetry without
+       * re-announcing on every tick. Each entry gets its own role so mixed
+       * severities announce at the correct urgency.
+       */}
+      <div className="sr-only">
+        {visible.map((a) => (
+          <p key={a.id} role={a.severity === "error" ? "alert" : "status"}>
+            {a.announcement}
+          </p>
+        ))}
+      </div>
       {visible.map((a) => (
         <div
           key={a.id}

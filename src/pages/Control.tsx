@@ -120,7 +120,7 @@ export function Control() {
                       ○
                     </span>
                   )}
-                  {isExpert && <span className="ml-auto text-[11px] tabular-nums text-[var(--color-fg-muted)]/60">
+                  {isExpert && <span className="ml-auto text-[11px] tabular-nums text-[var(--color-fg-muted)]">
                     {safety.bounds.min[i].toFixed(0)}–
                     {safety.bounds.max[i].toFixed(0)}
                   </span>}

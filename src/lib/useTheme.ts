@@ -121,6 +121,15 @@ export function useDeviceName() {
   return [name, update] as const;
 }
 
+/**
+ * Apply the persisted accent to the document root. Called once at boot
+ * (main.tsx) so the user's accent survives reloads on every route —
+ * `useAccent()` only runs while Settings is mounted.
+ */
+export function applyStoredAccent(): void {
+  applyAccent(loadStoredAccent());
+}
+
 export function useAccent() {
   const [accent, setAccentState] = useState<string>(() => loadStoredAccent());
 
