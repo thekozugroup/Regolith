@@ -163,15 +163,23 @@ async function assertFinalControlReachability(page: Page) {
   const lastControl = page.locator("main button:visible, main a:visible, main input:visible, main select:visible").last();
   if (await lastControl.count()) {
     await lastControl.scrollIntoViewIfNeeded();
-    const hiddenByNav = await lastControl.evaluate((item) => {
-      // Key off the real bottom nav, not a width media query: the K1 Max's
-      // 800x480 panel is wider than 768px yet keeps the touch chrome.
-      const nav = document.querySelector('nav[aria-label="Mobile primary"]');
-      if (!nav || getComputedStyle(nav).display === "none") return false;
+    const hiddenByChrome = await lastControl.evaluate((item) => {
+      // The fold is the top of whatever bottom chrome exists: the mission
+      // bar everywhere, plus the bottom nav on touch layouts. Key off the
+      // real elements, not a width media query: the K1 Max's 800x480 panel
+      // is wider than 768px yet keeps the touch chrome.
+      const tops: number[] = [];
+      for (const selector of ['section[aria-label="Printer status"]', 'nav[aria-label="Mobile primary"]']) {
+        const chrome = document.querySelector(selector);
+        if (chrome && getComputedStyle(chrome).display !== "none") {
+          tops.push(chrome.getBoundingClientRect().top);
+        }
+      }
+      if (tops.length === 0) return false;
       const box = item.getBoundingClientRect();
-      return box.bottom > innerHeight - 48;
+      return box.bottom > Math.min(...tops) + 0.5;
     });
-    expect(hiddenByNav).toBe(false);
+    expect(hiddenByChrome).toBe(false);
   }
 }
 
@@ -265,8 +273,9 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     // Playwright's `:visible` means "participates in layout", not "inside the
     // viewport" — the dial-count assertions elsewhere pass even with the Bed
     // dial a full screen below the fold. Measure real geometry against the
-    // bottom nav's top edge, the actual fold on the printer's own 480px-tall
-    // panel, in both experience modes.
+    // MISSION BAR's top edge — the bar stacks above the bottom nav, so it is
+    // the actual fold on the printer's own 480px-tall panel — in both
+    // experience modes.
     await page.setViewportSize({ width: 800, height: 480 });
     const audit = await installStrictMock(page);
     await page.goto("/");
@@ -278,8 +287,8 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       await page.goto("/");
       await assertInstrumentShell(page, experienceMode);
       const foldTop = await page
-        .getByRole("navigation", { name: "Mobile primary" })
-        .evaluate((nav) => nav.getBoundingClientRect().top);
+        .locator('section[aria-label="Printer status"]')
+        .evaluate((bar) => bar.getBoundingClientRect().top);
       const dials = await page.locator(".gauge-dial").evaluateAll((items) =>
         items.map((item) => {
           const box = item.getBoundingClientRect();
@@ -289,7 +298,7 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
       expect(dials, `${experienceMode}: both dials must be in the layout`).toHaveLength(2);
       for (const box of dials) {
         expect(box.top, `${experienceMode}: dial clipped by the top of the viewport`).toBeGreaterThanOrEqual(0);
-        expect(box.bottom, `${experienceMode}: dial at/under the fold (bottom-nav top ${foldTop})`).toBeLessThanOrEqual(foldTop);
+        expect(box.bottom, `${experienceMode}: dial at/under the fold (mission-bar top ${foldTop})`).toBeLessThanOrEqual(foldTop);
       }
     }
     expect(audit.escaped).toEqual([]);

@@ -86,7 +86,7 @@ export function PrinterCard() {
           : "",
       )}
     >
-      <div className="grid grid-cols-[76px_1fr] gap-4 p-[clamp(0.75rem,1.4vw,1.25rem)] sm:grid-cols-[112px_1fr]">
+      <div className="grid grid-cols-[76px_1fr] gap-3 p-[var(--card-pad)] sm:grid-cols-[112px_1fr]">
         {/* Image / icon */}
         <div className="relative group">
           <div
@@ -165,7 +165,9 @@ export function PrinterCard() {
             </div>
           </div>
 
-          {isExpert && <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-[var(--color-border)] pt-3 text-[11px] tabular-nums">
+          {/* Machine meta rides in both modes — read-only vitals cost nothing
+              and fill the panel with information instead of empty glass. */}
+          <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--color-border)] pt-3 text-[11px] tabular-nums">
             <Stat label="Hostname" value={meta.hostname} />
             <Stat label="OS" value={meta.firmware} />
             <Stat
@@ -176,7 +178,7 @@ export function PrinterCard() {
               label="Network"
               value={location.host.replace(/:.*/, "")}
             />
-          </div>}
+          </div>
         </div>
       </div>
     </section>

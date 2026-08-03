@@ -24,7 +24,7 @@ export function Card({
         className
       )}
     >
-      <header className="relative flex min-h-12 items-center justify-between gap-3 border-b border-[var(--color-border)] px-[var(--card-pad)]">
+      <header className="relative flex min-h-11 items-center justify-between gap-3 border-b border-[var(--color-border)] px-[var(--card-pad)]">
         <div className="flex min-w-0 items-center gap-2 text-[14px] font-semibold tracking-[-0.01em]">
           {icon && (
             <span aria-hidden="true" className="text-[var(--color-accent)] [&>svg]:h-3.5 [&>svg]:w-3.5">

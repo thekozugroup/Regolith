@@ -39,13 +39,13 @@ const hotendGauge = (page: Page) => page.getByRole("img", { name: /^Hotend tempe
 const bedGauge = (page: Page) => page.getByRole("img", { name: /^Bed temperature/ });
 
 /**
- * Fraction of the app-bar progress strip that is filled, or null when the
- * strip is not rendered at all. Measured rather than read off the inline
- * style so the assertion survives float formatting.
+ * Fraction of the mission bar's full-width progress strip that is filled,
+ * or null when the strip is not rendered at all. Measured rather than read
+ * off the inline style so the assertion survives float formatting.
  */
-async function appBarProgressRatio(page: Page): Promise<number | null> {
+async function missionProgressRatio(page: Page): Promise<number | null> {
   return page.evaluate(() => {
-    const track = document.querySelector<HTMLElement>('header [class*="h-0.5"]');
+    const track = document.querySelector<HTMLElement>("[data-mission-progress]");
     const fill = track?.firstElementChild as HTMLElement | null;
     if (!track || !fill) return null;
     const trackWidth = track.getBoundingClientRect().width;
@@ -184,10 +184,11 @@ test.describe("Regolith — live printer states", () => {
       "a live setpoint must be indexed on the dial",
     ).toHaveCount(2);
 
-    // The app-bar progress strip is the owner's peripheral-vision readout;
-    // it only exists while a job is active and must track the same fraction.
-    const ratio = await appBarProgressRatio(page);
-    expect(ratio, "the app-bar progress strip must render while printing").not.toBeNull();
+    // The mission bar's progress strip is the owner's peripheral-vision
+    // readout; it only exists while a job is active and must track the same
+    // fraction.
+    const ratio = await missionProgressRatio(page);
+    expect(ratio, "the mission bar progress strip must render while printing").not.toBeNull();
     expect(ratio ?? 0).toBeGreaterThan(0.46);
     expect(ratio ?? 0).toBeLessThan(0.49);
 
@@ -303,10 +304,10 @@ test.describe("Regolith — live printer states", () => {
 
     // Heaters were released with the job — no dial may claim a setpoint.
     await expect(page.locator('.gauge-dial line[stroke="var(--color-gauge-target)"]')).toHaveCount(0);
-    // …and nothing is running, so the app-bar strip must be gone entirely.
+    // …and nothing is running, so the progress strip must be gone entirely.
     expect(
-      await appBarProgressRatio(page),
-      "a cancelled job must not leave a progress strip on the app bar",
+      await missionProgressRatio(page),
+      "a cancelled job must not leave a progress strip on the mission bar",
     ).toBeNull();
 
     await assertOwnerTrust(page, "cancelled detail");

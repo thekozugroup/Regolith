@@ -5,6 +5,7 @@ import { LockKeyhole } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { AppBar } from "./components/AppBar";
 import { HealthAlerts } from "./components/HealthAlerts";
+import { MissionBar } from "./components/MissionBar";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { useNotifications } from "./lib/useNotifications";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
@@ -79,10 +80,15 @@ function AppShell() {
       <Sidebar />
       <AppBar />
       <HealthAlerts />
+      {/* Mission bar renders BEFORE main so the dashboard task order
+          ("is it OK?" first) holds in the DOM; it is pinned to the bottom
+          of the glass visually. Content clearance = mission bar height,
+          plus the bottom nav's on compact chrome (they stack). */}
+      <MissionBar />
       <main
         id="main-content"
         tabIndex={-1}
-        className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(5rem+env(safe-area-inset-bottom))] desk:ml-56 desk:pb-0"
+        className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(var(--bottomnav-h)+var(--mission-h)+0.5rem)] desk:ml-56 desk:pb-[var(--mission-h)]"
       >
         <RouteErrorBoundary key={location.pathname}>
           <Suspense fallback={<RouteLoading />}>

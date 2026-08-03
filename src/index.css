@@ -69,16 +69,23 @@
   --graticule-step: 24px;
 
   /* --- Layout --- */
-  --appbar-h: 60px; /* single source for app bar height — App/AppBar/Sidebar/StatusRail all reference it */
-  --page-gutter: clamp(0.75rem, 2vw, 1.5rem);
-  --card-pad: clamp(0.75rem, 1.4vw, 1.25rem);
-  --rail-h: 56px;
+  --appbar-h: 60px; /* single source for app bar height — App/AppBar/Sidebar all reference it */
+  /* Cockpit density: gutters and card padding tightened so panels, not
+     background, own the glass. Floors stay generous enough for 44px targets. */
+  --page-gutter: clamp(0.5rem, 1.2vw, 0.875rem);
+  --card-pad: clamp(0.625rem, 1vw, 1rem);
+  /* Bottom chrome stack. The mission bar is pinned to the bottom edge on
+     desktop chrome and STACKS DIRECTLY ABOVE the bottom nav on compact
+     chrome; content padding reserves the COMBINED height. Single source —
+     App shell padding, the Sidebar, and the bar itself all read these. */
+  --mission-h: 44px; /* single-row mission bar (>=40rem) */
+  --bottomnav-h: calc(4rem + 1px + env(safe-area-inset-bottom)); /* compact nav: min-h-16 links + top border + safe area */
 
   /* --- Dial geometry ---
      Sweep/start/radius live as JS constants in Dial.tsx (single source);
      only the sizing tokens the layout actually reads are kept here. */
   --gauge-size-min: 148px; /* hard floor — below this the bar renderer takes over */
-  --gauge-size-pref: clamp(148px, 100cqi, 280px); /* fill the instrument, cap at 280px */
+  --gauge-size-pref: clamp(148px, 100cqi, 340px); /* fill the instrument — dials are the primary cockpit instrument, so let them claim big glass */
 
   /* --- Type --- */
   --text-readout-lg: clamp(1.75rem, 9cqi, 2.75rem);
@@ -115,7 +122,13 @@
   input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   button, [role="button"] { touch-action: manipulation; }
-  main :is(button, a, input, select, textarea) { scroll-margin-block-end: calc(6rem + env(safe-area-inset-bottom)); }
+  main :is(button, a, input, select, textarea) { scroll-margin-block-end: calc(var(--bottomnav-h) + var(--mission-h) + 0.75rem); }
+
+  /* The two-row mission bar needs more height below the sm breakpoint —
+     defined at :root so every reader of --mission-h agrees. */
+  @media (max-width: 39.99rem) {
+    :root { --mission-h: 56px; }
+  }
 }
 
 @layer components {
@@ -188,7 +201,25 @@
     .phosphor-glow { filter: none; }
   }
 
-  .status-rail { min-height: var(--rail-h); background: var(--color-bg); position: relative; }
+  /* MISSION BAR — full-bleed cockpit status strip pinned to the bottom of
+     the viewport. Fixed height (not min-height): the padding clearance the
+     app shell reserves is derived from the same --mission-h token, so a bar
+     that grew taller than its token would silently cover content. Desktop
+     chrome pins it to the bottom edge; compact chrome stacks it DIRECTLY
+     ABOVE the bottom nav (same boundary as the desk/compact variants). */
+  .mission-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    height: var(--mission-h);
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
+  }
+  @media not ((min-width: 48rem) and (min-height: 600px)) {
+    .mission-bar { bottom: var(--bottomnav-h); }
+  }
 
   /* --- Dashboard: content-driven mission-control grid ---
      The shell is an inline-size container, so lane count follows the width
@@ -200,7 +231,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-auto-flow: row dense;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
   /* Stretched rows must reach the panel itself, not stop at the zone
      wrapper, so a shorter card in a row fills its lane instead of leaving
@@ -213,7 +244,6 @@
   @container (min-width: 1560px) {
     .dashboard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .dash-wide { grid-column: span 2; }
-    .dash-wide-3 { grid-column: span 2; }
   }
   /* Landscape/desktop should fit, not scroll: let the grid claim the full
      viewport height so stretched rows distribute the surface. min-height
@@ -222,7 +252,7 @@
     .dashboard-shell {
       display: flex;
       flex-direction: column;
-      min-height: calc(100dvh - var(--appbar-h));
+      min-height: calc(100dvh - var(--appbar-h) - var(--mission-h));
     }
     .dashboard-grid { flex: 1 1 auto; align-content: stretch; }
   }

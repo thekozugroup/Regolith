@@ -60,7 +60,9 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="app-chrome fixed left-0 top-0 bottom-0 z-20 hidden w-56 flex-col border-r border-[var(--color-border)] desk:flex">
+      {/* bottom-[var(--mission-h)]: the mission bar is full-bleed across the
+          bottom edge, so the sidebar ends where the bar begins. */}
+      <aside className="app-chrome fixed left-0 top-0 bottom-[var(--mission-h)] z-20 hidden w-56 flex-col border-r border-[var(--color-border)] desk:flex">
         <div className="h-[var(--appbar-h)] px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
           <div className="relative flex h-9 w-9 items-center justify-center border border-[var(--color-border)] bg-[var(--color-elevated)]">
             <BrandLogo size={20} />

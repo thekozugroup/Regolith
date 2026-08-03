@@ -4,7 +4,6 @@ import { Sparkline } from "@/components/Sparkline";
 import { PrinterCard } from "@/components/PrinterCard";
 import { MissionTimeline } from "@/components/MissionTimeline";
 import { CameraStream } from "@/components/CameraStream";
-import { StatusRail } from "@/components/StatusRail";
 import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,10 +11,11 @@ import { useExperienceMode } from "@/lib/useExperienceMode";
 
 /**
  * Mission-control dashboard. Zones per the design spec:
- *   Z1 status rail · Z2 gauge cluster · Z3 job · Z4 viewport ·
- *   Z5 secondary vitals (expert) · Z6 readiness.
- * DOM order follows the mobile task order ("is it OK?" → "how hot?" →
- * "show me" → details) and never changes. Lane count is CONTENT-driven:
+ *   Z2 gauge cluster · Z3 job · Z4 viewport · Z5 secondary vitals ·
+ *   Z6 readiness. (Z1, the mission status, is the app shell's bottom
+ *   MissionBar — pinned to the glass, not part of this scroll.)
+ * DOM order follows the mobile task order ("what is it doing?" → "how hot?"
+ * → "show me" → details) and never changes. Lane count is CONTENT-driven:
  * `.dashboard-grid` (index.css) measures the width that actually exists
  * (container query on the shell) instead of viewport breakpoints, and
  * dense flow backfills — no order-* / col-start-* orphaned rows.
@@ -27,11 +27,8 @@ export function Dashboard() {
   const fanSpeed = state.fan?.speed ?? 0;
 
   return (
-    <div className="dashboard-shell mx-auto max-w-[min(100%,1800px)] p-[var(--page-gutter)]">
-      {/* Z1 — STATUS RAIL (sticky under the app bar on compact screens) */}
-      <StatusRail />
-
-      <div className="dashboard-grid mt-3">
+    <div className="dashboard-shell mx-auto max-w-[min(100%,2200px)] p-[var(--page-gutter)]">
+      <div className="dashboard-grid">
         {/* Z3 — JOB / PROGRESS */}
         <div>
           <MissionTimeline />
@@ -42,10 +39,8 @@ export function Dashboard() {
           <ThermalsPanel state={state} profile={profile} isExpert={isExpert} />
         </div>
 
-        {/* Z4 — VIEWPORT. In basic mode (4 panels) the camera widens on the
-            three-lane grid so the last row stays filled; in expert mode
-            (5 panels) the wide slot belongs to Telemetry below. */}
-        <div className={cn(!isExpert && "dash-wide-3")}>
+        {/* Z4 — VIEWPORT */}
+        <div>
           <Card title="Camera" icon={<Camera />}>
             <div className="relative -m-[var(--card-pad)] aspect-video overflow-hidden bg-black">
               <CameraStream className="absolute inset-0" />
@@ -60,13 +55,13 @@ export function Dashboard() {
           </Card>
         </div>
 
-        {/* Z5 — SECONDARY VITALS (expert). Wide: 9 tiles spread across the
-            full row instead of crowding a 250px column. */}
-        {isExpert && (
-          <div className="dash-wide">
-            <TelemetryPanel state={state} fanSpeed={fanSpeed} />
-          </div>
-        )}
+        {/* Z5 — SECONDARY VITALS. Both modes: the cockpit spends its
+            reclaimed space on information — chamber, fan, speed, flow,
+            Z-offset, filament — with the deeper motion internals kept for
+            expert mode. Wide slot so the tiles spread across a full row. */}
+        <div className="dash-wide">
+          <TelemetryPanel state={state} profile={profile} fanSpeed={fanSpeed} isExpert={isExpert} />
+        </div>
 
         {/* Z6 — READINESS */}
         <div>
@@ -123,17 +118,36 @@ function formatZOffset(offset: number | null | undefined): string {
   return `${offset < 0 ? "" : "+"}${offset.toFixed(3)} mm`;
 }
 
-function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrinter>["state"]; fanSpeed: number }) {
+function TelemetryPanel({
+  state,
+  profile,
+  fanSpeed,
+  isExpert,
+}: {
+  state: ReturnType<typeof usePrinter>["state"];
+  profile: ReturnType<typeof usePrinter>["profile"];
+  fanSpeed: number;
+  isExpert: boolean;
+}) {
+  const chamber = profile.sensors.find((sensor) => /chamber/i.test(sensor.label));
+  const chamberTemp = chamber
+    ? state[chamber.klipper as `temperature_sensor ${string}`]?.temperature
+    : undefined;
+  const filamentMm = state.print_stats?.filament_used ?? 0;
   return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
+    {chamber && <MetricTile label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} />}
     <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
     <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.speed_factor != null && state.gcode_move.speed_factor !== 1} />
     <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.extrude_factor != null && state.gcode_move.extrude_factor !== 1} />
-    <MetricTile label="Pressure Adv." value={state.extruder?.pressure_advance?.toFixed(4) ?? "—"} />
-    <MetricTile label="Live Vel." value={state.motion_report?.live_velocity != null ? `${state.motion_report.live_velocity.toFixed(0)} mm/s` : "—"} active={(state.motion_report?.live_velocity ?? 0) > 1} />
-    <MetricTile label="Max Accel" value={state.toolhead?.max_accel ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k` : "—"} />
-    <MetricTile label="Position Z" value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"} />
     <MetricTile label="Z-Offset" value={formatZOffset(state.gcode_move?.homing_origin?.[2])} />
-    <MetricTile label="Homed" value={state.toolhead?.homed_axes?.toUpperCase() || "none"} active={!!state.toolhead?.homed_axes} />
+    <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
+    {isExpert && <>
+      <MetricTile label="Pressure Adv." value={state.extruder?.pressure_advance?.toFixed(4) ?? "—"} />
+      <MetricTile label="Live Vel." value={state.motion_report?.live_velocity != null ? `${state.motion_report.live_velocity.toFixed(0)} mm/s` : "—"} active={(state.motion_report?.live_velocity ?? 0) > 1} />
+      <MetricTile label="Max Accel" value={state.toolhead?.max_accel ? `${(state.toolhead.max_accel / 1000).toFixed(1)}k` : "—"} />
+      <MetricTile label="Position Z" value={state.toolhead?.position?.[2]?.toFixed(3) ?? "—"} />
+      <MetricTile label="Homed" value={state.toolhead?.homed_axes?.toUpperCase() || "none"} active={!!state.toolhead?.homed_axes} />
+    </>}
   </div></Card>;
 }
 

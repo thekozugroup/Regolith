@@ -2,7 +2,6 @@ import { AlertCircle, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 import { useDeviceName } from "@/lib/useTheme";
-import { AppBarProgress } from "./AppBarProgress";
 import { useLocation } from "react-router";
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -72,7 +71,6 @@ export function AppBar() {
           <span className="hidden sm:inline">{connected ? "Connected" : "Offline"}</span>
         </div>
       </div>
-      <AppBarProgress />
     </header>
   );
 }

@@ -4,7 +4,7 @@
  * Both pre-existing specs pin an IDLE printer (print_stats.state = "standby",
  * every heater target 0). That left the layouts the owner actually stares at
  * while the machine is hot — MissionTimeline's print-active and tuning
- * branches, the Dial's target index / heating arc, StatusRail's active
+ * branches, the Dial's target index / heating arc, the MissionBar's active
  * readouts — completely unrendered in CI. This module supplies the same
  * strict, fail-on-escape mocking discipline as `instrument-cluster.spec.ts`
  * but lets each test pin a specific live printer state.
@@ -277,6 +277,49 @@ export async function assertDialFloor(page: Page, label: string) {
   expect(dishonest, `${label}: dial integrity`).toEqual([]);
 }
 
+/**
+ * The mission bar is the cockpit's bottom status strip. It must exist on
+ * every route, span the full viewport width, sit pinned to the bottom edge —
+ * and on compact chrome it must stack DIRECTLY ABOVE the bottom nav: no
+ * overlap (the nav stays tappable) and no gap (no dead glass between them).
+ */
+export async function assertMissionBarPlacement(page: Page, label: string) {
+  const geometry = await page.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('section[aria-label="Printer status"]');
+    if (!bar) return null;
+    const barBox = bar.getBoundingClientRect();
+    const nav = document.querySelector<HTMLElement>('nav[aria-label="Mobile primary"]');
+    const navVisible = !!nav && getComputedStyle(nav).display !== "none";
+    return {
+      left: barBox.left,
+      right: barBox.right,
+      bottom: barBox.bottom,
+      height: barBox.height,
+      viewportWidth: document.documentElement.clientWidth,
+      viewportHeight: window.innerHeight,
+      navVisible,
+      navTop: navVisible ? nav.getBoundingClientRect().top : null,
+    };
+  });
+  expect(geometry, `${label}: mission bar must exist`).not.toBeNull();
+  if (!geometry) return;
+  expect(geometry.height, `${label}: mission bar must have height`).toBeGreaterThan(0);
+  expect(geometry.left, `${label}: mission bar must reach the left edge`).toBeLessThanOrEqual(0.5);
+  expect(
+    geometry.right,
+    `${label}: mission bar must reach the right edge (full width)`,
+  ).toBeGreaterThanOrEqual(geometry.viewportWidth - 0.5);
+  const restingEdge = geometry.navVisible ? geometry.navTop! : geometry.viewportHeight;
+  expect(
+    geometry.bottom,
+    `${label}: mission bar must not overlap the ${geometry.navVisible ? "bottom nav" : "viewport edge"}`,
+  ).toBeLessThanOrEqual(restingEdge + 0.5);
+  expect(
+    restingEdge - geometry.bottom,
+    `${label}: mission bar must sit flush against the ${geometry.navVisible ? "bottom nav" : "bottom edge"} (pinned, no gap)`,
+  ).toBeLessThanOrEqual(1);
+}
+
 export async function assertNoHorizontalOverflow(page: Page, label: string) {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -373,5 +416,6 @@ export async function assertOwnerTrust(page: Page, label: string) {
   await assertTextFloor(page, label);
   await assertTouchTargets(page, label);
   await assertDashboardTaskOrder(page, label);
+  await assertMissionBarPlacement(page, label);
   await expect(page.locator(".gauge-dial:visible"), `${label}: both dials must render`).toHaveCount(2);
 }
