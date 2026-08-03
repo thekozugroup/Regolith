@@ -66,7 +66,10 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
   } as const;
 
   return (
-    <div className="relative mx-auto w-full max-w-[232px]" style={{ minWidth: "var(--gauge-size-min)" }}>
+    <div
+      className="relative mx-auto w-full"
+      style={{ minWidth: "var(--gauge-size-min)", maxWidth: "var(--gauge-size-pref)" }}
+    >
       <svg
         aria-hidden="true"
         className="gauge-dial block h-auto w-full"

@@ -82,7 +82,7 @@ function AppShell() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mt-[60px] min-h-[calc(100dvh-60px)] pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-56 md:pb-0"
+        className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(5rem+env(safe-area-inset-bottom))] desk:ml-56 desk:pb-0"
       >
         <RouteErrorBoundary key={location.pathname}>
           <Suspense fallback={<RouteLoading />}>

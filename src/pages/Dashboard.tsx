@@ -15,8 +15,10 @@ import { useExperienceMode } from "@/lib/useExperienceMode";
  *   Z1 status rail · Z2 gauge cluster · Z3 job · Z4 viewport ·
  *   Z5 secondary vitals (expert) · Z6 readiness.
  * DOM order follows the mobile task order ("is it OK?" → "how hot?" →
- * "show me" → details); md/lg rearrange with order-* + col-span, the
- * proven approach — no grid-template-areas.
+ * "show me" → details) and never changes. Lane count is CONTENT-driven:
+ * `.dashboard-grid` (index.css) measures the width that actually exists
+ * (container query on the shell) instead of viewport breakpoints, and
+ * dense flow backfills — no order-* / col-start-* orphaned rows.
  */
 export function Dashboard() {
   const { state, profile } = usePrinter();
@@ -25,23 +27,25 @@ export function Dashboard() {
   const fanSpeed = state.fan?.speed ?? 0;
 
   return (
-    <div className="mx-auto max-w-[1440px] p-[var(--page-gutter)]">
+    <div className="dashboard-shell mx-auto max-w-[min(100%,1800px)] p-[var(--page-gutter)]">
       {/* Z1 — STATUS RAIL (sticky under the app bar on compact screens) */}
       <StatusRail />
 
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-8 lg:grid-cols-12">
+      <div className="dashboard-grid mt-3">
         {/* Z3 — JOB / PROGRESS */}
-        <div className="md:order-2 md:col-span-4 lg:order-2 lg:col-start-6 lg:col-span-7">
+        <div>
           <MissionTimeline />
         </div>
 
         {/* Z2 — PRIMARY GAUGE CLUSTER */}
-        <div className="md:order-1 md:col-span-4 lg:order-1 lg:col-span-5">
+        <div>
           <ThermalsPanel state={state} profile={profile} isExpert={isExpert} />
         </div>
 
-        {/* Z4 — VIEWPORT */}
-        <div className="md:order-3 md:col-span-8 lg:order-4 lg:col-start-6 lg:col-span-7">
+        {/* Z4 — VIEWPORT. In basic mode (4 panels) the camera widens on the
+            three-lane grid so the last row stays filled; in expert mode
+            (5 panels) the wide slot belongs to Telemetry below. */}
+        <div className={cn(!isExpert && "dash-wide-3")}>
           <Card title="Camera" icon={<Camera />}>
             <div className="relative -m-[var(--card-pad)] aspect-video overflow-hidden bg-black">
               <CameraStream className="absolute inset-0" />
@@ -56,15 +60,16 @@ export function Dashboard() {
           </Card>
         </div>
 
-        {/* Z5 — SECONDARY VITALS (expert) */}
+        {/* Z5 — SECONDARY VITALS (expert). Wide: 9 tiles spread across the
+            full row instead of crowding a 250px column. */}
         {isExpert && (
-          <div className="md:order-4 md:col-span-4 lg:order-3 lg:col-span-5">
+          <div className="dash-wide">
             <TelemetryPanel state={state} fanSpeed={fanSpeed} />
           </div>
         )}
 
         {/* Z6 — READINESS */}
-        <div className={cn("md:order-5 md:col-span-4 lg:col-span-5", isExpert ? "lg:order-5" : "lg:order-3")}>
+        <div>
           <PrinterCard />
         </div>
       </div>
@@ -87,7 +92,7 @@ function ThermalsPanel({
   const bedH = profile.heaters.find((heater) => heater.klipper === "heater_bed");
   return (
     <Card title="Thermals" icon={<Flame />}>
-      <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+      <div className="thermal-grid">
         <ThermalGauge label={hotend?.label ?? "Hotend"} actual={ext?.temperature} target={ext?.target} power={ext?.power} maxTemp={hotend?.maxTemp ?? 300} icon={<Flame className="w-3 h-3" />} />
         <ThermalGauge label={bedH?.label ?? "Bed"} actual={bed?.temperature} target={bed?.target} power={bed?.power} maxTemp={bedH?.maxTemp ?? 120} icon={<ThermometerSun className="w-3 h-3" />} />
       </div>
@@ -119,7 +124,7 @@ function formatZOffset(offset: number | null | undefined): string {
 }
 
 function TelemetryPanel({ state, fanSpeed }: { state: ReturnType<typeof usePrinter>["state"]; fanSpeed: number }) {
-  return <Card title="Telemetry" icon={<Wind />}><div className="grid divide-y divide-[var(--color-border)] sm:grid-cols-2 sm:divide-x">
+  return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
     <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
     <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.speed_factor != null && state.gcode_move.speed_factor !== 1} />
     <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.extrude_factor != null && state.gcode_move.extrude_factor !== 1} />

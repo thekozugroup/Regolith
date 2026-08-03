@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Desktop chrome (persistent sidebar, no bottom nav) needs BOTH width and
+   height: the K1 Max's own 800x480 touch panel is >=768px wide but only
+   480px tall — it must keep the touch layout (bottom nav, full width).
+   `compact` is the exact complement; every chrome rule pairs on these two
+   variants so the split can never disagree. */
+@custom-variant desk (@media (min-width: 48rem) and (min-height: 600px));
+@custom-variant compact (@media not ((min-width: 48rem) and (min-height: 600px)));
+
 @theme {
   /* Regolith Instrument Cluster — opaque, precise, calm. */
   --color-bg: oklch(0.145 0.012 250);
@@ -48,26 +56,18 @@
   --graticule-step: 24px;
 
   /* --- Layout --- */
+  --appbar-h: 60px; /* single source for app bar height — App/AppBar/Sidebar/StatusRail all reference it */
   --page-gutter: clamp(0.75rem, 2vw, 1.5rem);
   --card-pad: clamp(0.75rem, 1.4vw, 1.25rem);
   --rail-h: 56px;
-  --hit-min: 44px;
-  --panel-radius: 6px;
 
-  /* --- Dial geometry --- */
+  /* --- Dial geometry ---
+     Sweep/start/radius live as JS constants in Dial.tsx (single source);
+     only the sizing tokens the layout actually reads are kept here. */
   --gauge-size-min: 148px; /* hard floor — below this the bar renderer takes over */
-  --gauge-size-pref: clamp(148px, 42cqi, 232px);
-  --gauge-sweep: 240; /* deg */
-  --gauge-start: 150; /* deg */
-  --gauge-radius: 74; /* user units */
-  --gauge-stroke-w: 12; /* user units */
+  --gauge-size-pref: clamp(148px, 100cqi, 280px); /* fill the instrument, cap at 280px */
 
   /* --- Type --- */
-  --text-instrument-xs: 0.6875rem; /* 11px HARD FLOOR */
-  --text-instrument-sm: 0.8125rem; /* 13px */
-  --text-instrument-md: 0.9375rem; /* 15px */
-  --text-readout-sm: clamp(1.125rem, 5cqi, 1.5rem);
-  --text-readout-md: clamp(1.5rem, 7cqi, 2.1rem);
   --text-readout-lg: clamp(1.75rem, 9cqi, 2.75rem);
 
   /* --- Motion --- */
@@ -165,6 +165,85 @@
   }
 
   .status-rail { min-height: var(--rail-h); background: var(--color-bg); position: relative; }
+
+  /* --- Dashboard: content-driven mission-control grid ---
+     The shell is an inline-size container, so lane count follows the width
+     that actually exists (viewport minus sidebar minus gutters) instead of
+     viewport breakpoints. No order-* / col-start-*: DOM order stays the
+     mobile task order and `dense` backfills any gap a span leaves. */
+  .dashboard-shell { container-type: inline-size; }
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    gap: 0.75rem;
+  }
+  /* Stretched rows must reach the panel itself, not stop at the zone
+     wrapper, so a shorter card in a row fills its lane instead of leaving
+     a blank tail (Card distributes via flex, see Card.tsx). */
+  .dashboard-grid > div > .instrument-panel { height: 100%; }
+  @container (min-width: 720px) {
+    .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dash-wide { grid-column: 1 / -1; }
+  }
+  @container (min-width: 1560px) {
+    .dashboard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .dash-wide { grid-column: span 2; }
+    .dash-wide-3 { grid-column: span 2; }
+  }
+  /* Landscape/desktop should fit, not scroll: let the grid claim the full
+     viewport height so stretched rows distribute the surface. min-height
+     (not height) — content that genuinely needs more space still scrolls. */
+  @media (min-width: 1024px) and (min-height: 700px) {
+    .dashboard-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100dvh - var(--appbar-h));
+    }
+    .dashboard-grid { flex: 1 1 auto; align-content: stretch; }
+  }
+
+  /* Gauge pair: 174px = 148px dial floor + p-3 padding + border, so a track
+     is only ever created when the dial inside it can render at or above the
+     floor — two-up exactly when two-up fits, never one pixel sooner. */
+  .thermal-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 174px), 1fr));
+  }
+
+  /* Telemetry tiles: column count follows the Card (.instrument-panel is an
+     inline-size container), not the viewport. 1px gaps over the border color
+     draw the hairline grid whatever the column count. */
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+    background: var(--color-border);
+  }
+  .telemetry-grid > * { background: var(--color-surface); }
+  @container (min-width: 400px) {
+    .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* odd tile count: let the last tile span so no dead half-cell remains */
+    .telemetry-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  }
+  @container (min-width: 640px) {
+    .telemetry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .telemetry-grid > :last-child:nth-child(odd) { grid-column: auto; }
+    .telemetry-grid > :last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
+    .telemetry-grid > :last-child:nth-child(3n + 2) { grid-column: span 2; }
+  }
+
+  /* Mission media split: thumbnail rail only when the Card itself is wide
+     enough that the timeline keeps the ~300px its five checkpoints need. */
+  .mission-media-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @container (min-width: 440px) {
+    .mission-media-grid { grid-template-columns: 120px minmax(0, 1fr); }
+  }
 
   /* Dial ⇄ bar renderer switch. Each thermal instrument is its own inline-size
      container; the query measures its content box, so a matching container

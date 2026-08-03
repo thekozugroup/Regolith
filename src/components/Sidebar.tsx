@@ -60,8 +60,8 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="app-chrome fixed left-0 top-0 bottom-0 z-20 hidden w-56 flex-col border-r border-[var(--color-border)] md:flex">
-        <div className="h-[60px] px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
+      <aside className="app-chrome fixed left-0 top-0 bottom-0 z-20 hidden w-56 flex-col border-r border-[var(--color-border)] desk:flex">
+        <div className="h-[var(--appbar-h)] px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
           <div className="relative flex h-9 w-9 items-center justify-center border border-[var(--color-border)] bg-[var(--color-elevated)]">
             <BrandLogo size={20} />
             {isPrinting && <span aria-label={`Print ${Math.round(progress * 100)} percent`} className="absolute -bottom-px -left-px h-0.5 bg-[var(--color-accent)]" style={{ width: `${progress * 100}%` }} />}
@@ -98,7 +98,7 @@ export function Sidebar() {
         <ModalSurface
           labelledBy={moreTitleId}
           onDismiss={() => setMoreOpen(false)}
-          overlayClassName="items-end bg-black/55 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] md:hidden"
+          overlayClassName="items-end bg-black/55 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] desk:hidden"
           panelClassName="app-chrome max-w-none rounded-2xl p-2"
         >
             <div className="flex items-center justify-between px-2 py-1">
@@ -138,7 +138,7 @@ export function Sidebar() {
 
       <nav
         aria-label="Mobile primary"
-        className="app-chrome fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[var(--color-border)] px-2 pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="app-chrome fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[var(--color-border)] px-2 pb-[env(safe-area-inset-bottom)] desk:hidden"
       >
         {mobilePrimary.map(({ to, icon: Icon, label }) => (
           <NavLink

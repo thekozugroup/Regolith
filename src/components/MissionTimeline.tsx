@@ -147,7 +147,7 @@ export function MissionTimeline() {
             {actionError}
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
+        <div className="mission-media-grid">
           <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[var(--color-accent-faint)]">
             <Activity
               className="w-12 h-12 text-[var(--color-accent)]"
@@ -286,7 +286,7 @@ export function MissionTimeline() {
           {actionError}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
+      <div className="mission-media-grid">
         {/* Thumbnail */}
         <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)]">
           {thumbUrl ? (

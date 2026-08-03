@@ -164,7 +164,10 @@ async function assertFinalControlReachability(page: Page) {
   if (await lastControl.count()) {
     await lastControl.scrollIntoViewIfNeeded();
     const hiddenByNav = await lastControl.evaluate((item) => {
-      if (!matchMedia("(max-width: 767px)").matches) return false;
+      // Key off the real bottom nav, not a width media query: the K1 Max's
+      // 800x480 panel is wider than 768px yet keeps the touch chrome.
+      const nav = document.querySelector('nav[aria-label="Mobile primary"]');
+      if (!nav || getComputedStyle(nav).display === "none") return false;
       const box = item.getBoundingClientRect();
       return box.bottom > innerHeight - 48;
     });
@@ -202,6 +205,60 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     expect(audit.escaped).toEqual([]);
     expect(audit.writes).toEqual([]);
     expect(audit.subscriptions.length).toBeGreaterThan(0);
+  });
+
+  test("dials never silently degrade across lane transitions, panel, or ultrawide widths", async ({ page }, testInfo) => {
+    const audit = await installStrictMock(page);
+    // 1024/1100/1200 are the widths where lg:grid-cols-2 used to leave each
+    // gauge 111-147px wide, silently swapping BOTH dials for bar renderers.
+    // 800x480 is the K1 Max's own touchscreen; 1920/2560 are the ultrawide
+    // space-utilization targets.
+    const viewports = [
+      { width: 800, height: 480 },
+      { width: 1024, height: 768 },
+      { width: 1100, height: 800 },
+      { width: 1200, height: 900 },
+      { width: 1920, height: 1080 },
+      { width: 2560, height: 1200 },
+    ];
+    for (const experienceMode of ["basic", "expert"] as const) {
+      await page.goto("/");
+      await page.evaluate((mode) => {
+        localStorage.setItem("forge.experience-mode", mode);
+        window.dispatchEvent(new Event("forge:experience-mode-changed"));
+      }, experienceMode);
+      for (const viewport of viewports) {
+        await page.setViewportSize(viewport);
+        await page.goto("/");
+        await assertTopStateAudit(page, experienceMode);
+        await assertMinimumVisibleText(page);
+        await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
+        await assertFinalControlReachability(page);
+        await page.screenshot({ path: testInfo.outputPath(`lanes-${viewport.width}x${viewport.height}-${experienceMode}.png`), fullPage: false, animations: "disabled" });
+      }
+    }
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
+  test("the 800x480 K1 Max panel keeps the touch chrome, not the desktop sidebar", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const audit = await installStrictMock(page);
+    await page.goto("/");
+    await assertInstrumentShell(page, "basic");
+    // Wider than the md breakpoint but only 480px tall: the desktop sidebar
+    // must stay hidden and the bottom nav must serve this touchscreen.
+    await expect(page.locator("aside")).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeVisible();
+    await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
+
+    // A conventional laptop viewport still gets the desktop chrome.
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto("/");
+    await expect(page.locator("aside")).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Mobile primary" })).toBeHidden();
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
   });
 
   test("offline camera is locally intercepted and offers recovery without a printer request", async ({ page }) => {

@@ -20,7 +20,7 @@ export function Card({
     <section
       aria-labelledby={titleId}
       className={cn(
-        "instrument-panel overflow-hidden",
+        "instrument-panel flex flex-col overflow-hidden",
         className
       )}
     >
@@ -35,7 +35,9 @@ export function Card({
         </div>
         {action}
       </header>
-      <div className="p-[var(--card-pad)]">{children}</div>
+      {/* flex-1: when a grid row stretches the card, the body absorbs the
+          extra height instead of leaving a blank tail below it. */}
+      <div className="min-h-0 flex-1 p-[var(--card-pad)]">{children}</div>
     </section>
   );
 }

@@ -49,7 +49,7 @@ export function StatusRail() {
   return (
     <section
       aria-label="Printer status"
-      className="status-rail instrument-panel flex flex-wrap items-center gap-x-4 gap-y-1 px-[var(--card-pad)] py-2 max-md:sticky max-md:top-[60px] max-md:z-10"
+      className="status-rail instrument-panel flex flex-wrap items-center gap-x-4 gap-y-1 px-[var(--card-pad)] py-2 compact:sticky compact:top-[var(--appbar-h)] compact:z-10"
     >
       <span className="flex shrink-0 items-center gap-1.5" style={{ color: PRINT_STATE_COLOR[printState] ?? "var(--color-fg-muted)" }}>
         <span aria-hidden="true" className={cn("status-lamp", isActive && "phosphor-glow")} />
