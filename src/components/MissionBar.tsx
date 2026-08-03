@@ -38,7 +38,16 @@ export function MissionBar() {
   const ps = state.print_stats;
   const printState = ps?.state ?? "standby";
   const isActive = printState === "printing" || printState === "paused";
+  // A finished/stopped job keeps its identity but must not read as live.
+  const isEnded =
+    printState === "complete" || printState === "cancelled" || printState === "error";
   const filename = (ps?.filename ?? "").split("/").pop()?.replace(/\.gcode$/i, "") ?? "";
+  // Klipper leaves `print_stats.filename` populated long after a job ends —
+  // including once the state falls back to plain standby. Seen live on the
+  // K1 Max: the bar read "standby · <old file>", which looks like a queued
+  // job. Show the raw name only while the job is ACTIVE; contextualize it as
+  // "Last:" while the ended state still explains it; clear it everywhere else.
+  const jobLabel = isActive ? filename : isEnded && filename ? `Last: ${filename}` : "";
 
   // Derived from the JOB's own progress and elapsed print time, and null when
   // no estimate can be trusted — see lib/jobProgress.ts. It must never come
@@ -97,8 +106,11 @@ export function MissionBar() {
            * carries the connecting state). PrinterCard owns the "Connecting
            * to printer…" copy.
            */}
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={ps?.filename || undefined}>
-            {filename || (connected ? "No active job" : "—")}
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-medium"
+            title={jobLabel ? ps?.filename || undefined : undefined}
+          >
+            {jobLabel || (connected ? "No active job" : "—")}
           </span>
 
           <span className="flex shrink-0 items-center gap-1.5" style={{ color: link.color }}>

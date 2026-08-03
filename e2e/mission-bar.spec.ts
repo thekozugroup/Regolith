@@ -128,6 +128,57 @@ test.describe("Mission bar — pinned bottom cockpit strip", () => {
     mock.assertSealed();
   });
 
+  test("a leftover filename is cleared once the state returns to standby", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const base = scenario("at-temperature");
+    const mock = await installActiveMock(page, {
+      ...base,
+      state: {
+        ...base.state,
+        // Klipper keeps print_stats.filename populated long after a job
+        // ends — seen live on the K1 Max once the state fell back to plain
+        // standby. The bar then read "standby · <old file>", which looks
+        // exactly like a queued job that never existed.
+        print_stats: {
+          state: "standby",
+          filename: "finished/lunar_lander_v4.gcode",
+          total_duration: 5_480,
+          print_duration: 5_412,
+          filament_used: 12_004,
+          message: "",
+        },
+      },
+    });
+    await page.goto("/");
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const text = await readPanelText(missionBar(page));
+    expect(text).toContain("standby");
+    expect(text, "a stale filename must not read as a queued job").not.toContain(
+      "lunar_lander_v4",
+    );
+    expect(text).toContain("No active job");
+    mock.assertSealed();
+  });
+
+  test("an ended job's filename is contextualized, never presented as live", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await installActiveMock(page, scenario("cooling-after-job"));
+    await page.goto("/");
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // While the ended state still explains the filename, keep it — labelled
+    // as history ("Last:"), not as a job the machine is running.
+    const text = await readPanelText(missionBar(page));
+    expect(text).toContain("complete");
+    expect(text).toContain("Last: lunar_lander_v4");
+    mock.assertSealed();
+  });
+
   test("an idle machine keeps the bar but not the progress strip", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await installActiveMock(page, scenario("tuning-macro"));
