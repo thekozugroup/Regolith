@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, WifiOff } from "lucide-react";
 import { usePrinter } from "@/lib/usePrinter";
 import {
+  detectHeaterDrift,
+  isRunawayConfirmed,
+  linkLost,
+  sensorVerdict,
+} from "@/lib/health";
+import {
   WATCHDOG_TICK_MS,
   heatersHoldHeat,
   isTelemetryStale,
@@ -56,27 +62,11 @@ export function HealthAlerts() {
     setTelemetry({ at: Date.now(), hot: heatersHoldHeat(ext, bed) });
   }, [state.extruder, state.heater_bed]);
 
-  // Thermal runaway: track divergence over time
+  // Thermal runaway: track divergence over time. Detection itself lives in
+  // the shared src/lib/health.ts detector — the same verdict the tell-tale
+  // lamp reads, so toast and lamp can never disagree.
   useEffect(() => {
-    const ext = state.extruder;
-    const bed = state.heater_bed;
-    let issue: { heater: string; drift: number } | null = null;
-    if (
-      ext &&
-      ext.target > 0 &&
-      Math.abs(ext.temperature - ext.target) > 15
-    ) {
-      issue = {
-        heater: "Hotend",
-        drift: ext.temperature - ext.target,
-      };
-    } else if (
-      bed &&
-      bed.target > 0 &&
-      Math.abs(bed.temperature - bed.target) > 15
-    ) {
-      issue = { heater: "Bed", drift: bed.temperature - bed.target };
-    }
+    const issue = detectHeaterDrift(state.extruder, state.heater_bed);
 
     if (!issue) {
       setThermalIssue(null);
@@ -102,7 +92,7 @@ export function HealthAlerts() {
   }> = [];
 
   // Network alert
-  if (!connected) {
+  if (linkLost(connected)) {
     const message =
       "Moonraker disconnected — UI showing last known state. Reconnecting…";
     alerts.push({
@@ -131,7 +121,7 @@ export function HealthAlerts() {
 
   // Thermal runaway (only if persisting >15s to avoid flapping). Gated on the
   // watchdog clock, so it fires on time even if the feed died mid-divergence.
-  if (thermalIssue && now - thermalIssue.since > 15_000) {
+  if (thermalIssue && isRunawayConfirmed(thermalIssue.since, now)) {
     // `drift` is frozen at first detection, so this text is stable.
     const message = `${thermalIssue.heater} temperature diverging by ${thermalIssue.drift.toFixed(1)}°C — possible thermal runaway`;
     alerts.push({
@@ -143,12 +133,13 @@ export function HealthAlerts() {
     });
   }
 
-  // Sensor watchdogs — driven by profile thresholds
+  // Sensor watchdogs — profile thresholds through the shared verdict
   for (const sensor of profile.sensors) {
     const live = state[sensor.klipper as `temperature_sensor ${string}`];
     const t = live?.temperature;
     if (t == null) continue;
-    if (sensor.criticalAbove != null && t >= sensor.criticalAbove) {
+    const verdict = sensorVerdict(sensor, t);
+    if (verdict === "critical") {
       alerts.push({
         id: `sensor-${sensor.klipper}`,
         severity: "error",
@@ -156,7 +147,7 @@ export function HealthAlerts() {
         announcement: `${sensor.label} above ${sensor.criticalAbove}°C — critical threshold exceeded.`,
         icon: <AlertTriangle className="w-4 h-4" />,
       });
-    } else if (sensor.warnAbove != null && t >= sensor.warnAbove) {
+    } else if (verdict === "warn") {
       alerts.push({
         id: `sensor-${sensor.klipper}`,
         severity: "warn",
