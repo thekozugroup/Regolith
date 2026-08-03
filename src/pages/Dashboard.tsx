@@ -6,7 +6,7 @@ import { MissionTimeline } from "@/components/MissionTimeline";
 import { CameraStream } from "@/components/CameraStream";
 import { usePrinter } from "@/lib/usePrinter";
 import { Camera, Flame, ThermometerSun, Wind } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, factorDeviates } from "@/lib/utils";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 
 /**
@@ -137,8 +137,11 @@ function TelemetryPanel({
   return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
     {chamber && <MetricTile label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} />}
     <MetricTile label="Part Fan" value={`${(fanSpeed * 100).toFixed(0)}%`} active={fanSpeed > 0} />
-    <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.speed_factor != null && state.gcode_move.speed_factor !== 1} />
-    <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={state.gcode_move?.extrude_factor != null && state.gcode_move.extrude_factor !== 1} />
+    {/* Strict !==1 latched a permanent false warning off M220/M221 float
+        noise (0.9999999 renders as "100%" yet warned forever). The epsilon
+        in factorDeviates matches the display resolution instead. */}
+    <MetricTile label="Speed Factor" value={`${((state.gcode_move?.speed_factor ?? 1) * 100).toFixed(0)}%`} warn={factorDeviates(state.gcode_move?.speed_factor)} />
+    <MetricTile label="Flow Factor" value={`${((state.gcode_move?.extrude_factor ?? 1) * 100).toFixed(0)}%`} warn={factorDeviates(state.gcode_move?.extrude_factor)} />
     <MetricTile label="Z-Offset" value={formatZOffset(state.gcode_move?.homing_origin?.[2])} />
     <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
     {isExpert && <>
