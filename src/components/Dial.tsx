@@ -80,7 +80,7 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
         <path d={trackD} pathLength={1000} fill="none" stroke="var(--color-gauge-track)" strokeWidth={12} strokeLinecap="butt" />
         {/* Delta band — static, no animation */}
         {deltaD && (
-          <path d={deltaD} fill="none" stroke="color-mix(in oklch, var(--gauge-stroke) 22%, transparent)" strokeWidth={12} strokeLinecap="butt" />
+          <path d={deltaD} fill="none" stroke="color-mix(in oklab, var(--gauge-stroke) 22%, transparent)" strokeWidth={12} strokeLinecap="butt" />
         )}
         {/* Value arc */}
         <path

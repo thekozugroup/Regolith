@@ -408,12 +408,35 @@ test.describe("Regolith — live printer states", () => {
       page.locator('.gauge-dial path[stroke="var(--color-gauge-track)"]'),
       "the dial track must survive forced colors",
     ).toHaveCount(2);
-    // KNOWN GAP — deliberately not asserted here: the forced-colors rule in
-    // src/index.css sets `display: none` on `.phosphor-glow` as well as on
-    // `.crt-scanlines::after`, which erases the dial VALUE ARC and every lit
-    // status lamp in high-contrast mode. Only `filter: none` was intended.
-    // The normal-colors guard below is what currently protects those parts;
-    // once the CSS is fixed, move that assertion in here too.
+    // The forced-colors rule must kill only the glow FILTER, never the
+    // geometry that carries it: the dial value arcs and the lit status lamps
+    // are the owner's at-a-glance heat/state signal and must stay rendered
+    // in high-contrast mode. (A previous rule set `display: none` on
+    // `.phosphor-glow` and blanked all of them — this pins the fix.)
+    const glowParts = await page.locator(".phosphor-glow").evaluateAll((items) =>
+      items.map((item) => {
+        const style = getComputedStyle(item);
+        const box = item.getBoundingClientRect();
+        return {
+          tag: item.tagName.toLowerCase(),
+          shown: style.display !== "none" && style.visibility !== "hidden",
+          unfiltered: style.filter === "none",
+          sized: box.width > 0 && box.height > 0,
+        };
+      }),
+    );
+    expect(
+      glowParts.length,
+      "a printing machine must light something up under forced colors",
+    ).toBeGreaterThan(0);
+    expect(
+      glowParts.filter((part) => !part.shown || !part.sized),
+      "every arc and lamp must stay rendered under forced colors",
+    ).toEqual([]);
+    expect(
+      glowParts.filter((part) => !part.unfiltered),
+      "the glow filter itself must be off under forced colors",
+    ).toEqual([]);
     await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
     mock.assertSealed();
   });
@@ -424,9 +447,9 @@ test.describe("Regolith — live printer states", () => {
     await loadScenario(page, mock, "printing-midjob");
 
     // The value arc and the "active" lamps are the only things distinguishing
-    // a hot printer from a cold one at a glance. They carry `.phosphor-glow`,
-    // which a forced-colors rule turns off entirely (see index.css) — so pin
-    // them here, in the mode the owner normally runs.
+    // a hot printer from a cold one at a glance. They carry `.phosphor-glow`;
+    // pin them here in the mode the owner normally runs (the forced-colors
+    // test above pins the same parts under high contrast).
     const litParts = await page.locator(".phosphor-glow").evaluateAll((items) =>
       items.map((item) => {
         const style = getComputedStyle(item);

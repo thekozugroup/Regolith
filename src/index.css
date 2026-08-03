@@ -25,10 +25,12 @@
   --color-accent-hover: #f8ac3d;
   --color-accent-fg: #120b07;
   /* Accent-derived surfaces — always tint from the live accent, never from a
-     hardcoded rgba() literal, so every surface follows the user's accent. */
-  --color-accent-soft: color-mix(in oklch, var(--color-accent) 10%, transparent);
-  --color-accent-faint: color-mix(in oklch, var(--color-accent) 5%, transparent);
-  --color-accent-edge: color-mix(in oklch, var(--color-accent) 30%, transparent);
+     hardcoded rgba() literal, so every surface follows the user's accent.
+     Mixed in oklab (rectangular), never oklch: a polar mix against
+     `transparent` (h=0) lets non-conforming engines drag the hue toward 0°. */
+  --color-accent-soft: color-mix(in oklab, var(--color-accent) 10%, transparent);
+  --color-accent-faint: color-mix(in oklab, var(--color-accent) 5%, transparent);
+  --color-accent-edge: color-mix(in oklab, var(--color-accent) 30%, transparent);
   --color-success: oklch(0.75 0.14 148);
   --color-warning: oklch(0.83 0.15 88);
   --color-error: oklch(0.68 0.21 27);
@@ -142,9 +144,15 @@
   }
   .readout-ghost { position: absolute; inset: 0; color: var(--color-ghost-segment); pointer-events: none; }
 
+  /* Mix in a RECTANGULAR space. `transparent` is rgb(0 0 0 / 0), i.e. h=0 in
+     any polar space; mixing there only survives if the engine applies the
+     CSS Color 4 §12.2 powerless-hue rule. oklab has no hue channel, so the
+     source hue cannot be dragged toward 0° — a green arc can never glow
+     amber. Premultiplied interpolation makes this an exact alpha operation:
+     the result is currentColor at --glow-alpha, unchanged in every other way. */
   .phosphor-glow {
     filter: drop-shadow(0 0 var(--glow-radius)
-      color-mix(in oklch, currentColor calc(var(--glow-alpha) * 100%), transparent));
+      color-mix(in oklab, currentColor calc(var(--glow-alpha) * 100%), transparent));
   }
 
   .crt-scanlines::after {
@@ -161,7 +169,12 @@
     .crt-scanlines::after { display: none; }
   }
   @media (forced-colors: active) {
-    .crt-scanlines::after, .phosphor-glow { display: none; filter: none; }
+    /* Scanlines are pure decoration — drop them. The glow is a FILTER on
+       load-bearing geometry (the dial value arc, every status lamp), so kill
+       the filter only. `display: none` here erased the arc and blanked every
+       lamp in high-contrast mode. */
+    .crt-scanlines::after { display: none; }
+    .phosphor-glow { filter: none; }
   }
 
   .status-rail { min-height: var(--rail-h); background: var(--color-bg); position: relative; }
