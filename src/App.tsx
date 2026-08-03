@@ -89,7 +89,7 @@ function AppShell() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(var(--bottomnav-h)+var(--mission-h)+0.5rem)] desk:ml-56 desk:pb-[var(--mission-h)]"
+        className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(var(--bottomnav-h)+var(--mission-h)+0.5rem)] transition-[margin-left] duration-200 desk:ml-[var(--sidebar-w,14rem)] desk:pb-[var(--mission-h)]"
       >
         <RouteErrorBoundary key={location.pathname}>
           <Suspense fallback={<RouteLoading />}>

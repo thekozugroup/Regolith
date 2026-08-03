@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import {
   LayoutDashboard,
@@ -9,12 +9,14 @@ import {
   Terminal,
   Settings,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   X,
 } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
 import { ModalSurface } from "./ModalSurface";
 import { cn } from "@/lib/utils";
-import { usePrinter } from "@/lib/usePrinter";
+import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 
 const NAV = [
@@ -27,20 +29,67 @@ const NAV = [
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
+/**
+ * Collapsible desktop sidebar (owner request). Collapsed it becomes an ICON
+ * RAIL, never fully hidden — every route stays one tap away. The width lives
+ * in `--sidebar-w` on the root element so the app bar and the content column
+ * (App.tsx `main`) reflow with it: the dashboard grid is width-driven
+ * (container queries), so the freed glass goes straight to the instruments.
+ * The preference persists; the `desk` height-gate that keeps the K1's
+ * 800x480 panel on touch chrome is untouched (the rail only exists inside
+ * the desk variant).
+ */
+const COLLAPSE_KEY = "forge.sidebar.collapsed";
+const SIDEBAR_EXPANDED_W = "14rem"; /* = the old fixed w-56 */
+const SIDEBAR_RAIL_W = "4rem"; /* 64px: 44px targets with room to breathe */
+
+function readCollapsedPreference(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Sidebar() {
-  const { state } = usePrinter();
+  // Selected slice, not the whole state (WP-MEMO / S5 P2): the sidebar reads
+  // only the print state word and the job progress fraction.
+  const { printState, progress } = usePrinterSelector((state) => ({
+    printState: state.print_stats?.state,
+    progress: state.virtual_sdcard?.progress ?? 0,
+  }));
   const [experienceMode] = useExperienceMode();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsedPreference);
   const moreTitleId = useId();
-  const ps = state.print_stats?.state;
-  const progress = state.virtual_sdcard?.progress ?? 0;
-  const isPrinting = ps === "printing" || ps === "paused";
+  const isPrinting = printState === "printing" || printState === "paused";
   const visibleNav = NAV.filter(
     (item) => !item.expert || experienceMode === "expert",
   );
   const mobilePrimary = visibleNav.slice(0, 3);
   const mobileMore = visibleNav.slice(3);
+
+  // Publish the width BEFORE paint so main/AppBar (which read the token with
+  // a 14rem fallback) never flash the wrong offset on load.
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty(
+      "--sidebar-w",
+      collapsed ? SIDEBAR_RAIL_W : SIDEBAR_EXPANDED_W,
+    );
+  }, [collapsed]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        /* preference is a nicety; never break navigation over storage */
+      }
+      return next;
+    });
+  };
 
   // Pulse the document title + favicon when a print is active so a
   // background tab still surfaces progress at a glance.
@@ -51,8 +100,8 @@ export function Sidebar() {
     }
     const pct = (progress * 100).toFixed(0);
     document.title =
-      ps === "paused" ? `⏸ ${pct}% · Forge` : `▶ ${pct}% · Forge`;
-  }, [isPrinting, progress, ps]);
+      printState === "paused" ? `⏸ ${pct}% · Forge` : `▶ ${pct}% · Forge`;
+  }, [isPrinting, progress, printState]);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -61,17 +110,29 @@ export function Sidebar() {
   return (
     <>
       {/* bottom-[var(--mission-h)]: the mission bar is full-bleed across the
-          bottom edge, so the sidebar ends where the bar begins. */}
-      <aside className="app-chrome fixed left-0 top-0 bottom-[var(--mission-h)] z-20 hidden w-56 flex-col border-r border-[var(--color-border)] desk:flex">
-        <div className="h-[var(--appbar-h)] px-4 flex items-center gap-3 border-b border-[var(--color-border)]">
-          <div className="relative flex h-9 w-9 items-center justify-center border border-[var(--color-border)] bg-[var(--color-elevated)]">
+          bottom edge, so the sidebar ends where the bar begins. The width
+          transition collapses to instant under prefers-reduced-motion via
+          the global reduced-motion rule. */}
+      <aside
+        data-collapsed={collapsed || undefined}
+        className="app-chrome fixed left-0 top-0 bottom-[var(--mission-h)] z-20 hidden w-[var(--sidebar-w,14rem)] flex-col overflow-hidden border-r border-[var(--color-border)] transition-[width] duration-200 desk:flex"
+      >
+        <div
+          className={cn(
+            "flex h-[var(--appbar-h)] items-center gap-3 border-b border-[var(--color-border)]",
+            collapsed ? "justify-center px-2" : "px-4",
+          )}
+        >
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--color-border)] bg-[var(--color-elevated)]">
             <BrandLogo size={20} />
             {isPrinting && <span aria-label={`Print ${Math.round(progress * 100)} percent`} className="absolute -bottom-px -left-px h-0.5 bg-[var(--color-accent)]" style={{ width: `${progress * 100}%` }} />}
           </div>
-          <div>
-            <div className="text-[15px] font-semibold tracking-tight">Regolith</div>
-            <div className="text-[11px] text-[var(--color-fg-muted)]">Instrument panel</div>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="truncate text-[15px] font-semibold tracking-tight">Regolith</div>
+              <div className="truncate text-[11px] text-[var(--color-fg-muted)]">Instrument panel</div>
+            </div>
+          )}
         </div>
 
         <nav aria-label="Primary" className="flex flex-col gap-1 p-2 flex-1">
@@ -80,20 +141,46 @@ export function Sidebar() {
               key={to}
               to={to}
               end={to === "/"}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
                 cn(
-                  "relative min-h-11 border-l-2 border-transparent px-3 flex items-center gap-3 text-[13px] font-medium transition-colors",
+                  "relative min-h-11 border-l-2 border-transparent flex items-center text-[13px] font-medium transition-colors",
+                  collapsed ? "justify-center px-0" : "gap-3 px-3",
                   "hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]",
                   isActive && "border-l-[var(--color-accent)] bg-(--color-accent)/8 text-[var(--color-fg)]",
                   !isActive && "text-[var(--color-fg-muted)]",
                 )
               }
             >
-              <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
-              <span>{label}</span>
+              <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
+              {/* sr-only, not unmounted: the accessible name of every link is
+                  identical in both widths. */}
+              <span className={cn(collapsed && "sr-only")}>{label}</span>
             </NavLink>
           ))}
         </nav>
+
+        <div className="border-t border-[var(--color-border)] p-2">
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={toggleCollapsed}
+            className={cn(
+              "min-h-11 w-full flex items-center rounded-inner text-[13px] font-medium text-[var(--color-fg-muted)] transition-colors",
+              collapsed ? "justify-center px-0" : "gap-3 px-3",
+              "hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]",
+            )}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
+            ) : (
+              <PanelLeftClose className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
+            )}
+            <span className={cn(collapsed && "sr-only")}>Collapse</span>
+          </button>
+        </div>
       </aside>
 
       {moreOpen && (
