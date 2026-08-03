@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 import { BrowserRouter, Link, Routes, Route, useLocation } from "react-router";
 import { LockKeyhole } from "lucide-react";
+import { buttonClassName } from "./components/buttonStyles";
 import { Sidebar } from "./components/Sidebar";
 import { AppBar } from "./components/AppBar";
 import { HealthAlerts } from "./components/HealthAlerts";
@@ -63,7 +64,7 @@ function ExpertOnly({ children }: { children: ReactNode }) {
       </p>
       <Link
         to="/settings"
-        className="mt-5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-[var(--color-accent)] px-4 text-[13px] font-medium text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
+        className={buttonClassName({ variant: "primary", className: "mt-5" })}
       >
         Review experience settings
       </Link>

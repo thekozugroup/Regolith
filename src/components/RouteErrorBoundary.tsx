@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/Button";
 import { isChunkLoadError } from "@/lib/chunkError";
 
 interface Props {
@@ -43,14 +44,15 @@ export class RouteErrorBoundary extends Component<Props, State> {
             ? "Regolith changed while this tab was open. Reload once to use the current interface."
             : "The interface hit an unexpected problem. Reload to restore this view."}
         </p>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={() => window.location.reload()}
-          className="mt-5 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 text-[13px] font-medium text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
+          className="mt-5 gap-2"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Reload Regolith
-        </button>
+        </Button>
         <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--color-fg-muted)]">
           <ShieldCheck className="h-3.5 w-3.5 text-[var(--color-success)]" />
           Reloading the UI does not change printer state.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Upload, Trash2 } from "lucide-react";
+import { Button } from "@/components/Button";
 import { cn } from "@/lib/utils";
 import { usePrinter } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
@@ -112,21 +113,24 @@ export function PrinterCard() {
           </div>
           {/* Upload overlay */}
           {isExpert && <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/72 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => fileRef.current?.click()}
-              className="flex min-h-11 min-w-11 items-center gap-1 rounded-lg bg-[var(--color-accent)] px-3 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-accent-fg)] hover:bg-[var(--color-accent-hover)]"
+              className="gap-1 text-[11px] uppercase tracking-[0.05em]"
             >
               <Upload className="w-3 h-3" />
               {image ? "Replace" : "Upload"}
-            </button>
+            </Button>
             {image && (
-              <button
+              <Button
+                size="sm"
                 onClick={clearImage}
                 aria-label="Remove printer image"
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg bg-[var(--color-elevated)] text-[var(--color-fg-muted)] hover:text-[var(--color-error)]"
+                className="text-[var(--color-fg-muted)] hover:text-[var(--color-error)]"
               >
                 <Trash2 className="w-3 h-3" />
-              </button>
+              </Button>
             )}
           </div>}
           <input

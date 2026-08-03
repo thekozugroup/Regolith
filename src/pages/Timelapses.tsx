@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { buttonClassName } from "@/components/buttonStyles";
 import { Film, Download, Trash2, Play, RefreshCw } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
 
@@ -152,7 +153,7 @@ export function Timelapses() {
               <a
                 href={downloadUrl(selected)}
                 download={selected.path}
-                className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[12px] font-medium hover:bg-[var(--color-surface)]"
+                className={buttonClassName({ size: "sm" })}
               >
                 <Download className="w-3 h-3" /> Download
               </a>
