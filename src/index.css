@@ -85,8 +85,10 @@
   --color-gauge-track: oklch(0.26 0 0);
   /* Major graduations are informational (the scale a value is read against),
      so they owe WCAG 1.4.11 its 3:1 non-text floor: neutral-500, 3.918:1 vs
-     surface and 3.833:1 vs ThermalGauge's elevated/38 backdrop. Minor ticks
-     and the track stay deliberately sub-threshold — decorative. */
+     surface. Gauges now sit on the .instrument-well composite (bg 55% +
+     surface — darker than surface, so the ratio only improves; the exact
+     figure is measured in the WP-VERIFY pass). Minor ticks and the track
+     stay deliberately sub-threshold — decorative. */
   --color-gauge-tick: oklch(0.556 0 0);
   --color-gauge-tick-minor: oklch(0.34 0 0);
   --color-gauge-target: oklch(0.88 0.014 85);
@@ -342,6 +344,43 @@
     .telemetry-grid > :last-child:nth-child(odd) { grid-column: auto; }
     .telemetry-grid > :last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
     .telemetry-grid > :last-child:nth-child(3n + 2) { grid-column: span 2; }
+  }
+
+  /* Instrument well — the SD1 pod recession (S2 §1.2). The complement of
+     .instrument-panel's raised inset highlight: live readouts (thermal
+     instruments, lamp grids, segment tiles) sit BEHIND the fascia plane.
+     Backdrop is a flat oklab mix (darker than surface, so every text ratio
+     measured against surface only improves); radius rides the concentric
+     cascade (--radius-inner), never a hand-authored literal (S3 law). Not a
+     gradient — the inset shadow is the same technique .instrument-panel
+     already uses. */
+  .instrument-well {
+    background: color-mix(in oklab, var(--color-bg) 55%, var(--color-surface));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-inner);
+    box-shadow: inset 0 1px 2px color-mix(in oklab, black 35%, transparent);
+  }
+  @media (forced-colors: active) {
+    .instrument-well { box-shadow: none; }
+  }
+
+  /* Binnacle strip — the Z5 wide zone as one continuous SD1 pod row:
+     Telemetry beside the (future) Systems tell-tale cluster, header rules
+     and bottom edges aligned because grid items stretch. Two columns only
+     when a second pod actually exists — a 2fr/1fr template with a single
+     card would leave a dead hole in the fascia. Same 8px pod gap as the
+     dashboard grid. */
+  .binnacle-strip {
+    display: grid;
+    gap: var(--grid-gap);
+    grid-template-columns: minmax(0, 1fr);
+    height: 100%;
+  }
+  .binnacle-strip > .instrument-panel { height: 100%; }
+  @container (min-width: 720px) {
+    .binnacle-strip:has(> :nth-child(2)) {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
   }
 
   /* Mission media split: thumbnail rail only when the Card itself is wide

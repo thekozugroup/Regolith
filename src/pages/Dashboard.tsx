@@ -60,7 +60,11 @@ export function Dashboard() {
             Z-offset, filament — with the deeper motion internals kept for
             expert mode. Wide slot so the tiles spread across a full row. */}
         <div className="dash-wide">
-          <TelemetryPanel state={state} profile={profile} fanSpeed={fanSpeed} isExpert={isExpert} />
+          {/* Binnacle strip (S2 §1.3): Telemetry now, the Systems tell-tale
+              cluster later — side by side ≥720px, headers on one baseline. */}
+          <div className="binnacle-strip">
+            <TelemetryPanel state={state} profile={profile} fanSpeed={fanSpeed} isExpert={isExpert} />
+          </div>
         </div>
 
         {/* Z6 — READINESS */}
