@@ -207,7 +207,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
               <Toggle
                 icon={<Layers3 className="w-4 h-4" />}
                 label="Adaptive bed mesh"
-                description="Probe only this model’s print area before printing. Start is blocked if setup fails."
+                description="Probe only this model’s print area before printing. Skipped if this printer does not support it; the print still starts."
                 checked={kamp}
                 onChange={setKamp}
               />

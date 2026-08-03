@@ -21,7 +21,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - Print start, repeat, pause, resume, cancel, emergency stop, Klipper/firmware restart, console commands, jog, home, and motor release use typed actions.
 - Every action checks current connection/printer state. Confirmed actions check again after confirmation to close stale-state races.
 - Duplicate action keys are locked until completion.
-- Print setup failure blocks print start and reports the actual Moonraker error.
+- Optional pre-print setup can never block print start. Steps whose klipper object is missing are skipped, and a rejected command is ignored. Only the live safety gates stop a print.
 - Console remains available behind an expert-mode control. Known diagnostics are allowlisted; motion, heat, stop, restart, and config commands receive critical warnings; unknown macros receive caution warnings.
 - Emergency stop remains available while busy because physical safety takes priority. It clearly warns that Klipper recovery is required.
 - Every Tune macro and pressure-advance write now uses the shared runner. Existing accessible confirmations remain; live state is checked after confirmation, Tune actions share a duplicate lock, and failures appear in the UI.
@@ -145,9 +145,29 @@ curl --fail --show-error --connect-timeout 5 --max-time 12 http://forge.local/
 
 If mDNS fails, resolve `forge.local`, verify that address against the stored ECDSA fingerprint above, then use `PRINTER_HOST=<verified-resolver-address> ./deploy.sh --preflight` or `--rollback`. Never hard-code an unverified address. Rollback swaps live and previous slots and verifies HTTP; failed verification restores the original slot automatically.
 
+## Resolved: print start blocked by `PRINT_START`/`use_kamp` setup
+
+The owner's top bug — no print would start from Regolith — is fixed in code. Not yet deployed to the printer.
+
+Root cause, verified read-only on `forge.local`. Before every print Regolith sent
+`SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=0|1`. Two independent errors:
+
+1. There is no `PRINT_START` macro on this K1 Max. The print-start macro is `START_PRINT` (`Helper-Script/KAMP/Start_Print.cfg:81`); the stock `START_PRINT` in `gcode_macro.cfg:382` is commented out. `SET_GCODE_VARIABLE` is a mux command keyed on `MACRO`, so klipper rejected the unregistered key with `key69` (`klippy/gcode.py:401`), logged in `klippy.log` and as a Moonraker 400 on `printer.gcode.script`.
+2. `use_kamp` does not exist anywhere in the config. `START_PRINT` declares only `variable_prepare: 0`, so renaming the macro alone would still have failed. KAMP here is driven by output pins: `ADAPTIVE_BED_MESH`, `FULL_BED_MESH`, `ADAPTIVE_PURGE_LINE`.
+
+The setup step was fatal, so a failure aborted the print before `printer.print.start` was ever called. That handling was the real defect; the wrong macro name was only what triggered it.
+
+Fix (`src/lib/printerActions.ts`, `src/lib/moonraker.ts`):
+
+- The KAMP toggle is user-facing (`PrintDialog`), so it was rewired to the real mechanism: `SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=0|1`.
+- `applyPrintSetup` checks `printer.objects.list` first and skips any step whose klipper object is absent, so a printer without KAMP silently gets no command.
+- `applyPrintSetup` cannot throw. A missing object, an unreadable object list, or a rejected command leaves the print unaffected. `PrinterActionError`'s `setup-failed` code is gone — optional setup has no way to fail a print any more. This is the general guard for the whole bug class, not just KAMP.
+- The live-state re-gate between setup and `startPrint` is unchanged; that is a safety check, not a setup step.
+
+Regression coverage in `tests/printerActions.test.ts` fails if anything ever sends `MACRO=PRINT_START`, `SET_GCODE_VARIABLE`, or `use_kamp` during print setup.
+
 ## Remaining issues
 
-- `PRINT_START`/`use_kamp` setup normalization remains intentionally deferred. It is a behavior fix outside the cosmetic batch and must be addressed only through its own printer-safe, idle-gated workflow.
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.

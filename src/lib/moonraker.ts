@@ -341,6 +341,18 @@ export class Moonraker {
     await this.send("printer.gcode.script", { script });
   }
 
+  /**
+   * Klipper objects currently loaded, e.g. `gcode_macro START_PRINT`,
+   * `output_pin ADAPTIVE_BED_MESH`. Used to skip optional commands that this
+   * printer's configuration does not support.
+   */
+  async listObjects(): Promise<string[]> {
+    const result = await this.send<{ objects: string[] }>(
+      "printer.objects.list",
+    );
+    return result.objects ?? [];
+  }
+
   async pause(): Promise<void> {
     await this.send("printer.print.pause");
   }

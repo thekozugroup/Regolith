@@ -25,7 +25,21 @@ function readyState(overrides: PrinterState = {}): PrinterState {
   };
 }
 
-function client(initialState = readyState()): PrinterActionClient & {
+/** Mirrors the live K1 Max: KAMP is driven by output pins, and there is no
+ *  `PRINT_START` macro — the start macro is `START_PRINT`. */
+const K1_MAX_OBJECTS = [
+  "print_stats",
+  "toolhead",
+  "gcode_macro START_PRINT",
+  "output_pin ADAPTIVE_BED_MESH",
+  "output_pin FULL_BED_MESH",
+  "output_pin ADAPTIVE_PURGE_LINE",
+];
+
+function client(
+  initialState = readyState(),
+  objects: string[] = K1_MAX_OBJECTS,
+): PrinterActionClient & {
   state: PrinterState;
   calls: string[];
 } {
@@ -36,6 +50,9 @@ function client(initialState = readyState()): PrinterActionClient & {
       return this.state;
     },
     isConnected: () => true,
+    async listObjects() {
+      return objects;
+    },
     async runGcode(script) {
       this.calls.push(`gcode:${script}`);
     },
@@ -94,23 +111,88 @@ describe("printer action safety", () => {
     expect(fake.calls).toEqual([]);
   });
 
-  test("setup failure prevents print start", async () => {
+  test("optional setup failure never blocks the print", async () => {
     const fake = client();
     fake.runGcode = async () => {
-      throw new Error("Unknown gcode_macro variable");
+      throw new Error("Unknown command");
     };
     const run = createPrinterActionRunner(fake);
-    await expect(
-      run(
-        {
-          type: "start-print",
-          filename: "part.gcode",
-          setup: ["kamp-on"],
-        },
+    const result = await run(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls).toContain("start:part.gcode");
+  });
+
+  test("an unreadable object list never blocks the print", async () => {
+    const fake = client();
+    fake.listObjects = async () => {
+      throw new Error("RPC timeout: printer.objects.list");
+    };
+    const run = createPrinterActionRunner(fake);
+    const result = await run(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls).toEqual(["start:part.gcode"]);
+  });
+
+  test("toggles KAMP through the adaptive bed mesh pin", async () => {
+    const on = client();
+    await createPrinterActionRunner(on)(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+      { confirm: () => true },
+    );
+    expect(on.calls).toEqual([
+      "gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1",
+      "start:part.gcode",
+    ]);
+
+    const off = client();
+    await createPrinterActionRunner(off)(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-off"] },
+      { confirm: () => true },
+    );
+    expect(off.calls).toEqual([
+      "gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=0",
+      "start:part.gcode",
+    ]);
+  });
+
+  test("skips setup a printer does not support, and still prints", async () => {
+    const fake = client(readyState(), ["print_stats", "toolhead"]);
+    const run = createPrinterActionRunner(fake);
+    const result = await run(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls).toEqual(["start:part.gcode"]);
+  });
+
+  // Regression: SET_GCODE_VARIABLE is a mux command keyed on MACRO. Targeting
+  // a macro this printer does not have (PRINT_START) makes klipper reject the
+  // request, which used to abort every print. Never send it again.
+  test("never targets a PRINT_START macro during print setup", async () => {
+    for (const setup of [
+      ["kamp-on"],
+      ["kamp-off"],
+      ["kamp-on", "kamp-off"],
+    ] as const) {
+      const fake = client();
+      await createPrinterActionRunner(fake)(
+        { type: "start-print", filename: "part.gcode", setup: [...setup] },
         { confirm: () => true },
-      ),
-    ).rejects.toMatchObject({ code: "setup-failed" });
-    expect(fake.calls).not.toContain("start:part.gcode");
+      );
+      expect(fake.calls).toContain("start:part.gcode");
+      for (const call of fake.calls) {
+        expect(call).not.toContain("PRINT_START");
+        expect(call).not.toContain("SET_GCODE_VARIABLE");
+        expect(call).not.toContain("use_kamp");
+      }
+    }
   });
 
   test("state change during setup prevents print start", async () => {

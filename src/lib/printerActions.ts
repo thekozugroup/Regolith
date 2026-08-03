@@ -3,6 +3,31 @@ import { canJog, getSafetyState, type Axis } from "./safety";
 
 export type PrintSetupOption = "kamp-on" | "kamp-off";
 
+/**
+ * Optional pre-print setup steps.
+ *
+ * `object` is the klipper object the command needs. Regolith checks the live
+ * object list first and skips the step when the object is missing, because
+ * printers vary: KAMP here is driven by output pins, other setups use macro
+ * variables, and plenty of printers have neither.
+ *
+ * These steps are conveniences. None of them may ever stop a print — see
+ * `applyPrintSetup`.
+ */
+const PRINT_SETUP_STEPS: Record<
+  PrintSetupOption,
+  { object: string; gcode: string }
+> = {
+  "kamp-on": {
+    object: "output_pin ADAPTIVE_BED_MESH",
+    gcode: "SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1",
+  },
+  "kamp-off": {
+    object: "output_pin ADAPTIVE_BED_MESH",
+    gcode: "SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=0",
+  },
+};
+
 export type PrinterAction =
   | { type: "start-print"; filename: string; setup: PrintSetupOption[] }
   | { type: "pause-print" }
@@ -36,6 +61,8 @@ export interface ActionConfirmation {
 export interface PrinterActionClient {
   getState(): PrinterState;
   isConnected(): boolean;
+  /** Klipper objects currently loaded, e.g. `gcode_macro START_PRINT`. */
+  listObjects(): Promise<string[]>;
   runGcode(script: string): Promise<void>;
   pause(): Promise<void>;
   resume(): Promise<void>;
@@ -52,20 +79,10 @@ export interface ActionCheck {
 }
 
 export class PrinterActionError extends Error {
-  public readonly code:
-    | "blocked"
-    | "duplicate"
-    | "invalid"
-    | "setup-failed"
-    | "command-failed";
+  public readonly code: "blocked" | "duplicate" | "invalid" | "command-failed";
 
   constructor(
-    code:
-      | "blocked"
-      | "duplicate"
-      | "invalid"
-      | "setup-failed"
-      | "command-failed",
+    code: "blocked" | "duplicate" | "invalid" | "command-failed",
     message: string,
   ) {
     super(message);
@@ -407,6 +424,44 @@ function actionKey(action: PrinterAction): string {
   }
 }
 
+/**
+ * Apply optional pre-print setup. NEVER THROWS.
+ *
+ * Every step here is a nicety. A missing klipper object, an unsupported
+ * command, or a printer that rejects the command must leave the print
+ * unaffected — the user asked to print, not to configure.
+ *
+ * Regolith used to send `SET_GCODE_VARIABLE MACRO=PRINT_START
+ * VARIABLE=use_kamp` and abort the print when it failed. The K1 Max has no
+ * `PRINT_START` macro (its start macro is `START_PRINT`) and no `use_kamp`
+ * variable, so klipper rejected the mux key and every single print was
+ * blocked. Both the wrong target and the fatal handling are fixed here.
+ */
+async function applyPrintSetup(
+  client: PrinterActionClient,
+  setup: PrintSetupOption[],
+): Promise<void> {
+  if (setup.length === 0) return;
+
+  let objects: string[];
+  try {
+    objects = await client.listObjects();
+  } catch {
+    // Cannot confirm what this printer supports, so send nothing.
+    return;
+  }
+
+  for (const option of setup) {
+    const step = PRINT_SETUP_STEPS[option];
+    if (!step || !objects.includes(step.object)) continue;
+    try {
+      await client.runGcode(step.gcode);
+    } catch {
+      // Optional step. Keep going and start the print.
+    }
+  }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
@@ -456,21 +511,10 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
       try {
         switch (action.type) {
           case "start-print":
-            for (const option of action.setup) {
-              try {
-                await client.runGcode(
-                  option === "kamp-on"
-                    ? "SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=1"
-                    : "SET_GCODE_VARIABLE MACRO=PRINT_START VARIABLE=use_kamp VALUE=0",
-                );
-              } catch (error) {
-                throw new PrinterActionError(
-                  "setup-failed",
-                  `Print setup failed, so the print was not started. ${errorMessage(error)}`,
-                );
-              }
-            }
+            // Best-effort only. Cannot throw, so it cannot block the print.
+            await applyPrintSetup(client, action.setup);
             {
+              // Setup takes time on the wire; re-gate on live state.
               const startCheck = guardPrinterAction(
                 client.getState(),
                 client.isConnected(),
