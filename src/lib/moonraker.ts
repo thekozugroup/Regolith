@@ -72,6 +72,10 @@ export interface PrinterState {
   fan?: { speed: number };
   // Webhooks
   webhooks?: { state: string; state_message: string };
+  // Bed mesh — profile_name is "" until a mesh is loaded; a non-empty name
+  // is the only proof a mesh is active (the KAMP ADAPTIVE_BED_MESH pin is
+  // the TOGGLE, not proof). probed_matrix feeds the heatmap when present.
+  bed_mesh?: { profile_name: string; probed_matrix?: number[][] };
   // Auxiliary temperature sensors / fans / heater_fans — driven by the
   // active profile, so klipper object names vary per printer. Indexed
   // access lets a profile uploader expose sensors without code changes.
@@ -82,6 +86,12 @@ export interface PrinterState {
   [k3: `heater_fan ${string}`]: { speed: number } | undefined;
   [k4: `heater_generic ${string}`]:
     | { temperature: number; target: number; power: number }
+    | undefined;
+  // Filament runout switches — subscribed only when the active profile
+  // declares them (profile.filamentSensors). filament_detected === false is
+  // the runout condition; `enabled` mirrors klipper's sensor arming.
+  [k5: `filament_switch_sensor ${string}`]:
+    | { filament_detected: boolean; enabled: boolean }
     | undefined;
   // Motion report (live position during macros)
   motion_report?: {

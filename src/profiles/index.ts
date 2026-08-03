@@ -17,6 +17,7 @@ export {
   type FanRole,
   type ProfileSensor,
   type ProfileTemperatureFan,
+  type ProfileFilamentSensor,
   type ProfileHeater,
   type ProfileMacro,
   type ProfileCamera,
@@ -125,9 +126,14 @@ export function profileFields(profile: PrinterProfile): string[] {
     "webhooks",
     "gcode_move",
     "motion_report",
+    // MESH ACTIVE tell-tale: profile_name is the only proof a mesh is loaded.
+    "bed_mesh",
   ];
   const heaters = profile.heaters.map((h) => h.klipper);
   const sensors = profile.sensors.map((s) => s.klipper);
   const fans = profile.fans.map((f) => f.klipper);
-  return [...new Set([...base, ...heaters, ...sensors, ...fans])];
+  // Runout switches ride the same declare-to-subscribe path as heaters and
+  // sensors — profiles without them (K1 Max base) add no subscription.
+  const filament = (profile.filamentSensors ?? []).map((s) => s.klipper);
+  return [...new Set([...base, ...heaters, ...sensors, ...fans, ...filament])];
 }

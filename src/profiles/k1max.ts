@@ -39,6 +39,11 @@ export const K1_MAX: PrinterProfile = {
       criticalAbove: 80,
     },
   ],
+  // No `filamentSensors` and no `maintenanceEveryHours`: the live
+  // `printer.objects.list` on this K1 Max shows no `filament_switch_sensor`
+  // object, and declaring one would render a FILAMENT tell-tale that
+  // promises monitoring that is not happening. Add the sensor here only
+  // after a read-only objects.list proves it exists.
   fans: [
     {
       klipper: "temperature_fan chamber_fan",

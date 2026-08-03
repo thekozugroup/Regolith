@@ -36,6 +36,19 @@ export interface ProfileTemperatureFan {
   driftWarn?: number;
 }
 
+/**
+ * A filament runout switch (`filament_switch_sensor name`). Declare one ONLY
+ * after a live `printer.objects.list` proves the klipper object exists — an
+ * unlit FILAMENT lamp on a printer with no sensor promises monitoring that
+ * is not happening.
+ */
+export interface ProfileFilamentSensor {
+  /** Klipper object id, e.g. `filament_switch_sensor runout`. */
+  klipper: string;
+  /** Display label for UI. */
+  label: string;
+}
+
 /** A heater entry (extruder, heater_bed, heater_generic). */
 export interface ProfileHeater {
   klipper: string;
@@ -107,6 +120,18 @@ export interface PrinterProfile {
   sensors: ProfileSensor[];
   /** Temperature-controlled fans. */
   fans: ProfileTemperatureFan[];
+  /**
+   * Filament runout switches. OPTIONAL and absent by default: the FILAMENT
+   * tell-tale renders only when this is declared, so a profile must not list
+   * sensors its printer does not physically have.
+   */
+  filamentSensors?: ProfileFilamentSensor[];
+  /**
+   * Service-interval hours for the (deferred) MAINTENANCE tell-tale — reads
+   * Moonraker history totals, never session data. Absent = no maintenance
+   * tracking for this printer.
+   */
+  maintenanceEveryHours?: number;
   /** Macros to surface as quick actions. */
   macros: ProfileMacro[];
   /** Feature flags. */
