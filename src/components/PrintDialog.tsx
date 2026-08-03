@@ -118,7 +118,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             onClick={onClose}
             disabled={busy}
             aria-label="Close print confirmation"
-            className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] disabled:opacity-40"
+            className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>
@@ -130,7 +130,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </p>
           {/* Preview */}
           <div className="grid grid-cols-[110px_1fr] gap-3">
-            <div className="aspect-square rounded-md border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
+            <div className="aspect-square rounded-inner border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
               <img
                 src={moonraker.thumbnailUrl(file.path, 300)}
                 alt=""
@@ -227,13 +227,13 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             aria-checked={acknowledged}
             onClick={() => setAcknowledged((value) => !value)}
             className={cn(
-              "w-full min-h-11 flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+              "w-full min-h-11 flex items-start gap-3 rounded-inner border p-3 text-left transition-colors",
               acknowledged
                 ? "border-[var(--color-success)] bg-(--color-success)/8"
                 : "border-[var(--color-border-strong)] bg-[var(--color-bg)]",
             )}
           >
-            <span className="mt-0.5 w-5 h-5 shrink-0 rounded border border-current inline-flex items-center justify-center text-[var(--color-success)]">
+            <span className="mt-0.5 w-5 h-5 shrink-0 rounded-inner border border-current inline-flex items-center justify-center text-[var(--color-success)]">
               {acknowledged && <CheckCircle2 className="w-4 h-4" />}
             </span>
             <span className="text-[13px] leading-relaxed">
@@ -242,7 +242,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </button>
 
           {!preflight.allowed && (
-            <div role="status" className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-lg">
+            <div role="status" className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-inner">
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
               <span className="text-[13px] text-[var(--color-warning)]">
                 {preflight.reason}
@@ -251,7 +251,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           )}
 
           {error && (
-            <div role="alert" className="flex items-start gap-2 p-3 bg-(--color-error)/8 border border-(--color-error)/30 rounded-lg">
+            <div role="alert" className="flex items-start gap-2 p-3 bg-(--color-error)/8 border border-(--color-error)/30 rounded-inner">
               <AlertTriangle className="w-3.5 h-3.5 text-[var(--color-error)] shrink-0 mt-0.5" />
               <span className="text-[11px] text-[var(--color-error)]">
                 {error}
@@ -322,7 +322,7 @@ function Toggle({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "w-full min-h-11 flex items-center gap-3 p-3 rounded-lg border text-left transition-colors",
+        "w-full min-h-11 flex items-center gap-3 p-3 rounded-inner border text-left transition-colors",
         checked
           ? "border-[var(--color-accent-edge)] bg-[var(--color-accent-faint)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",

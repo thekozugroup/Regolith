@@ -175,12 +175,12 @@ export function SettingsPage() {
             </Button>
           </Row>
           {actionError && (
-            <div role="alert" className="rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
+            <div role="alert" className="rounded-inner border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
               {actionError}
             </div>
           )}
           {actionStatus && (
-            <div role="status" className="rounded-lg border border-(--color-success)/30 bg-(--color-success)/8 p-3 text-[13px] text-[var(--color-success)]">
+            <div role="status" className="rounded-inner border border-(--color-success)/30 bg-(--color-success)/8 p-3 text-[13px] text-[var(--color-success)]">
               {actionStatus}
             </div>
           )}
@@ -190,7 +190,7 @@ export function SettingsPage() {
       {isExpert && <Card title="Host" icon={<Cpu />} className="lg:col-span-1">
         <div className="space-y-2 text-[12px]">
           {infoError && (
-            <div role="status" className="rounded-lg border border-(--color-warning)/35 bg-(--color-warning)/8 p-3 text-[13px] text-[var(--color-warning)]">
+            <div role="status" className="rounded-inner border border-(--color-warning)/35 bg-(--color-warning)/8 p-3 text-[13px] text-[var(--color-warning)]">
               Host details unavailable. {infoError}
             </div>
           )}

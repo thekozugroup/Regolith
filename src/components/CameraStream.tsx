@@ -116,7 +116,7 @@ export function CameraStream({
             <button
               type="button"
               onClick={retryNow}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 text-[12px] font-medium text-white hover:bg-white/15"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-inner border border-white/20 bg-white/10 px-3 text-[12px] font-medium text-white hover:bg-white/15"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Try camera again
@@ -143,15 +143,16 @@ export function CameraStream({
       />
       <div
         aria-live="polite"
-        className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-lg border border-white/15 bg-black/70 px-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm"
+        className="absolute left-2 top-2 z-10 flex min-h-7 items-center gap-1.5 rounded-inner border border-white/15 bg-black/70 px-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/90 backdrop-blur-sm"
       >
         <span
+          aria-hidden="true"
           className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            status === "live" && "bg-[var(--color-success)]",
+            "status-lamp",
+            status === "live" && "text-[var(--color-success)]",
             (status === "connecting" || status === "retrying") &&
-              "bg-[var(--color-warning)]",
-            status === "offline" && "bg-[var(--color-error)]",
+              "text-[var(--color-warning)]",
+            status === "offline" && "text-[var(--color-error)]",
           )}
         />
         {STATUS_LABELS[status]}
@@ -170,7 +171,7 @@ export function CameraStream({
             onClick={retryNow}
             aria-label="Refresh camera stream"
             title="Refresh camera"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-inner border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
           >
             <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
@@ -179,7 +180,7 @@ export function CameraStream({
               type="button"
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? "Exit camera fullscreen" : "Open camera fullscreen"}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-inner border border-white/15 bg-black/70 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/85 hover:text-white"
             >
               {isFullscreen ? (
                 <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />

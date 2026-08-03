@@ -40,7 +40,7 @@ export function ExperienceSettings() {
                 aria-pressed={selected}
                 onClick={() => setMode(option.mode)}
                 className={cn(
-                  "min-h-20 rounded-xl border p-3 text-left transition-[background,border-color,color]",
+                  "min-h-20 rounded-inner border p-3 text-left transition-[background,border-color,color]",
                   selected
                     ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
                     : "border-[var(--color-border)] bg-[var(--color-elevated)]/35 hover:border-[var(--color-border-strong)]",

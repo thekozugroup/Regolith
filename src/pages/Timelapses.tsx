@@ -110,7 +110,7 @@ export function Timelapses() {
                 )}
                 onClick={() => setSelected(f)}
               >
-                <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-sm border border-[var(--color-border)] bg-black">
+                <span className="flex h-9 w-12 shrink-0 items-center justify-center rounded-inner border border-[var(--color-border)] bg-black">
                   <Film className="w-4 h-4 text-[var(--color-fg-muted)]" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -140,7 +140,7 @@ export function Timelapses() {
               key={selected.path}
               src={downloadUrl(selected)}
               controls
-              className="w-full rounded-md border border-[var(--color-border)] bg-black aspect-video"
+              className="w-full rounded-inner border border-[var(--color-border)] bg-black aspect-video"
             />
             <div className="text-[12px] font-mono break-all" title={selected.path}>
               {selected.path}

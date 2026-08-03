@@ -48,7 +48,7 @@ export function ThemeSettings() {
               onChange={(e) => setDraftName(e.target.value)}
               maxLength={24}
               placeholder="Forge"
-              className="min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] focus:border-[var(--color-accent)] focus:outline-none"
+              className="min-h-11 min-w-0 flex-1 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] focus:border-[var(--color-accent)] focus:outline-none"
             />
             <Button
               size="md"
@@ -88,7 +88,7 @@ export function ThemeSettings() {
                 className="absolute inset-0 z-10 min-h-11 min-w-11 cursor-pointer opacity-0"
               />
               <div
-                className="pointer-events-none h-11 w-11 rounded-lg border border-[var(--color-border)]"
+                className="pointer-events-none h-11 w-11 rounded-inner border border-[var(--color-border)]"
                 style={{ backgroundColor: hexValid ? normalizeHex(draftHex) : accent }}
               />
             </div>
@@ -109,7 +109,7 @@ export function ThemeSettings() {
               aria-invalid={!hexValid}
               aria-describedby={!hexValid ? accentErrorId : undefined}
               className={cn(
-                "min-h-11 min-w-0 flex-1 rounded-lg border bg-[var(--color-elevated)] px-3 text-[13px] font-mono uppercase tracking-wider focus:outline-none",
+                "min-h-11 min-w-0 flex-1 rounded-inner border bg-[var(--color-elevated)] px-3 text-[13px] font-mono uppercase tracking-wider focus:outline-none",
                 hexValid
                   ? "border-[var(--color-border)] focus:border-[var(--color-accent)]"
                   : "border-[var(--color-error)] focus:border-[var(--color-error)]",
@@ -135,7 +135,7 @@ export function ThemeSettings() {
                   key={key}
                   onClick={() => setAccent(hex)}
                   className={cn(
-                    "flex min-h-11 min-w-11 items-center justify-center rounded-lg border-2 transition-[border-color,transform]",
+                    "flex min-h-11 min-w-11 items-center justify-center rounded-inner border-2 transition-[border-color,transform]",
                     active
                       ? "border-[var(--color-fg)] scale-105"
                       : "border-transparent hover:border-[var(--color-border-strong)]",

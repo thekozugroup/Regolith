@@ -401,7 +401,7 @@ function ActionRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium">{action.title}</span>
-          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded-sm">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)] bg-[var(--color-elevated)] px-1.5 py-0.5 rounded-inner">
             {action.duration}
           </span>
           {action.movesPrinthead && (
@@ -441,7 +441,7 @@ function ConfirmModal({
       labelledBy={titleId}
       describedBy={descriptionId}
       onDismiss={onCancel}
-      panelClassName="max-w-md rounded-xl"
+      panelClassName="max-w-md"
     >
         <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
           <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
@@ -451,7 +451,7 @@ function ConfirmModal({
             type="button"
             onClick={onCancel}
             aria-label="Close calibration confirmation"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -461,7 +461,7 @@ function ConfirmModal({
             {action.confirm}
           </p>
           {action.movesPrinthead && (
-            <div className="flex items-center gap-2 p-2 bg-(--color-warning)/8 border border-(--color-warning)/30 rounded-sm">
+            <div className="flex items-center gap-2 p-2 bg-(--color-warning)/8 border border-(--color-warning)/30 rounded-inner">
               <AlertTriangle className="w-4 h-4 text-[var(--color-warning)]" />
               <span className="text-[11px] text-[var(--color-warning)]">
                 Will move the printhead aggressively.
@@ -472,13 +472,13 @@ function ConfirmModal({
             <summary className="flex min-h-11 cursor-pointer items-center text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
               View gcode
             </summary>
-            <pre className="mt-2 p-2 bg-black border border-[var(--color-border)] rounded-sm overflow-x-auto whitespace-pre-wrap">
+            <pre className="mt-2 p-2 bg-black border border-[var(--color-border)] rounded-inner overflow-x-auto whitespace-pre-wrap">
               {action.gcode}
               {action.followup && `\n\n# After completion:\n${action.followup}`}
             </pre>
           </details>
           <div className="text-[11px] text-[var(--color-fg-muted)] flex items-center gap-1.5">
-            <span className="w-1 h-1 rounded-full bg-[var(--color-fg-muted)]" />
+            <span aria-hidden="true" className="status-lamp text-[var(--color-fg-muted)]" />
             Estimated duration: {action.duration}
           </div>
         </div>

@@ -140,7 +140,7 @@ export function PrintHistory() {
                 </div>
                 <span
                   className={cn(
-                    "px-1.5 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
+                    "px-1.5 py-0.5 rounded-inner border text-[11px] font-bold uppercase tracking-[0.1em]",
                     success
                       ? "text-[var(--color-success)] bg-(--color-success)/10 border-(--color-success)/30"
                       : "text-[var(--color-error)] bg-(--color-error)/10 border-(--color-error)/30",

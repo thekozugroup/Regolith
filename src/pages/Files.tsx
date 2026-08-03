@@ -97,7 +97,7 @@ export function Files() {
         </div>
 
         {/* Search */}
-        <div className="mb-2 flex min-h-11 items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3">
+        <div className="control-group mb-2 flex min-h-11 items-center gap-2 border border-[var(--color-border)] bg-[var(--color-elevated)] px-3">
           <Search className="w-3.5 h-3.5 text-[var(--color-fg-muted)]" />
           <input
             aria-label="Filter print files"
@@ -109,7 +109,7 @@ export function Files() {
         </div>
 
         {safety.isBusy && (
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-warning)] mb-2 px-2 py-1.5 bg-(--color-warning)/6 border border-(--color-warning)/25 rounded-sm">
+          <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-warning)] mb-2 px-2 py-1.5 bg-(--color-warning)/6 border border-(--color-warning)/25 rounded-inner">
             <AlertTriangle className="w-3 h-3" />
             <span>{safety.busyReason} — start blocked.</span>
           </div>
@@ -145,7 +145,7 @@ export function Files() {
                   onError={(e) =>
                     ((e.target as HTMLImageElement).style.opacity = "0")
                   }
-                  className="w-8 h-8 rounded border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
+                  className="w-8 h-8 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
                   alt=""
                 />
                 <div className="flex-1 min-w-0">
@@ -173,7 +173,7 @@ export function Files() {
         ) : (
           <div className="space-y-3">
             {/* Big thumbnail */}
-            <div className="aspect-square w-full max-w-[200px] mx-auto rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
+            <div className="aspect-square w-full max-w-[200px] mx-auto rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
               <img
                 src={moonraker.thumbnailUrl(selected.path, 300)}
                 alt={`Preview of ${selected.path}`}

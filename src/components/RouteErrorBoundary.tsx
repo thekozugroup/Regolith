@@ -33,7 +33,7 @@ export class RouteErrorBoundary extends Component<Props, State> {
         role="alert"
         className="mx-auto flex min-h-[55dvh] max-w-lg flex-col items-center justify-center px-6 text-center"
       >
-        <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-accent)]">
+        <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-inner border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-accent)]">
           <RefreshCw className="h-5 w-5" />
         </span>
         <h2 className="text-[17px] font-semibold tracking-tight">

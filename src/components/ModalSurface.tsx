@@ -130,7 +130,7 @@ export function ModalSurface({
         aria-describedby={describedBy}
         tabIndex={-1}
         className={cn(
-          "w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-2xl",
+          "modal-panel w-full max-w-lg overflow-y-auto border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-2xl",
           panelClassName,
         )}
       >

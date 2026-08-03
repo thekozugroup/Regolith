@@ -211,7 +211,7 @@ export function Control() {
           <div
             role="group"
             aria-label="Jog distance"
-            className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-1"
+            className="control-group flex w-fit max-w-full flex-wrap gap-1 border border-[var(--color-border)] bg-[var(--color-elevated)] p-1"
           >
             {(isExpert ? DISTANCES : BASIC_DISTANCES).map((d) => (
               <button
@@ -221,7 +221,7 @@ export function Control() {
                 aria-label={`Jog ${d} millimeters`}
                 aria-pressed={dist === d}
                 className={cn(
-                  "min-h-11 min-w-11 rounded-lg px-2.5 text-[12px] font-medium tabular-nums transition-colors",
+                  "min-h-11 min-w-11 rounded-inner px-2.5 text-[12px] font-medium tabular-nums transition-colors",
                   dist === d
                     ? "border border-[var(--color-border-strong)] bg-[var(--color-bg)] text-[var(--color-accent)]"
                     : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -444,7 +444,7 @@ function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <span
       className={cn(
-        "px-2 py-0.5 rounded-sm border text-[11px] font-bold uppercase tracking-[0.1em]",
+        "px-2 py-0.5 rounded-inner border text-[11px] font-bold uppercase tracking-[0.1em]",
         ok
           ? "text-[var(--color-success)] bg-(--color-success)/10 border-(--color-success)/30"
           : "text-[var(--color-warning)] bg-(--color-warning)/10 border-(--color-warning)/30",

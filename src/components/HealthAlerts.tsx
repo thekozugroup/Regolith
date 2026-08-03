@@ -191,7 +191,7 @@ export function HealthAlerts() {
           key={a.id}
           data-alert-id={a.id}
           className={cn(
-            "flex items-start gap-2 px-3 py-2 rounded-md border backdrop-blur-sm shadow-lg",
+            "modal-panel flex items-start gap-2 px-3 py-2 border backdrop-blur-sm shadow-lg",
             a.severity === "error"
               ? "bg-(--color-error)/12 border-(--color-error)/50"
               : "bg-(--color-warning)/12 border-(--color-warning)/50",
@@ -223,7 +223,7 @@ export function HealthAlerts() {
             onClick={() =>
               setDismissed((d) => new Set([...d, a.id]))
             }
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
             aria-label="Dismiss alert"
           >
             ×

@@ -203,7 +203,7 @@ export function BrandLogo({
           setOpen((o) => !o);
         }}
         className={cn(
-          "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
+          "inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
           configurable && "hover:bg-[var(--color-accent-soft)] cursor-pointer",
           !configurable && "cursor-default",
         )}
@@ -227,7 +227,7 @@ export function BrandLogo({
           ref={popoverRef}
           role="dialog"
           aria-label="Choose brand icon"
-          className="fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] rounded-md shadow-2xl overflow-hidden"
+          className="modal-panel fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] shadow-2xl overflow-hidden"
           style={{
             left: Math.min(anchor.x, window.innerWidth - 290),
             top: anchor.y,
@@ -241,7 +241,7 @@ export function BrandLogo({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close brand icon picker"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
             >
               <X className="w-4 h-4" />
             </button>
@@ -262,7 +262,7 @@ export function BrandLogo({
                       setOpen(false);
                     }}
                     className={cn(
-                      "flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
+                      "flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
                       active
                         ? "bg-[var(--color-accent)] text-[var(--color-accent-fg)]"
                         : "hover:bg-[var(--color-accent-soft)] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]",
@@ -281,7 +281,7 @@ export function BrandLogo({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[var(--color-accent-faint)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-inner px-2 text-[12px] hover:bg-[var(--color-accent-faint)]"
             >
               <Upload className="w-3 h-3 text-[var(--color-accent)]" />
               <span>Upload image…</span>
@@ -298,11 +298,11 @@ export function BrandLogo({
                 setOpen(false);
               }}
               className={cn(
-                "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
+                "flex min-h-11 w-full items-center gap-2 rounded-inner px-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
                 brand.type === "none" && "text-[var(--color-accent)]",
               )}
             >
-              <span className="w-3 h-3 inline-block border border-current rounded-sm" />
+              <span className="w-3 h-3 inline-block border border-current rounded-inner" />
               <span>None</span>
               {brand.type === "none" && (
                 <span className="ml-auto text-[11px] uppercase tracking-[0.1em]">
@@ -316,7 +316,7 @@ export function BrandLogo({
                 setBrand(DEFAULT_BRAND);
                 setOpen(false);
               }}
-              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-inner px-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
             >
               <span>Reset to default</span>
             </button>

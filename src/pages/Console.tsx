@@ -173,7 +173,7 @@ export function ConsolePage() {
             onClick={() => setAutoScroll((s) => !s)}
             aria-pressed={autoScroll}
             className={cn(
-              "flex min-h-11 min-w-11 items-center gap-1 rounded-lg px-2 hover:text-[var(--color-fg)]",
+              "flex min-h-11 min-w-11 items-center gap-1 rounded-inner px-2 hover:text-[var(--color-fg)]",
               autoScroll && "text-[var(--color-accent)]",
             )}
           >
@@ -224,7 +224,7 @@ export function ConsolePage() {
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            className="flex-1 min-w-0 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-lg px-3 min-h-11 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
+            className="flex-1 min-w-0 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-inner px-3 min-h-11 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
           />
           <Button
             onClick={send}
@@ -241,7 +241,7 @@ export function ConsolePage() {
           <div
             role={error ? "alert" : "status"}
             className={cn(
-              "mt-2 flex items-start gap-2 rounded-lg border p-2.5 text-[12px]",
+              "mt-2 flex items-start gap-2 rounded-inner border p-2.5 text-[12px]",
               error || !candidateCheck.allowed
                 ? "border-(--color-error)/35 bg-(--color-error)/8 text-[var(--color-error)]"
                 : commandRisk?.risk === "routine"

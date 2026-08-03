@@ -207,7 +207,7 @@ export function MissionTimeline() {
         }
       >
         {actionError && (
-          <div role="alert" className="mb-3 rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
+          <div role="alert" className="mb-3 rounded-inner border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
             {actionError}
           </div>
         )}
@@ -224,7 +224,7 @@ export function MissionTimeline() {
               <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
                 Calibration · Tuning
               </span>
-              <span className="shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]">
+              <span className="shrink-0 px-1.5 py-0.5 rounded-inner border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]">
                 ACTIVE
               </span>
             </div>
@@ -367,7 +367,7 @@ export function MissionTimeline() {
       }
     >
       {actionError && (
-        <div role="alert" className="mb-3 rounded-lg border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
+        <div role="alert" className="mb-3 rounded-inner border border-(--color-error)/35 bg-(--color-error)/8 p-3 text-[13px] text-[var(--color-error)]">
           {actionError}
         </div>
       )}
@@ -548,7 +548,7 @@ function StateBadge({ state }: { state: string }) {
   return (
     <span
       className={cn(
-        "shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em]",
+        "shrink-0 px-1.5 py-0.5 rounded-inner border text-[11px] font-semibold uppercase tracking-[0.1em]",
         variants[state] ?? variants.standby,
       )}
     >

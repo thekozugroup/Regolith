@@ -77,7 +77,7 @@ export function ProfileSettings() {
               <div
                 key={p.id}
                 className={cn(
-                  "flex items-center justify-between px-2 py-1.5 rounded-sm border text-[12px]",
+                  "flex items-center justify-between px-2 py-1.5 rounded-inner border text-[12px]",
                   active
                     ? "border-[var(--color-accent)] bg-[var(--color-accent)]/8"
                     : "border-[var(--color-border)] bg-[var(--color-elevated)]/30",

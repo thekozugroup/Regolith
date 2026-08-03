@@ -124,7 +124,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
       </div>
 
       {/* The grid */}
-      <div className="rounded-md border border-[var(--color-border)] overflow-hidden bg-black p-2">
+      <div className="rounded-inner border border-[var(--color-border)] overflow-hidden bg-black p-2">
         <div
           className="grid gap-px"
           style={{

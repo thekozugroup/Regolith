@@ -101,7 +101,7 @@ export function Sidebar() {
           labelledBy={moreTitleId}
           onDismiss={() => setMoreOpen(false)}
           overlayClassName="items-end bg-black/55 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] desk:hidden"
-          panelClassName="app-chrome max-w-none rounded-2xl p-2"
+          panelClassName="app-chrome max-w-none p-2"
         >
             <div className="flex items-center justify-between px-2 py-1">
               <h2 id={moreTitleId} className="text-[17px] font-semibold tracking-tight">
@@ -111,7 +111,7 @@ export function Sidebar() {
                 type="button"
                 aria-label="Close more navigation"
                 onClick={() => setMoreOpen(false)}
-                className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]"
+                className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -149,7 +149,7 @@ export function Sidebar() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "min-h-16 flex flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium",
+                "min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
                 isActive ? "text-[var(--color-accent)]" : "text-[var(--color-fg-muted)]",
               )
             }
@@ -164,7 +164,7 @@ export function Sidebar() {
           aria-label="More navigation"
           onClick={() => setMoreOpen((value) => !value)}
           className={cn(
-            "min-h-16 flex flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium",
+            "min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
             moreOpen || mobileMore.some((item) => item.to === location.pathname)
               ? "text-[var(--color-accent)]"
               : "text-[var(--color-fg-muted)]",
