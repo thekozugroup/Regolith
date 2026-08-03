@@ -148,7 +148,7 @@ export function MissionTimeline() {
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-4">
-          <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[rgba(249,115,22,0.05)]">
+          <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-accent)] bg-[var(--color-accent-faint)]">
             <Activity
               className="w-12 h-12 text-[var(--color-accent)]"
               strokeWidth={1.25}
@@ -160,7 +160,7 @@ export function MissionTimeline() {
               <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)] font-semibold">
                 Calibration · Tuning
               </span>
-              <span className="shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]">
+              <span className="shrink-0 px-1.5 py-0.5 rounded-sm border text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]">
                 ACTIVE
               </span>
             </div>
@@ -417,7 +417,7 @@ function Stat({
 function StateBadge({ state }: { state: string }) {
   const variants: Record<string, string> = {
     printing:
-      "text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]",
+      "text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]",
     paused:
       "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",
     complete:

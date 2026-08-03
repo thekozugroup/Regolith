@@ -204,7 +204,7 @@ export function BrandLogo({
         }}
         className={cn(
           "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
-          configurable && "hover:bg-[rgba(249,115,22,0.08)] cursor-pointer",
+          configurable && "hover:bg-[var(--color-accent-soft)] cursor-pointer",
           !configurable && "cursor-default",
         )}
         title={configurable ? "Change brand icon" : undefined}
@@ -265,7 +265,7 @@ export function BrandLogo({
                       "flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors",
                       active
                         ? "bg-[var(--color-accent)] text-[var(--color-accent-fg)]"
-                        : "hover:bg-[rgba(249,115,22,0.10)] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]",
+                        : "hover:bg-[var(--color-accent-soft)] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]",
                     )}
                     aria-label={`${name} brand icon`}
                     aria-pressed={active}
@@ -281,7 +281,7 @@ export function BrandLogo({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[rgba(249,115,22,0.06)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[var(--color-accent-faint)]"
             >
               <Upload className="w-3 h-3 text-[var(--color-accent)]" />
               <span>Upload image…</span>
@@ -298,7 +298,7 @@ export function BrandLogo({
                 setOpen(false);
               }}
               className={cn(
-                "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[rgba(249,115,22,0.06)]",
+                "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
                 brand.type === "none" && "text-[var(--color-accent)]",
               )}
             >
@@ -316,7 +316,7 @@ export function BrandLogo({
                 setBrand(DEFAULT_BRAND);
                 setOpen(false);
               }}
-              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[rgba(249,115,22,0.06)]"
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
             >
               <span>Reset to default</span>
             </button>

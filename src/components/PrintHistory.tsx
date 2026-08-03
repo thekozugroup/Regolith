@@ -109,7 +109,7 @@ export function PrintHistory() {
             return (
               <li
                 key={j.job_id}
-                className="flex items-center gap-3 py-2 px-3.5 hover:bg-[rgba(249,115,22,0.04)]"
+                className="flex items-center gap-3 py-2 px-3.5 hover:bg-[var(--color-accent-faint)]"
               >
                 <span
                   className={cn(

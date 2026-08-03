@@ -9,9 +9,18 @@
   --color-border-strong: oklch(0.38 0.024 250);
   --color-fg: oklch(0.94 0.012 85);
   --color-fg-muted: oklch(0.72 0.018 250);
-  --color-accent: oklch(0.78 0.16 70);
-  --color-accent-hover: oklch(0.83 0.15 72);
-  --color-accent-fg: oklch(0.22 0.035 70);
+  /* Default accent. Single source of truth is DEFAULT_ACCENT in
+     src/lib/useTheme.ts — these three literals must stay byte-identical to
+     computeAccentTokens(DEFAULT_ACCENT). Enforced by tests/accentDefault.test.ts.
+     Hex only: dual notation (oklch here, hex in JS) is how they drifted. */
+  --color-accent: #f7a224;
+  --color-accent-hover: #f8ac3d;
+  --color-accent-fg: #120b07;
+  /* Accent-derived surfaces — always tint from the live accent, never from a
+     hardcoded rgba() literal, so every surface follows the user's accent. */
+  --color-accent-soft: color-mix(in oklch, var(--color-accent) 10%, transparent);
+  --color-accent-faint: color-mix(in oklch, var(--color-accent) 5%, transparent);
+  --color-accent-edge: color-mix(in oklch, var(--color-accent) 30%, transparent);
   --color-success: oklch(0.75 0.14 148);
   --color-warning: oklch(0.83 0.15 88);
   --color-error: oklch(0.68 0.21 27);
@@ -31,8 +40,6 @@
 
   /* --- 80s digital, bounded --- */
   --color-ghost-segment: oklch(0.94 0.012 85 / 0.07);
-  --color-phosphor: var(--color-accent); /* follows the user accent */
-  --color-phosphor-alt: var(--color-info);
   --glow-radius: 4px;
   --glow-alpha: 0.45;
   --crt-scanline-alpha: 0.025;

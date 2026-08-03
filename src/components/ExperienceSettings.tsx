@@ -42,7 +42,7 @@ export function ExperienceSettings() {
                 className={cn(
                   "min-h-20 rounded-xl border p-3 text-left transition-[background,border-color,color]",
                   selected
-                    ? "border-[var(--color-accent)] bg-[rgba(249,115,22,0.09)]"
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]"
                     : "border-[var(--color-border)] bg-[var(--color-elevated)]/35 hover:border-[var(--color-border-strong)]",
                 )}
               >

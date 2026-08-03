@@ -21,7 +21,7 @@ export function Button({
     primary:
       "bg-[var(--color-accent)] text-[var(--color-accent-fg)] border border-[color-mix(in_oklch,var(--color-accent)_72%,black)] hover:bg-[var(--color-accent-hover)]",
     ghost:
-      "text-[var(--color-fg-muted)] hover:bg-[rgba(249,115,22,0.06)] hover:text-[var(--color-fg)]",
+      "text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)] hover:text-[var(--color-fg)]",
     danger:
       "bg-[rgba(239,68,68,0.12)] border border-[rgba(239,68,68,0.4)] text-[var(--color-error)] hover:bg-[rgba(239,68,68,0.2)] hover:border-[rgba(239,68,68,0.6)]",
   } as const;

@@ -317,7 +317,7 @@ function Toggle({
       className={cn(
         "w-full min-h-11 flex items-center gap-3 p-3 rounded-lg border text-left transition-colors",
         checked
-          ? "border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.06)]"
+          ? "border-[var(--color-accent-edge)] bg-[var(--color-accent-faint)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",
       )}
     >

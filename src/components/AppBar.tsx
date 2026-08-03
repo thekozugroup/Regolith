@@ -37,7 +37,7 @@ export function AppBar() {
             className={cn(
               "flex items-center gap-1.5 border px-2 py-1 text-[11px] font-semibold tracking-[0.08em] uppercase",
               printState === "printing" &&
-                "text-[var(--color-accent)] bg-[rgba(249,115,22,0.10)] border-[rgba(249,115,22,0.3)]",
+                "text-[var(--color-accent)] bg-[var(--color-accent-soft)] border-[var(--color-accent-edge)]",
               printState === "paused" &&
                 "text-[var(--color-warning)] bg-[rgba(245,158,11,0.10)] border-[rgba(245,158,11,0.3)]",
               printState === "error" &&

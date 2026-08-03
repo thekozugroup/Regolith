@@ -274,7 +274,7 @@ export function Tune() {
 
       {/* Live action toast */}
       {running && (
-        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.10)] px-3 py-2 text-[12px]">
+        <div className="md:col-span-2 lg:col-span-4 flex items-center gap-2 border border-[var(--color-accent-edge)] bg-[var(--color-accent-soft)] px-3 py-2 text-[12px]">
           <Activity className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
           <span className="text-[var(--color-accent)] font-medium flex-1">
             Running: {running.title}

@@ -104,7 +104,7 @@ export function ThemeSettings() {
                 if (e.key === "Enter") commitHex();
                 if (e.key === "Escape") setDraftHex(accent);
               }}
-              placeholder="#f97316"
+              placeholder="#f7a224"
               spellCheck={false}
               aria-invalid={!hexValid}
               aria-describedby={!hexValid ? accentErrorId : undefined}
@@ -156,7 +156,7 @@ export function ThemeSettings() {
           </div>
           {!hexValid && (
             <div id={accentErrorId} role="alert" className="mt-1.5 text-[11px] text-[var(--color-error)]">
-              Enter a 3- or 6-digit hex color, such as #f97316.
+              Enter a 3- or 6-digit hex color, such as #f7a224.
             </div>
           )}
         </fieldset>

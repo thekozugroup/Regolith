@@ -4,12 +4,20 @@ const NAME_KEY = "forge.device.name";
 const ACCENT_KEY = "forge.theme.accent";
 
 /**
+ * The designed default accent (Regolith amber). Single source of truth —
+ * `--color-accent` in src/index.css must stay byte-identical to this value.
+ * Enforced by tests/accentDefault.test.ts so the two can never drift again.
+ */
+export const DEFAULT_ACCENT = "#f7a224";
+
+/**
  * Quick-pick swatches. The accent itself is a free-form hex — these
  * are just convenience presets shown as chips alongside the hex input.
+ * The designed default comes first so it is reachable as a one-click reset.
  */
 export const ACCENT_PRESETS = {
+  amber: DEFAULT_ACCENT,
   orange: "#f97316",
-  amber: "#f59e0b",
   emerald: "#10b981",
   blue: "#3b82f6",
   violet: "#8b5cf6",
@@ -28,7 +36,7 @@ export function isValidHex(value: string): boolean {
 
 export function normalizeHex(value: string): string {
   const m = value.trim().match(HEX_RE);
-  if (!m) return "#f97316";
+  if (!m) return DEFAULT_ACCENT;
   let h = m[1];
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
   return `#${h.toLowerCase()}`;
@@ -74,26 +82,41 @@ function mixHex(a: string, b: string, amount: number): string {
   return `#${mixed.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
+/**
+ * The tokens applyAccent() writes for a given accent, exported so tests can
+ * pin the CSS defaults in src/index.css to the exact same values.
+ */
+export function computeAccentTokens(hex: string): {
+  accent: string;
+  fg: string;
+  hover: string;
+} {
+  const fg = getAccessibleAccentForeground(hex);
+  return {
+    accent: hex,
+    fg,
+    hover: mixHex(
+      hex,
+      fg === DARK_ACTION_TEXT ? LIGHT_ACTION_TEXT : DARK_ACTION_TEXT,
+      0.12,
+    ),
+  };
+}
+
 function applyAccent(hex: string): void {
   const root = document.documentElement;
-  const [r, g, b] = hexToRgb(hex);
-  const foreground = getAccessibleAccentForeground(hex);
-  root.style.setProperty("--color-accent", hex);
-  root.style.setProperty("--color-accent-fg", foreground);
-  root.style.setProperty(
-    "--color-accent-hover",
-    mixHex(hex, foreground === DARK_ACTION_TEXT ? "#fff8f1" : "#120b07", 0.12),
-  );
-  root.style.setProperty("--accent-soft-r", hex);
-  root.style.setProperty("--color-accent-rgb", `${r},${g},${b}`);
+  const tokens = computeAccentTokens(hex);
+  root.style.setProperty("--color-accent", tokens.accent);
+  root.style.setProperty("--color-accent-fg", tokens.fg);
+  root.style.setProperty("--color-accent-hover", tokens.hover);
 }
 
 function loadStoredAccent(): string {
   const raw = localStorage.getItem(ACCENT_KEY);
-  if (!raw) return ACCENT_PRESETS.orange;
+  if (!raw) return DEFAULT_ACCENT;
   // Migrate legacy preset-name values
   if (raw in ACCENT_PRESETS) return ACCENT_PRESETS[raw as AccentPreset];
-  return isValidHex(raw) ? normalizeHex(raw) : ACCENT_PRESETS.orange;
+  return isValidHex(raw) ? normalizeHex(raw) : DEFAULT_ACCENT;
 }
 
 export function useDeviceName() {
