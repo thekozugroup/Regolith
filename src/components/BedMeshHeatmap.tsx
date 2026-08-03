@@ -76,7 +76,7 @@ export function BedMeshHeatmap() {
           <div className="text-[11px] text-[var(--color-fg-muted)] uppercase tracking-[0.12em] mb-1">
             No mesh saved
           </div>
-          <div className="text-[11px] text-[var(--color-fg-muted)]/70">
+          <div className="text-[11px] text-[var(--color-fg-subtle)]">
             Run "Calibrate Bed Mesh" above to generate one.
           </div>
         </div>

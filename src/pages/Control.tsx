@@ -335,10 +335,10 @@ function BedView({
     <div className="space-y-3">
       <div className="relative aspect-[4/3] overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-bg)]">
         {/* Origin label */}
-        <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+        <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
           Front · 0,0
         </div>
-        <div className="absolute top-1 right-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/40 font-mono">
+        <div className="absolute top-1 right-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
           {maxX.toFixed(0)},{maxY.toFixed(0)}
         </div>
         {/* Center crosshair */}
@@ -363,7 +363,7 @@ function BedView({
           />
         )}
         {!homed && (
-          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]/50 font-mono">
+          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
             Not homed
           </div>
         )}

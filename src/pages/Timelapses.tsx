@@ -86,11 +86,11 @@ export function Timelapses() {
         )}
         {!err && !loading && files.length === 0 && (
           <div className="py-8 text-center">
-            <Film className="w-8 h-8 mx-auto text-[var(--color-fg-muted)]/30 mb-2" />
+            <Film className="w-8 h-8 mx-auto text-[var(--color-fg-subtle)] mb-2" />
             <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
               No timelapses yet
             </div>
-            <div className="text-[11px] text-[var(--color-fg-muted)]/70 mt-1">
+            <div className="text-[11px] text-[var(--color-fg-subtle)] mt-1">
               Enable per-print on the Files page.
             </div>
           </div>

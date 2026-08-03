@@ -94,7 +94,7 @@ export function PrintHistory() {
       )}
       {!err && !loading && jobs.length === 0 && (
         <div className="py-8 text-center">
-          <History className="w-8 h-8 mx-auto text-[var(--color-fg-muted)]/30 mb-2" />
+          <History className="w-8 h-8 mx-auto text-[var(--color-fg-subtle)] mb-2" />
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
             No prints yet
           </div>

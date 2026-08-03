@@ -154,7 +154,7 @@ export function ConsolePage() {
                     "text-[var(--color-accent)] font-semibold",
                   l.type === "response" && "text-[var(--color-fg)]",
                   l.text.startsWith("//") &&
-                    "text-[var(--color-fg-muted)]/80",
+                    "text-[var(--color-fg-subtle)]",
                   l.text.startsWith("!!") && "text-[var(--color-error)]",
                 )}
               >
@@ -182,7 +182,7 @@ export function ConsolePage() {
                 "status-lamp",
                 autoScroll
                   ? "text-[var(--color-accent)]"
-                  : "text-[var(--color-fg-muted)]/30",
+                  : "text-[var(--color-fg-subtle)]",
               )}
             />
             Autoscroll

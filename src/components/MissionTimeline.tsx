@@ -381,7 +381,7 @@ export function MissionTimeline() {
               className="w-full h-full object-contain"
             />
           ) : (
-            <FileText className="w-10 h-10 text-[var(--color-fg-muted)]/40" />
+            <FileText className="w-10 h-10 text-[var(--color-fg-subtle)]" />
           )}
         </div>
 

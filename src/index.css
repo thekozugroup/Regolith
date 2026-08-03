@@ -24,6 +24,11 @@
      the shipped 3.49:1 defect). Solid it measures 7.191:1 on the neutral
      surface. (Disabled controls are the only WCAG-exempt exception.) */
   --color-fg-muted: oklch(0.708 0 0);
+  /* Solid dim tone for intentionally quiet text and decorative icons — the
+     replacement for every alpha modifier once layered on fg-muted (see the
+     SOLID contract above). Provisional 0.64 L: WP-VERIFY measures >=4.5:1 on
+     surface, elevated, and the instrument well before this value is final. */
+  --color-fg-subtle: oklch(0.64 0 0);
   /* Default accent. Single source of truth is DEFAULT_ACCENT in
      src/lib/useTheme.ts — these three literals must stay byte-identical to
      computeAccentTokens(DEFAULT_ACCENT). Enforced by tests/accentDefault.test.ts.
