@@ -12,7 +12,12 @@ import {
   type ActionConfirmation,
   type PrinterAction,
 } from "@/lib/printerActions";
+import { AiGloss } from "./AiGloss";
+import { AiPostMortem } from "./AiPostMortem";
+import { useAiFeatureReady } from "@/lib/ai/flags";
+import { explainKlipperLine } from "@/lib/ai/explain";
 import { computeJobTiming } from "@/lib/jobProgress";
+import { useJobHistory } from "@/lib/useJobHistory";
 import { formatDuration, cn, recentMeaningfulLines } from "@/lib/utils";
 
 /**
@@ -98,14 +103,32 @@ export function MissionTimeline() {
   // Non-print activity: klipper busy but no print file
   const isTuning = klipperBusy && !filename;
 
+  // Calibration inputs for the early-job estimate: this printer's measured
+  // bias against its slicer's guesses, plus the guess for THIS file. Both are
+  // optional read-only REST reads that fail to null — see lib/useJobHistory.
+  const { slicerEstimate, calibration } = useJobHistory(
+    isPrintingFile ? filename : undefined,
+  );
+
   // Remaining is derived from the JOB's own progress and elapsed time and
   // returns null when it cannot be trusted — see lib/jobProgress.ts. It must
   // never come from `toolhead.estimated_print_time`, which is Klipper's
   // monotonic clock, not a job duration.
-  const { elapsed, progress, remaining } = computeJobTiming(
+  //
+  // Before the job has printed enough of its file to extrapolate from, the
+  // history calibration can answer instead. That answer is arithmetic over
+  // past prints, not a measurement of this one, so it is rendered as an
+  // estimate and never in the measured value's confident styling.
+  const { elapsed, progress, remaining, calibrated } = computeJobTiming(
     ps?.print_duration,
     sd?.progress,
+    { slicerEstimate, calibration },
   );
+  // Optional, opt-in glosses on a job that STOPPED. Both default to off and
+  // render nothing at all until the owner configures the assistant, so the
+  // panel below is byte-identical to its pre-assistant form by default.
+  const explainReady = useAiFeatureReady("explain");
+  const postMortemReady = useAiFeatureReady("postmortem");
   const filamentMm = ps?.filament_used ?? 0;
   const layerText = formatLayer(ps?.info?.current_layer, ps?.info?.total_layer);
   const reason = jobReason(ps?.message);
@@ -375,6 +398,18 @@ export function MissionTimeline() {
             </div>
           )}
 
+          {isStopped && (explainReady || postMortemReady) && (
+            <div className="flex flex-col gap-2">
+              {explainReady && reason && (
+                <AiGloss
+                  label="Explain this reason"
+                  run={() => explainKlipperLine(reason)}
+                />
+              )}
+              {postMortemReady && <AiPostMortem />}
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
             <Stat
               // A stopped job is not making progress. Report the point it got
@@ -388,11 +423,24 @@ export function MissionTimeline() {
               // Only a running job has time left, and only when the estimate
               // is trustworthy — see lib/jobProgress.ts. Everything else gets
               // the honest placeholder rather than a confident wrong number.
+              //
+              // A calibrated (pre-trend) answer is prefixed `~`, dropped out
+              // of the accent treatment measured values wear, and carries its
+              // provenance in text — it is derived from other prints, not
+              // from this one, and it must never look like telemetry.
               label="Remaining"
               value={
-                isPrintingFile && remaining != null ? formatDuration(remaining) : "—"
+                isPrintingFile && remaining != null
+                  ? `${calibrated ? "~" : ""}${formatDuration(remaining)}`
+                  : "—"
               }
-              accent={isPrintingFile && remaining != null}
+              accent={isPrintingFile && remaining != null && !calibrated}
+              estimate={isPrintingFile && remaining != null && calibrated}
+              hint={
+                isPrintingFile && remaining != null && calibrated && calibration
+                  ? `Estimated from your last ${calibration.samples} completed prints. This job has not printed enough of its file to measure yet.`
+                  : undefined
+              }
             />
             <Stat label="Elapsed" value={formatDuration(elapsed)} />
             <Stat
@@ -527,27 +575,40 @@ function TuningStatus({
   );
 }
 
+/**
+ * A labelled readout. `accent` marks a MEASURED live value; `estimate` marks
+ * a derived one and deliberately renders weaker — same 15px so the 11px floor
+ * is never in question, but muted and unaccented so no glance mistakes it for
+ * telemetry. `hint` states the provenance to screen readers and on hover.
+ */
 function Stat({
   label,
   value,
   accent,
+  estimate,
+  hint,
 }: {
   label: string;
   value: string;
   accent?: boolean;
+  estimate?: boolean;
+  hint?: string;
 }) {
   return (
-    <div>
+    <div title={hint}>
       <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
       <div
+        data-estimate={estimate ? "true" : undefined}
         className={cn(
           "text-[15px] font-semibold tabular-nums mt-0.5",
           accent && "text-[var(--color-accent)]",
+          estimate && "text-[var(--color-fg-muted)]",
         )}
       >
         {value}
+        {hint && <span className="sr-only"> — {hint}</span>}
       </div>
     </div>
   );
