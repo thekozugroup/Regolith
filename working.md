@@ -6,12 +6,12 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status
 
-- Live release was safely deferred on 2026-08-02. Fresh read-only Moonraker state showed `Ivar_Skadis_Hook_PETG_34m53s.gcode` actively printing at 7.67%, with virtual SD active, `idle_timeout.state=Printing`, hotend `255.04/255 C` at power `0.3314`, and bed `60.43/60 C` at power `0.1635`. No SSH authentication, guided preflight, backup, deployment, rollback, or remote write began.
-- Regolith Instrument Cluster cosmetic redesign and responsive refinement are committed and pushed on `main` through `a74d2ac`. They remain local-only until the normal live release gates pass; this batch did not connect to or deploy on the K1 Max.
+- Exact-current Regolith through `5826002` is deployed and verified on the K1 Max. The first release attempt correctly stopped when `Ivar_Skadis_Hook_PETG_34m53s.gcode` was active; after that print completed successfully, every local, identity, idle, zero-power, backup, rollback-readiness, static-hash, route, camera, and zero-write gate was rerun from fresh evidence before deployment.
+- Regolith Instrument Cluster cosmetic redesign and responsive refinement are committed and pushed on `main` through `a74d2ac`, with handoff reconciliation through `5826002`. These exact static assets are now live.
 - Home uses Mission → Camera → Thermals → Readiness on compact screens, full-width tablet composition through 1024px, and a balanced desktop camera/telemetry zone with the thermal/status rail. The compact PrinterCard metadata uses two wrapped rows, Settings has weighted groups, and Tune is organized as a calibration band plus pressure-advance and mesh surfaces.
 - The approved `Skadis Ivar Halter_PETG_2h49m.gcode` print completed successfully under read-only watch at 100%. Virtual SD became inactive, heater targets and power reached zero, cooling was monotonic, snapshots stayed available, and no new Klipper errors appeared. Any future deployment still needs fresh identity, idle, zero-power, backup, and rollback proof.
 - Camera stability, aligned card rhythm, bounded backup retention, printer-isolated browser QA, and neutral connection loading states are committed and pushed on `main` at `f2acff5`.
-- Static assets from `93fcf9b` are deployed on the live K1 Max and include the camera reconnect fix, layout polish, backup retention, and browser harness. The follow-up neutral loading-state polish in `f2acff5` is intentionally not deployed: fresh gates first detected calibration/heating and then a latched failed-print state, refusing before writes each time.
+- Static assets from `5826002` are deployed on the live K1 Max and include the Instrument Cluster redesign, camera reconnect fix, layout polish, backup retention, neutral loading states, and browser harness.
 - Delivery is fail-closed: key-first authentication, conclusive idle gates, verified archive/staging/backup, atomic swap, automatic rollback, and manual rollback.
 - No G-code or hardware-affecting printer action occurred during preflight, deployment, or validation.
 
@@ -71,6 +71,21 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - A later read-only preflight for `f2acff5` stopped before writes when `idle_timeout.state=Printing`. A print then failed at 0.15% with `Unknown gcode_macro variable 'user_flag'`. Root cause was a stale KAMP `Start_Print.cfg` symlink pointing at the Ender-3 V3 macro instead of the K1 macro. The printer-side repair was backed up under `/usr/data/printer_data/config/.regolith-repair-backups/20260802T193155Z`, applied as an atomic reversible symlink retarget, and verified before retrying.
 - `Skadis Ivar Halter_PETG_2h49m.gcode` then completed at 100% with the full `11,348,737/11,348,737` byte count. A subsequent 12-minute read-only watch found virtual SD inactive, Klipper ready, Idle, zero heater targets/power, no new errors, and a stable camera stream. Fresh gates are still mandatory before deployment.
 - Accepted ECDSA fingerprint remains `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`. Never use a resolver fallback without matching it first.
+
+## Live exact-current release — 2026-08-02, `5826002`
+
+- `forge.local` freshly resolved to `192.168.50.179`; a new ECDSA scan exactly matched accepted fingerprint `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k` before authentication.
+- The earlier attempt stopped before authentication or writes when the new print was active. The successful retry freshly proved `Ivar_Skadis_Hook_PETG_34m53s.gcode` complete at `2,446,934/2,446,934` bytes, virtual SD inactive, idle `Ready`, Klipper ready, empty message, and both heater targets/power zero.
+- Exact-current syntax, tracked-diff, lint, 31 unit assertions, 11 deployment safety tests, guided setup checks, production build, and 10 strict mocked Playwright tests passed before deployment. Guided `--check` then passed read-only through the verified resolver address.
+- Pre-deploy storage was 28% used with 4,645,936 KiB available. Live and previous slots each had a valid index, and all five retained backup candidates were nonempty, tar-readable, traversal-clean, and contained `fluidd/index.html`.
+- Deployment archive was 141,583 bytes, SHA-256 `87ff688503ae83bb32f72ed5b02e28a00077d69b006529ade80d7a054359e02a`. Remote size/hash and staged file list matched exactly before swap.
+- New verified backup: `/usr/data/regolith-backups/fluidd-before-20260803T010558Z.tgz`, 140,191 bytes, SHA-256 `7119232ab4798475fc7f2f5d0c1fc0a970ba24285a5c530634fe18b140e2cf5a`, 21 entries. Retention kept five verified archives and pruned one oldest archive only after the new backup passed. Post-deploy inspection revalidated all five.
+- Atomic static-asset swap and required-asset HTTP verification passed. Rollback was not needed. `/usr/data/fluidd.previous/index.html` retains pre-deploy SHA-256 `3fa526078f52bf73bc9289590a609e9d67c55f3c9664d2bedf8b6561c45c0da4` and remains ready for guarded rollback.
+- Exact local/live SHA-256 matched: HTML `fbfa8d9c7160f1377c9d74ca36ac3a129cda26be4197c903b7624f993f529a7d`; core JS `16e06eeb8db7ed0bc6a9c00d0f231347f602df0c6f35c9e2d8b67b064d5458a4`; CSS `eb71778858384b04b9624cfd2f3f53521f819c382af605266cc772dfba9ab19d`; Dashboard JS `6b3640d7590c94d13daa397da7d47b81c59c0243df8e8a22422b2d4a8d2104cb`.
+- Read-only live browser QA covered all seven routes in Basic and Expert at 1440x1000 and 390x844: 28/28 states had one `h1`, zero overflow, zero targets under 44px, zero out-of-bounds panels, and zero clipped text. Mobile and desktop captures were visually reviewed for hierarchy and card alignment.
+- Camera remained `Live` through a 32.122-second hold with one stream request, no retry transition, no request failure, and no page error. Browser audit recorded 60 read-only subscription RPCs, zero WebSocket writes, zero HTTP writes, zero request failures, and zero page exceptions.
+- The completed G-code references a missing `Ivar_Skadis_Hook_PETG_34m53s-300x300.png` thumbnail. Four repeated read-only HTTP 404s produced resource-console errors; the UI rendered its intentional placeholder. This is printer-file metadata, not a static deployment mismatch, so rollback was not triggered.
+- Final read-only state remained complete/Ready/inactive at `2,446,934/2,446,934`, with hotend `39.23 C` and bed `41.24 C`, both targets/power zero. No G-code, motion, homing, heating, extrusion, calibration, print control, firmware/service restart, or printer configuration change occurred.
 
 ## Verification
 
@@ -135,7 +150,7 @@ If mDNS fails, resolve `forge.local`, verify that address against the stored ECD
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
-- Exact-current cosmetic code is pushed but not live. A new print is active, so deployment remains blocked. After it completes, deployment must still run a fresh fingerprint, idle, zero-power, verified-backup, and rollback preflight; never reuse an older favorable sample or work around the gate.
+- The completed `Ivar_Skadis_Hook_PETG_34m53s.gcode` job references a missing 300x300 thumbnail. Regolith falls back to a clear placeholder, but the browser still reports a read-only 404. Avoid generating or writing printer thumbnails during release QA; fix this only in the slicer/upload pipeline or through a separately authorized printer-file workflow.
 
 ## User-owned files
 
@@ -147,5 +162,5 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 ## Next steps
 
 1. Rotate the exposed historical printer password; decide whether coordinated history rewriting is worth clone disruption.
-2. Wait for the active `Ivar_Skadis_Hook_PETG_34m53s.gcode` print to finish. Do not interrupt or retry it. Then run the guided read-only Check; deploy exact-current `main` only if fresh idle, inactive, zero-target, zero-power, verified-backup, and rollback gates all pass. Repeat live hash, route, 30-second camera, and no-write browser QA. Roll back only on deployment verification failure.
+2. Keep using fresh guided Check, identity, idle, inactive, zero-target, zero-power, backup, and rollback gates for every later deployment. Recheck exact hashes and zero-write browser QA after each successful static swap; roll back only on deployment verification failure.
 3. Produce a prebuilt macOS-friendly release path; sign and notarize when credentials are available.
