@@ -58,9 +58,26 @@ describe("default accent single source of truth", () => {
 
   test("no accent surface hardcodes the legacy orange rgba literal", () => {
     // rgba(249,115,22,…) surfaces do not follow the runtime accent; they must
-    // use the --color-accent-soft/-faint/-edge tokens instead.
-    const offenders = walk(SRC_DIR).filter((file) =>
-      readFileSync(file, "utf8").includes("249,115,22"),
+    // use the --color-accent-soft/-faint/-edge tokens instead. The proximity
+    // regex also catches the split-numeric form the substring check missed:
+    // BedMeshHeatmap once rebuilt 249/115/22 across three arithmetic
+    // expressions and shipped the legacy orange anyway.
+    const legacyOrange = /\b249\b[\s\S]{0,120}?\b115\b[\s\S]{0,120}?\b22\b/;
+    const offenders = walk(SRC_DIR).filter((file) => {
+      const text = readFileSync(file, "utf8");
+      return text.includes("249,115,22") || legacyOrange.test(text);
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  test("no component builds raw rgb()/rgba() color strings", () => {
+    // Every rgb()/rgba() ever found in src was a stale Tailwind v3 literal
+    // that ignored both the theme and the runtime accent. Colors must come
+    // from tokens (var(--color-*)) or color-mix over tokens — never from
+    // hand-assembled channel numbers a grep for hex can't see.
+    const offenders = walk(SRC_DIR).filter(
+      (file) =>
+        /\.tsx?$/.test(file) && /\brgba?\(/.test(readFileSync(file, "utf8")),
     );
     expect(offenders).toEqual([]);
   });

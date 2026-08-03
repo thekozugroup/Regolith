@@ -97,23 +97,18 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
   const meanZ = flat.reduce((s, n) => s + n, 0) / flat.length;
   const peakToPeak = max - min;
 
-  // Color: bilinear from cool (low) → fg muted (mid) → warm (high)
+  // Color: token-driven ramp, low → mid → high as info → elevated → error.
+  // color-mix in oklab (rectangular — a polar mix could drag hues through
+  // the wheel), so the ramp follows the theme instead of hand-rolled v3
+  // channel math whose hot end was the retired legacy orange.
   const colorFor = (v: number): string => {
     const norm = (v - min) / range; // 0..1
     if (norm < 0.5) {
-      // low (cool blue → neutral)
-      const t = norm * 2; // 0..1
-      const r = Math.round(59 + (39 - 59) * t);
-      const g = Math.round(130 + (39 - 130) * t);
-      const b = Math.round(246 + (42 - 246) * t);
-      return `rgb(${r},${g},${b})`;
+      const pct = Math.round((1 - norm * 2) * 100); // 100 → 0
+      return `color-mix(in oklab, var(--color-info) ${pct}%, var(--color-elevated))`;
     }
-    // mid → high (neutral → orange/red)
-    const t = (norm - 0.5) * 2; // 0..1
-    const r = Math.round(39 + (249 - 39) * t);
-    const g = Math.round(39 + (115 - 39) * t);
-    const b = Math.round(42 + (22 - 42) * t);
-    return `rgb(${r},${g},${b})`;
+    const pct = Math.round((norm - 0.5) * 2 * 100); // 0 → 100
+    return `color-mix(in oklab, var(--color-error) ${pct}%, var(--color-elevated))`;
   };
 
   return (
@@ -178,7 +173,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
         <div aria-hidden="true" className="flex h-1.5 flex-1 overflow-hidden">
           <span className="flex-1 bg-[var(--color-info)]" />
           <span className="flex-1 bg-[var(--color-elevated)]" />
-          <span className="flex-1 bg-[var(--color-accent)]" />
+          <span className="flex-1 bg-[var(--color-error)]" />
         </div>
         <span>{max.toFixed(2)}</span>
       </div>
