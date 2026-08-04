@@ -285,8 +285,122 @@ Known-minor items accepted at this release (none block deployment; all confirmed
 - `.status-lamp` paints `background: currentColor`, which forced-colors collapses onto the canvas colour — measured lamp-vs-backdrop contrast is **0**, so lamps are invisible in high-contrast mode. Every lamp is `aria-hidden` and sits beside the same state word as text, so no information is lost, and this release is still strictly better than the previous build, which used `display: none` and erased the dial arcs entirely in that mode.
 - Wide-viewport density: hollow card interiors persist at 1920/2560 and a tall empty band remains under the dials at 800x480–1100. Cosmetic; nothing clipped, hidden, or unreachable.
 
+## Measured performance validation — 2026-08-03, `c840027`
+
+Full-stack measurement pass over WP-PERF's work. Every number below is
+measured against a real build in headless Chromium, never read from source.
+Cold-load and runtime figures are 800x480 (the K1 panel's geometry, and the
+weakest client that could ever host a webview) with CDP CPU throttling and
+emulated network; the runtime stress figures use 20x CPU to model the panel
+rather than the development machine. Render attribution comes from an
+unminified React *profiling* build so component names survive.
+
+**A correction to `31d30e2`'s commit message.** That message reports
+"FCP 612 -> 520ms (-15%)". The 612ms baseline was measured against a `dist/`
+built before a stale Tailwind cache cleared, so it carried a 62.8 kB
+stylesheet where HEAD produces 70.6 kB — two different generations of build.
+Re-measured properly, same-generation and warm, three runs each:
+
+| metric (800x480, 4x CPU, 60ms RTT) | before | after |
+| --- | --- | --- |
+| FCP | 504, 508 ms | 520, 528, 528 ms |
+| **LCP** (the dial readout) | 748, 748 ms | **672, 676, 684 ms** |
+| TTI (last long task) | 390, 390 ms | 406, 408, 414 ms |
+| longest task | 67, 67 ms | 60, 62, 64 ms |
+| **wall clock to settled** | 831, 834 ms | **716, 716, 729 ms** |
+
+So the honest result is a **trade, not a clean win**: about 20ms later to the
+first pixel of chrome, in exchange for 71ms earlier to the largest contentful
+paint and 115ms earlier to a fully settled dashboard. The skeleton the owner
+stares at while the route loads shrinks from 244ms to 148ms. FCP moves the
+wrong way because the preloaded route chunk competes with the entry chunk for
+bandwidth; a variant preloading only the 46 kB route chunk and not its small
+dependencies was measured and was **worse on every count** (LCP 764-768ms,
+settled 845-848ms) while costing the same FCP, so the committed version
+stands.
+
+The waterfall is what actually changed. Before, the shell landed at 281ms and
+then nothing happened until 460ms while React parsed, executed and rendered
+far enough to discover the route import; the nine-request route wave that
+followed ran to 616ms, with three requests queued behind the HTTP/1.1
+six-connection limit. After, all thirteen requests are issued at 81-86ms and
+the last lands at 304ms.
+
+Bundle, final build (gzip): entry 104.5 kB, dashboard route 13.7 kB, CSS
+12.5 kB, then settings 7.2, files 5.5, tune 5.1, react 3.1, control 3.1,
+console 2.6, timelapses 2.0; 27 chunks, 166.8 kB total. No route carries
+another route's weight, and **no duplicate dependencies**: the icon chunks
+import `createLucideIcon` from the entry rather than restating it, and the
+entry links the react chunk instead of copying it. The assistant's chunks
+(`AiGloss`, `AiPostMortem`, `explain`, `gateway`) are absent from the cold
+waterfall entirely, which is the point of `df2107a`.
+
+No web fonts and no images: `--font-sans` / `--font-mono` are system stacks,
+the compiled stylesheet contains zero `url()` references, and the only asset
+outside JS/CSS is the SVG favicon. Nothing to trim there.
+
+Runtime, 30s simulated print at 250ms telemetry cadence with the camera live.
+React commits are 2.3-2.5 per push and were left alone — the plan's rejection
+of render coalescing stands and no coalescing was added. At 20x CPU, two runs
+each:
+
+| metric | before | after |
+| --- | --- | --- |
+| long tasks (>50ms) | 4, 11 | 1, 2 |
+| longest task | 64, 73 ms | 52, 54 ms |
+| total blocking time | 19, 64 ms | 2, 4 ms |
+| frame p95 | 65.1, 60.2 ms | 49.2, 49.2 ms |
+| worst frame | 99.5, 117.4 ms | 81.5, 76.1 ms |
+| dropped frames (>32ms) | 9.05%, 9.89% | 8.58%, 8.11% |
+
+Blocking time is essentially eliminated. Dropped frames move only 9.5% ->
+8.3%, and that residue is the camera's MJPEG decode under a 20x throttle
+rather than React — stated plainly because the smaller number is the one that
+would be easy to overclaim. At 4x CPU there are **zero** dropped frames and
+zero long tasks, before and after: the dial's arc and the mission bar's
+progress strip are CSS transitions and never depended on render work.
+
+Render attribution over 60 pushes, which is what `c840027` was aimed at:
+
+- `Sidebar` 36.2ms across 149 renders -> 0.0ms; `PrintProgress` picks up 8.0ms
+- `Dial` 31.6ms across 171 renders -> 14.3ms across 108
+- `BrandLogo` 5.7ms -> no longer rendered during telemetry at all
+
+Memory, 10 minutes of sustained telemetry (2,400 pushes), sampled after a
+forced GC each minute, using CDP's exact heap figure rather than the browser's
+bucketed `performance.memory`:
+
+| | before | after |
+| --- | --- | --- |
+| heap, min 1 -> min 10 | 5.15 -> 6.27 MB | 5.08 -> 6.09 MB |
+| DOM nodes | 830 -> 830 (0) | 841 -> 841 (0) |
+| JS event listeners | 208 -> 208 (0) | 208 -> 208 (0) |
+| window/document listeners | 31 live, flat | 31 live, flat |
+
+**No leak of the kind that was being looked for.** Node count, listener count
+and window/document listener count are exactly flat across 2,400 pushes in
+both builds, so there are no detached nodes, no accumulating listeners, and
+the previously fixed timer leak stays fixed. Every ring buffer is bounded and
+was re-checked: gcode log 200, temperature history 90, sparkline 60, job
+history 20.
+
 ## Remaining issues
 
+- Heap grows about 0.1 MB/min under sustained telemetry after the first two
+  minutes and does not flatten within a 10-minute window — roughly 6 MB/hour
+  for a panel left on the dashboard. This is **pre-existing and unchanged**
+  by this pass (the post-change build is marginally lower at every sample),
+  and it is not a DOM or listener leak, so attributing it needs a heap
+  snapshot diff rather than counters. Worth its own pass before anything is
+  left running for days.
+- `BrandLogo` statically imports 34 lucide icons for its brand-icon picker,
+  and it renders in the app shell, so **9.4 kB of icon path data (2.85% of
+  the entry chunk) ships on every cold boot** for a popover that opens only
+  when the owner clicks the mark. Deliberately not fixed here: the currently
+  selected icon has to resolve from that same map at first paint, so the only
+  correct fix is per-icon dynamic import plus a lazy picker, and risking a
+  missing brand mark on boot is not worth ~4 kB gzip against a 176ms entry
+  download. Revisit if the icon library grows.
 - The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
