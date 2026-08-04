@@ -20,10 +20,13 @@ import { useExperienceMode } from "@/lib/useExperienceMode";
  *   Z6 readiness. (Z1, the mission status, is the app shell's bottom
  *   MissionBar — pinned to the glass, not part of this scroll.)
  * DOM order follows the mobile task order ("what is it doing?" → "how hot?"
- * → "show me" → details) and never changes. Lane count is CONTENT-driven:
+ * → "show me" → details) and never changes. Column count is CONTENT-driven:
  * `.dashboard-grid` (index.css) measures the width that actually exists
- * (container query on the shell) instead of viewport breakpoints, and
- * dense flow backfills — no order-* / col-start-* orphaned rows.
+ * (container query on the shell) instead of viewport breakpoints — a Swiss
+ * modular grid of 4/8/12 columns placed by NAMED AREAS (.z-* classes).
+ * AMENDED rule: the old "no order-* / col-start-*" ban's intent (no DOM
+ * reordering, no orphaned rows) holds because every area map allocates
+ * every cell of every row; zones are placed by name, never by DOM shuffle.
  *
  * WP-MEMO (S5 P2): the page selects a FLAT bag of primitives and hands each
  * panel exactly the primitives it renders; the panels are memo'd, so a
@@ -65,12 +68,12 @@ export function Dashboard() {
     <div className="dashboard-shell mx-auto max-w-[min(100%,2200px)] p-[var(--page-gutter)]">
       <div className="dashboard-grid">
         {/* Z3 — JOB / PROGRESS */}
-        <div>
+        <div className="z-mission">
           <MissionTimeline />
         </div>
 
         {/* Z2 — PRIMARY GAUGE CLUSTER */}
-        <div>
+        <div className="z-thermals">
           <ThermalsPanel
             profile={profile}
             isExpert={isExpert}
@@ -84,7 +87,7 @@ export function Dashboard() {
         </div>
 
         {/* Z4 — VIEWPORT */}
-        <div>
+        <div className="z-camera">
           <Card
             title="Camera"
             icon={<Camera />}
@@ -110,35 +113,37 @@ export function Dashboard() {
         {/* Z5 — SECONDARY VITALS. Both modes: the cockpit spends its
             reclaimed space on information — chamber, fan, speed, flow,
             Z-offset, filament — with the deeper motion internals kept for
-            expert mode. Wide slot so the tiles spread across a full row. */}
-        <div className="dash-wide">
-          {/* Binnacle strip (S2 §1.3): Telemetry beside the Systems
-              tell-tale cluster — side by side ≥720px, headers on one
-              baseline. */}
-          <div className="binnacle-strip">
-            <TelemetryPanel
-              chamber={chamber}
-              isExpert={isExpert}
-              chamberTemp={t.chamberTemp}
-              fanSpeed={t.fanSpeed}
-              filamentMm={t.filamentMm}
-              speedFactor={t.speedFactor}
-              flowFactor={t.flowFactor}
-              zHome={t.zHome}
-              pressureAdvance={t.pressureAdvance}
-              liveVelocity={t.liveVelocity}
-              maxAccel={t.maxAccel}
-              posZ={t.posZ}
-              homedAxes={t.homedAxes}
-              hotendPower={t.extPower}
-              bedPower={t.bedPower}
-            />
-            <TellTaleCluster />
-          </div>
+            expert mode. Telemetry and the Systems tell-tale cluster are
+            SIBLING zones: the Swiss area maps place them on one row (mid)
+            or give the lamp block its own full-width binnacle row (desk),
+            so their alignment is grid-guaranteed, not wrapper-managed. */}
+        <div className="z-telemetry">
+          <TelemetryPanel
+            chamber={chamber}
+            isExpert={isExpert}
+            chamberTemp={t.chamberTemp}
+            fanSpeed={t.fanSpeed}
+            filamentMm={t.filamentMm}
+            speedFactor={t.speedFactor}
+            flowFactor={t.flowFactor}
+            zHome={t.zHome}
+            pressureAdvance={t.pressureAdvance}
+            liveVelocity={t.liveVelocity}
+            maxAccel={t.maxAccel}
+            posZ={t.posZ}
+            homedAxes={t.homedAxes}
+            hotendPower={t.extPower}
+            bedPower={t.bedPower}
+          />
         </div>
 
-        {/* Z6 — READINESS */}
-        <div>
+        <div className="z-telltales">
+          <TellTaleCluster />
+        </div>
+
+        {/* Z6 — READINESS (top-left by area placement on multi-column
+            classes; DOM-last so the mobile task order is untouched). */}
+        <div className="z-readiness">
           <PrinterCard />
         </div>
       </div>

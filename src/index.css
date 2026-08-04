@@ -285,29 +285,77 @@
     .mission-bar { bottom: var(--bottomnav-h); }
   }
 
-  /* --- Dashboard: content-driven mission-control grid ---
-     The shell is an inline-size container, so lane count follows the width
-     that actually exists (viewport minus sidebar minus gutters) instead of
-     viewport breakpoints. No order-* / col-start-*: DOM order stays the
-     mobile task order and `dense` backfills any gap a span leaves. */
+  /* --- Dashboard: Swiss International modular grid ---
+     The shell is an inline-size container, so the column count follows the
+     width that actually exists (viewport minus sidebar minus gutters), never
+     viewport breakpoints. Strict modular columns — 4 compact, 8 mid,
+     12 desk (same two thresholds as the old lane system, so every measured
+     floor stands) — with ONE gutter token and named-area placement.
+
+     AMENDMENT to the old "no order-* / col-start-*" ban: the ban's intent
+     (no orphaned rows, no DOM reordering) is preserved by construction —
+     every grid-template-areas map below allocates every cell of every row,
+     so dense backfill is unnecessary, and DOM order stays the mobile task
+     order untouched. Zones are placed by NAME (.z-*), never by DOM shuffle. */
   .dashboard-shell { container-type: inline-size; }
   .dashboard-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-auto-flow: row dense;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--grid-gap);
   }
+  /* Compact (<720cqi): every zone spans the full 4 columns in DOM order. */
+  .dashboard-grid > * { grid-column: 1 / -1; }
   /* Stretched rows must reach the panel itself, not stop at the zone
      wrapper, so a shorter card in a row fills its lane instead of leaving
      a blank tail (Card distributes via flex, see Card.tsx). */
   .dashboard-grid > div > .instrument-panel { height: 100%; }
+  /* Mid (8 columns): one shared alignment line at column 5 (halves).
+     Readiness is row 1, column 1 — top-left. */
   @container (min-width: 720px) {
-    .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .dash-wide { grid-column: 1 / -1; }
+    .dashboard-grid {
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-template-areas:
+        "rdy rdy rdy rdy msn msn msn msn"
+        "thm thm thm thm cam cam cam cam"
+        "tel tel tel tel tt  tt  tt  tt ";
+    }
+    .dashboard-grid > * { grid-column: auto; }
+    .z-mission { grid-area: msn; }
+    .z-thermals { grid-area: thm; }
+    .z-camera { grid-area: cam; }
+    .z-telemetry { grid-area: tel; }
+    .z-telltales { grid-area: tt; }
+    .z-readiness { grid-area: rdy; }
   }
+  /* Desk (12 columns): alignment lines at columns 5 and 9 (thirds). The
+     tell-tale cluster runs full width — a single binnacle row of lamp
+     squares under the instruments. Camera stays one third so the 16:9 box
+     cannot balloon the row at the 2200px shell cap. */
   @container (min-width: 1560px) {
-    .dashboard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .dash-wide { grid-column: span 2; }
+    .dashboard-grid {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-template-areas:
+        "rdy rdy rdy rdy msn msn msn msn msn msn msn msn"
+        "thm thm thm thm cam cam cam cam tel tel tel tel"
+        "tt  tt  tt  tt  tt  tt  tt  tt  tt  tt  tt  tt ";
+    }
+  }
+  /* Short landscape panels — the K1 Max's own 800x480 touchscreen. The fold
+     is hardware: both dials must sit fully above the bottom chrome, so
+     Thermals keeps its verified row-1 seat (top-right, exactly the old
+     2-lane geometry) and Readiness yields to row 3. Width can exceed
+     1560cqi only on unrealistic short ultrawides; columns are pinned back
+     to 8 so the area map always allocates every cell. */
+  @media (max-height: 599.98px) {
+    @container (min-width: 720px) {
+      .dashboard-grid {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        grid-template-areas:
+          "msn msn msn msn thm thm thm thm"
+          "cam cam cam cam tel tel tel tel"
+          "rdy rdy rdy rdy tt  tt  tt  tt ";
+      }
+    }
   }
   /* Landscape/desktop should fit, not scroll: let the grid claim the full
      viewport height so stretched rows distribute the surface. min-height
@@ -372,24 +420,10 @@
     .instrument-well { box-shadow: none; }
   }
 
-  /* Binnacle strip — the Z5 wide zone as one continuous SD1 pod row:
-     Telemetry beside the (future) Systems tell-tale cluster, header rules
-     and bottom edges aligned because grid items stretch. Two columns only
-     when a second pod actually exists — a 2fr/1fr template with a single
-     card would leave a dead hole in the fascia. Same 8px pod gap as the
-     dashboard grid. */
-  .binnacle-strip {
-    display: grid;
-    gap: var(--grid-gap);
-    grid-template-columns: minmax(0, 1fr);
-    height: 100%;
-  }
-  .binnacle-strip > .instrument-panel { height: 100%; }
-  @container (min-width: 720px) {
-    .binnacle-strip:has(> :nth-child(2)) {
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    }
-  }
+  /* The old .binnacle-strip sub-grid dissolved into the page grid (Swiss
+     areas): Telemetry and TellTales are sibling zones whose header-baseline
+     alignment is guaranteed by shared row placement, not an internal
+     wrapper. */
 
   /* Tell-tale cluster (S2 §3) — the SD1 warning-lamp block. A hairline lamp
      grid (same 1px-gap-over-border technique as .telemetry-grid) inside an
