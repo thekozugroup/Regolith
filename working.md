@@ -427,6 +427,88 @@ On-device verification (headless Chromium via SSH loopback tunnels — page thro
 
 Final state after verification: printer untouched apart from the static asset swap and its backup — no G-code, motion, heating, print control, service restart, or configuration change; the owner's `scripts/` watchdog was not contacted.
 
+## Swiss grid + readiness redesign — 2026-08-04, `17e145b`..`a594900`
+
+Four-commit slice replacing the ad hoc dashboard layout with a named-area Swiss
+modular grid and rebuilding the printer-identity card as a two-layer readiness
+module:
+
+- **`17e145b` feat: Swiss modular grid with named-area zone placement.** 4/8/12
+  column modular grid on the existing 720/1560cqi breakpoints; zones placed by
+  `grid-template-areas` (`.z-*` classes) instead of source order, with
+  Readiness pinned to row 1 column 1 on every multi-column class. The old
+  binnacle sub-grid dissolves into sibling Telemetry/TellTales zones. The
+  800x480 K1 panel map keeps Thermals in row 1 so both dials stay above the
+  fold. DOM order (mobile task order) is unchanged.
+- **`4c0ef25` feat: readiness module with K1 silhouette, disclosure, honest
+  light chip.** `PrinterCard` becomes the Z6 readiness module: one
+  body-button surface showing only the persistent layer (ready lamp + word,
+  a new `K1MaxSilhouette` line-art component, status line, display-only light
+  chip). Everything else — hostname, OS, Klipper, network, homed axes,
+  checks, the printer-photo feature — moves into a `ModalSurface` disclosure
+  opened on demand; the two one-shot meta fetches move from mount to first
+  open. The light chip reads `output_pin` LED state via a new
+  declare-to-subscribe `statusPins` profile field and stays honestly
+  three-state (dash until telemetry, then ON/OFF). Forced-colors pins
+  silhouette strokes to `CanvasText`.
+- **`711e964` style: even button chrome + strict concentricity.** Every
+  `Button` and button-like control now carries even padding/margins on all
+  four sides (sizes moved to `p-3`/`p-3`/`p-3.5`, 44px hit floor kept via
+  `min-h`); dialog headers/footers that seat corner buttons pad to
+  `p-4 = --modal-pad` so `radius-modal − gap` equals the control radius
+  exactly. New `e2e/button-law.spec.ts` measures margins, padding, and
+  computed radii on four representative placements plus full-page sweeps.
+- **`a594900` test: swiss grid e2e + square thermal instrument modules.**
+  Thermal instruments become true squares (`aspect-ratio: 1` as a preference;
+  content height still wins below the 148px floor and on the 800x480 panel,
+  so every measured floor holds). New `e2e/swiss-grid.spec.ts` covers:
+  readiness top-left showing only the persistent layer, the honest
+  three-state light chip + silhouette rays from `output_pin` pushes,
+  disclosure focus trap/Escape/focus-restoration, column-start alignment at
+  the 8-column class (1280), tile squareness within 2% with undistorted dial
+  art at 1280/2560, and the floor sweep at 320/800x480/1280/2560.
+
+Net effect on the suite: baseline **135 → 143** e2e tests (button-law +2,
+swiss-grid +6, no removals), all green.
+
+## Pre-deploy validation record — 2026-08-04, `a594900` (final gate)
+
+Independent final-gate validation for sha `a594900ffa4ffdc44d878acff0c755fa5b4b194e`
+(branch `main`, even with `origin/main`; tree quiet — no sibling vite/playwright
+processes, port 4173 free before the run). All four gates re-run fresh at this
+HEAD, real exit codes:
+
+- `bun run lint` — exit 0.
+- `bun run test` — exit 0: 277 pass, 0 fail, 3,443 `expect()` calls, plus the 11
+  deployment safety tests and guided setup checks.
+- `bun run test:e2e` — exit 0: **143 passed** (1.8m; baseline 135, no shrink),
+  strict local mocks, zero printer contact.
+- `bun run build` — exit 0 (`tsc -b && vite build`).
+
+Targeted re-runs beyond the full suite, each in isolation:
+
+- `e2e/swiss-grid.spec.ts -g "readiness"` — 3/3 pass (top-left placement,
+  honest light chip, disclosure focus trap/Escape/restore).
+- `e2e/swiss-grid.spec.ts -g "alignment and floors"` — 3/3 pass, including the
+  1280 8-column-class left-edge spot-check and the 320/800x480/1280/2560
+  floor sweep.
+- `e2e/button-law.spec.ts` (full file) — 2/2 pass: even chrome + strict
+  concentricity on four representative placements and a full-page sweep.
+- `e2e/console-hygiene.spec.ts` (full file) — 4/4 pass, zero console noise
+  across basic/expert routes and both preview-thumbnail scenarios.
+
+Frozen-file check: `src/lib/printerActions.ts`, `src/lib/moonraker.ts`,
+`src/lib/safety.ts`, `deploy.sh`, and `scripts/` all last modified by commits
+that predate this workflow (`de30d449`, `8cffd409`, `46262541`, `93fcf9bd`
+respectively, all ancestors of and older than `3283b70`) — none touched by
+`17e145b`/`4c0ef25`/`711e964`/`a594900`. Working tree has no tracked
+modifications; only the expected untracked scratch paths (`.a5c/`, `.claude/`,
+`CLAUDE.md`, `node-compile-cache/`, `playwright-transform-cache-501/`,
+`scripts/`) are present, none of them staged or committed.
+
+This entry is gate evidence only — no deploy was performed as part of this
+validation pass; see the Deploy phase agent's own record for the live swap.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
