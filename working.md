@@ -401,6 +401,32 @@ What this release contains since the last hardware-proven baseline `68181d0` (50
 
 Printer idle re-confirmed cold before this record (`print_stats=cancelled`, extruder 25.5 C/0, bed 23.65 C/0). Deployment itself is recorded separately below once it happens; this entry is the gate evidence for `8cffd40`.
 
+## Live release — 2026-08-04, `8cffd40` (SD1 instrument cluster + WP-PERF + hardening backlog)
+
+Deployed static assets built at sha `8cffd40993a9c792fe484e732e6cdb67ef9a7cd4` (the working tree at deploy was `2d91305`, which differs from `8cffd40` only by this file's validation record — no source, build config, or asset input changed). Printer clock at deploy: **Mon 2026-08-03 23:46:54 EST** (backup timestamp `20260804T044640Z`).
+
+- Pre-deploy gate, re-confirmed immediately before the swap with two samples 11 s apart: `webhooks=ready`, `print_stats=cancelled`, `idle_timeout=Idle`, `virtual_sdcard.is_active=false`, hotend `25.40→25.37 C`/target 0/power 0, bed `23.55→23.54 C`/target 0/power 0, toolhead position identical across both samples (`296.50, 153.00, 150.04`). **No print was started.** `--preflight` exited 0 and changed no remote files.
+- `./deploy.sh` (repo script, `PRINTER_HOST=192.168.50.179`) exited 0 first try — no dropbear flake this run. Archive 162,458 bytes, SHA-256 `b3e55873051be9839d9ca238dedd39daa620fc90e03416842567d940a7fa1d83`; remote size/hash and staged file list matched before the swap. Atomic swap and required-asset HTTP verification passed; automatic rollback was not triggered.
+- Live `index.html` moved `de1175ff35e8b1d6984a27a1bf14efccd56f10af1a55d668df75da858140de59` → `ffd9036110b76ae699160ee6e710aa030c93b1305112adee4f4ccb2726076609` (exact match with local `dist/index.html`). Live bundles: `index-DxjXKT4b.js` / `index-BRomDO5p.css` / `Dashboard-DAJTRcUl.js`.
+- New verified backup `/usr/data/regolith-backups/fluidd-before-20260804T044640Z.tgz`, 143,065 bytes, SHA-256 `96d504b58589dd238241d59b2adc2094faf26567320d525d9291f70617ae5bc2`, 21 files; retention kept five and pruned the oldest (`20260802T174223Z`) only after the new archive verified.
+- **Rollback is armed:** `/usr/data/fluidd.previous/index.html` is exactly the pre-deploy `7dd3c0d` build (`de1175ff…de59`). Note the previous slot now holds the `7dd3c0d`-era build, not `68181d0` — `68181d0`'s build (`7abea8ff…1919`) was rotated out of the slot by this swap but survives in backup `fluidd-before-20260803T204754Z.tgz`.
+
+```sh
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+```
+
+On-device verification (headless Chromium via SSH loopback tunnels — page through printer nginx :80, camera through printer :8080, since macOS local-network privacy still blocks Chromium from LAN addresses; every byte came from the printer and nothing on it was modified), at 1280x800 and 800x480:
+
+- Dashboard renders at both sizes: binnacle instrument wells, the full 8-cell tell-tale cluster, `MissionBar` pinned bottom, one `h1`, zero horizontal overflow.
+- **Zero console errors, zero page errors, zero failed requests at both sizes.** The long-standing thumbnail 404 is gone from the live console — `ae80c62`'s metadata gating verified against the real printer's file set.
+- Fresh-profile computed `--color-accent` on the device = `#ffb900`. Body ground computes to `lab(2.75 0 0)` — chroma exactly 0, the neutral Variant A palette confirmed live.
+- Sidebar: expanded by default at 1280x800, collapses to a 64 px icon rail and re-expands via the toggle. At 800x480 the desk rail is suppressed (toggle renders 0x0) and the touch chrome is kept — bottom nav visible full-width at 800x65 with the mission bar flush above it. The height gate outranks preference on the K1's own panel geometry, as pinned.
+- **Live-tick proof of the reworked subscription path:** the hotend dial's readout updated `25.3 → 25.4 C` within seconds of load against real Moonraker — the ref-counted fieldRefs subscription (`c4e0c0f`) delivers live pushes on hardware, and the `8cffd40` subscribe-retry path did not impede initial subscription.
+- LINK is connected: mission bar reads `LINK READY`; the cancelled job renders honestly (`STOPPED AT 0.0%`, Remaining `—`, `Print again` offered); camera streams LIVE.
+- Screenshots (session scratchpad): `ondevice-1280x800.png`, `ondevice-1280x800-sidebar-collapsed.png`, `ondevice-800x480.png`.
+
+Final state after verification: printer untouched apart from the static asset swap and its backup — no G-code, motion, heating, print control, service restart, or configuration change; the owner's `scripts/` watchdog was not contacted.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
