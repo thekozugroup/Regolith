@@ -14,6 +14,7 @@ import {
 } from "./components/ChromeErrorBoundary";
 import { useNotifications } from "./lib/useNotifications";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
+import { useLightAutoOn } from "./lib/useLightAutoOn";
 import { useLinkWake } from "./lib/useLinkWake";
 import { useExperienceMode } from "./lib/useExperienceMode";
 
@@ -82,6 +83,9 @@ function AppShell() {
   useNotifications();
   useKeyboardShortcuts();
   useLinkWake();
+  // Shell-level, not page-level: a print that starts while the owner is on
+  // Files should still light the chamber.
+  useLightAutoOn();
   return (
     <>
       {/* Each persistent surface is contained separately. They render on

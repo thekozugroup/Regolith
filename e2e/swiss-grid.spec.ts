@@ -119,8 +119,13 @@ test.describe("Swiss grid — readiness module", () => {
     await expect(lamp).toHaveAttribute("data-lit", "false");
     await expect(rays).toHaveCount(0);
 
-    // The chip is display-only: it must not be a nested control.
+    // The chip is now the light CONTROL (owner: wire up light control), so
+    // it is a real toggle rather than a readout — but it must be exactly one
+    // control, never a button nested inside the module button.
+    await expect(light).toHaveJSProperty("tagName", "BUTTON");
     await expect(light.locator("button")).toHaveCount(0);
+    await expect(page.locator("button.readiness-module")).toHaveCount(1);
+    await expect(page.locator(".readiness-module .readiness-light")).toHaveCount(0);
     mock.assertSealed();
   });
 

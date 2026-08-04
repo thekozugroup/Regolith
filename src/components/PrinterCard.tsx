@@ -5,6 +5,8 @@ import { Card } from "@/components/Card";
 import { K1MaxSilhouette } from "@/components/K1MaxSilhouette";
 import { ModalSurface } from "@/components/ModalSurface";
 import { cn } from "@/lib/utils";
+import { noteManualLightIntent } from "@/lib/lightControl";
+import { runPrinterAction } from "@/lib/printerActions";
 import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 import { useProfile } from "@/lib/useProfile";
@@ -99,8 +101,56 @@ export const PrinterCard = memo(function PrinterCard() {
   }, [open, profile.model]);
 
   const isPrinting = t.printState === "printing" || t.printState === "paused";
-  const lightOn = t.ledValue != null && t.ledValue > 0;
-  const lightKnown = t.ledValue != null;
+
+  /**
+   * Optimistic claim for the chamber lamp, held only across the round trip.
+   * The printer is the authority: the claim is dropped the moment the pin
+   * agrees, rolled back if the command fails or the printer has no such pin,
+   * and self-healed after 6s if the pin never reports at all — so the chip
+   * can never end up sitting on a lie.
+   */
+  const [lightClaim, setLightClaim] = useState<boolean | null>(null);
+  const [lightBusy, setLightBusy] = useState(false);
+  const reportedOn = t.ledValue != null && t.ledValue > 0;
+  const lightOn = lightClaim ?? reportedOn;
+  const lightKnown = lightClaim != null || t.ledValue != null;
+
+  useEffect(() => {
+    if (lightClaim == null) return;
+    if (t.ledValue != null && reportedOn === lightClaim) {
+      setLightClaim(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setLightClaim(null), 6000);
+    return () => clearTimeout(timer);
+  }, [lightClaim, reportedOn, t.ledValue]);
+
+  const toggleLight = async () => {
+    if (!pin || lightBusy) return;
+    const next = !lightOn;
+    // Recorded BEFORE the wire: the owner's choice outranks auto-ON for the
+    // rest of this job, whether or not the command lands.
+    noteManualLightIntent();
+    setLightClaim(next);
+    setLightBusy(true);
+    try {
+      const { executed } = await runPrinterAction({
+        type: "set-light",
+        on: next,
+        object: pin.klipper,
+      });
+      // A printer without the pin executes nothing; claiming a lamp that was
+      // never switched would be the same lie as a confident OFF.
+      if (!executed) setLightClaim(null);
+    } catch {
+      // Rollback. The chip snapping back IS the failure report — a lamp is
+      // not worth an alert, and the printer's own value wins next tick.
+      setLightClaim(null);
+    } finally {
+      setLightBusy(false);
+    }
+  };
+
   const statusLine =
     t.printerState && t.printState
       ? `${t.printerState} · ${t.printState}`
@@ -141,13 +191,17 @@ export const PrinterCard = memo(function PrinterCard() {
       }
       bodyClassName="flex"
     >
-      <button
-        type="button"
-        className="readiness-module transition-colors duration-[var(--dur-fast)] ease-[var(--ease-standard)]"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
-      >
+      {/* The shell holds the grid; the module button spans it and takes the
+          tap everywhere except the light chip, which is its own control. */}
+      <div className="readiness-shell">
+        <button
+          type="button"
+          className="readiness-module transition-colors duration-[var(--dur-fast)] ease-[var(--ease-standard)]"
+          aria-label="Printer details"
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => setOpen(true)}
+        />
         <span className="readiness-silhouette">
           <K1MaxSilhouette
             printing={t.printState === "printing"}
@@ -165,21 +219,19 @@ export const PrinterCard = memo(function PrinterCard() {
         <span className="readiness-status text-[12px]">
           {statusLine}
         </span>
-        <span
-          className="readiness-light flex items-center gap-[var(--space-icon)]"
-          style={lightOn ? { color: "var(--color-accent)" } : undefined}
-        >
-          <span
-            aria-hidden="true"
-            data-lit={lightOn ? "true" : "false"}
-            className="telltale-lamp"
-          />
-          <span className="instrument-label text-[11px]">
-            {(pin?.label ?? "Light").toUpperCase()}{" "}
-            {lightKnown ? (lightOn ? "ON" : "OFF") : "—"}
-          </span>
-        </span>
-      </button>
+        <LightChip
+          label={pin?.label ?? "Light"}
+          on={lightOn}
+          known={lightKnown}
+          onToggle={
+            pin
+              ? () => {
+                  void toggleLight();
+                }
+              : undefined
+          }
+        />
+      </div>
 
       {open && (
         <ModalSurface
@@ -266,9 +318,14 @@ export const PrinterCard = memo(function PrinterCard() {
             {pin && (
               <p className="border-t border-[var(--color-border)] pt-3 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
                 {pin.label} is{" "}
-                {lightKnown ? (lightOn ? "on" : "off") : "unknown"}. Light
-                control isn't wired up yet — the chamber LED is managed by the
-                printer.
+                {lightKnown ? (lightOn ? "on" : "off") : "unknown"}. Tap the{" "}
+                {pin.label.toLowerCase()} chip to switch it. Regolith also
+                switches it on when a print starts — but only while a Regolith
+                tab is open, so treat that as a convenience, not a printer-side
+                guarantee. Switching it off during a print sticks. Turning it
+                off again afterwards is the printer's own job: its watchdog
+                does that ten minutes after a print finishes or the machine
+                goes quiet, whether or not this app is running.
               </p>
             )}
 
@@ -331,6 +388,61 @@ export const PrinterCard = memo(function PrinterCard() {
     </Card>
   );
 });
+
+/**
+ * The chamber-light chip.
+ *
+ * A readout when the profile declares no light pin — a control that cannot
+ * control anything is worse than an honest readout — and a toggle when it
+ * does. Unknown reads as a dash and `aria-pressed="mixed"`, never a confident
+ * OFF: before the pin reports there is nothing to be confident about.
+ */
+function LightChip({
+  label,
+  on,
+  known,
+  onToggle,
+}: {
+  label: string;
+  on: boolean;
+  known: boolean;
+  onToggle?: () => void;
+}) {
+  const className = "readiness-light flex items-center gap-[var(--space-icon)]";
+  const style = on ? { color: "var(--color-accent)" } : undefined;
+  const body = (
+    <>
+      <span
+        aria-hidden="true"
+        data-lit={on ? "true" : "false"}
+        className="telltale-lamp"
+      />
+      <span className="instrument-label text-[11px]">
+        {label.toUpperCase()}{" "}
+        {known ? (on ? "ON" : "OFF") : "—"}
+      </span>
+    </>
+  );
+
+  if (!onToggle) {
+    return (
+      <span className={className} style={style}>
+        {body}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={cn(className, "press-flat")}
+      style={style}
+      aria-pressed={known ? on : "mixed"}
+      onClick={onToggle}
+    >
+      {body}
+    </button>
+  );
+}
 
 function Stat({ label, value }: { label: string; value: string | undefined }) {
   return (
