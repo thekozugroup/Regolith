@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Pause, Play, Square, FileText, Activity, X, RotateCcw, AlertTriangle } from "lucide-react";
 import { ActionConfirmDialog } from "./ActionConfirmDialog";
 import { Button } from "./Button";
@@ -11,13 +11,49 @@ import {
   type ActionConfirmation,
   type PrinterAction,
 } from "@/lib/printerActions";
-import { AiGloss } from "./AiGloss";
-import { AiPostMortem } from "./AiPostMortem";
 import { useAiFeatureReady } from "@/lib/ai/flags";
-import { explainKlipperLine } from "@/lib/ai/explain";
 import { computeJobTiming } from "@/lib/jobProgress";
 import { useJobHistory } from "@/lib/useJobHistory";
 import { formatDuration, cn, recentMeaningfulLines } from "@/lib/utils";
+
+/**
+ * The assistant is opt-in and ships OFF, but it was reaching the glass on
+ * every cold boot anyway: this panel lives on the dashboard, so its static
+ * imports of the gloss components and the explain gateway put them in the
+ * landing route's chunk graph and on the critical path. Measured at 800x480 /
+ * 4x CPU / 60ms RTT, they were the last two of nine cold requests to land —
+ * queued behind the HTTP/1.1 connection limit and finishing at 614ms and
+ * 616ms against an FCP of 612ms.
+ *
+ * `lazy` restores the intent. `useAiFeatureReady` stays a static import: it is
+ * the gate that decides whether any of this is fetched at all, it reads
+ * localStorage only, and it must answer before first paint. Everything behind
+ * the gate — the components and, through them, the gateway — is fetched when
+ * the owner has actually turned the feature on, and never otherwise.
+ */
+const AiGloss = lazy(() =>
+  import("./AiGloss").then((module) => ({ default: module.AiGloss })),
+);
+const AiPostMortem = lazy(() =>
+  import("./AiPostMortem").then((module) => ({ default: module.AiPostMortem })),
+);
+
+/**
+ * Fetched only when the button is pressed, so a configured-but-unused
+ * assistant still costs nothing. Failure stays SILENT by the component's
+ * contract, and a chunk that will not load is just one more way for the
+ * answer to be unavailable — so it resolves to `null` exactly like an API
+ * error does, rather than surfacing a loader error the panel has no way to
+ * show.
+ */
+async function explainLine(line: string): Promise<string | null> {
+  try {
+    const { explainKlipperLine } = await import("@/lib/ai/explain");
+    return await explainKlipperLine(line);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * `print_stats.info.current_layer` / `.total_layer` are whatever the slicer
@@ -392,15 +428,20 @@ export function MissionTimeline() {
           )}
 
           {isStopped && (explainReady || postMortemReady) && (
-            <div className="flex flex-col gap-2">
-              {explainReady && reason && (
-                <AiGloss
-                  label="Explain this reason"
-                  run={() => explainKlipperLine(reason)}
-                />
-              )}
-              {postMortemReady && <AiPostMortem />}
-            </div>
+            /* Null fallback: the assistant renders nothing until it can render
+               its answer, so an in-flight chunk looks like the default state
+               rather than announcing itself with a spinner. */
+            <Suspense fallback={null}>
+              <div className="flex flex-col gap-2">
+                {explainReady && reason && (
+                  <AiGloss
+                    label="Explain this reason"
+                    run={() => explainLine(reason)}
+                  />
+                )}
+                {postMortemReady && <AiPostMortem />}
+              </div>
+            </Suspense>
           )}
 
           <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
