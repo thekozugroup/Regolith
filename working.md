@@ -626,6 +626,32 @@ panel already ships it). The web UI now self-hosts Inter as `--font-sans`.
     zeros and Inter's ss01 alternate digits are live everywhere — the
     intended instrument look.
 
+## Final gate validation — 2026-08-04, `2781947`
+
+Deploy-gate re-check at exact HEAD `278194726ffb593e51ec1aef2956215853b89481`
+(docs-only commit; no code change since `71b6a90`). Working tree was clean
+against this HEAD (no tracked-file diff; local `main` even with
+`origin/main`). Only untracked, user-owned/tooling paths present
+(`scripts/`, `.a5c/`, `.claude/`, `CLAUDE.md`, build caches) — left
+untracked, not staged.
+
+- `bun run lint` — exit 0.
+- `bun run test` — exit 0 (277 unit tests pass, `deploy.test.sh` 11/11,
+  `setup.test.sh` pass).
+- `bun run build` — exit 0.
+- `bun run test:e2e` — exit 0, **143/143 passed**, matching baseline
+  (no shrink). Retried once after an initial run failed on a port-4173
+  collision from a concurrent process on this machine; freed on its own,
+  no process was killed to force it.
+- Frozen files (`printerActions.ts`, `moonraker.ts`, `safety.ts`,
+  `deploy.sh`, `scripts/`) untouched — confirmed via clean `git diff`.
+- `git grep $PRINTER_PASSWORD` over tracked files at this HEAD: no matches —
+  password stays clean of tracked history at HEAD (see prior scrub entry
+  for the historical-commit caveat, still unresolved).
+- No console errors observed in the e2e run; no external font network
+  requests (`fonts.googleapis`/`fonts.gstatic`) present in `src/` or
+  `index.html` — Inter is fully self-hosted per the entry above.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
