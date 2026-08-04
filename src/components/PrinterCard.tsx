@@ -143,7 +143,7 @@ export const PrinterCard = memo(function PrinterCard() {
     >
       <button
         type="button"
-        className="readiness-module transition-colors duration-[var(--dur-fast)] ease-[var(--ease-standard)] hover:bg-[var(--color-accent-faint)]"
+        className="readiness-module transition-colors duration-[var(--dur-fast)] ease-[var(--ease-standard)]"
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
@@ -161,7 +161,9 @@ export const PrinterCard = memo(function PrinterCard() {
             {t.printerState ?? "—"}
           </span>
         </span>
-        <span className="readiness-status text-[12px] text-[var(--color-fg-muted)]">
+        {/* Ink color comes from .readiness-status (index.css) so the flat
+            hover can brighten it from the same cascade layer. */}
+        <span className="readiness-status text-[12px]">
           {statusLine}
         </span>
         <span

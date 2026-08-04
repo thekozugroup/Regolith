@@ -39,7 +39,7 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 - **Amendment 2026-08-03 — mission-control dials and bounded glow (owner-directed).** The owner asked for a mission-control homepage with temperature dials in an "80s digital dashboard mixed with Apple HIG" style. Two narrow amendments, with binding conditions:
   - Dials are permitted only as honest instruments: a real labeled scale (0° and max endpoints), tick marks at fixed intervals, a visible target index, and a numeric readout that is the dominant element. A decorative arc around a number remains banned. The primary readout never takes the state ramp color; the arc, lamp, and status word carry state.
   - Below the 148px hard floor a dial must fall back to the existing rectangular bar renderer, via CSS container queries only — no JS resize listeners. The e2e suite asserts every rendered dial is ≥148px or absent, and that dials contain zero SVG `<text>` (all dial text is HTML so the 11px gate applies).
-  - Glow is permitted only as a static `drop-shadow` of ≤6px on SVG value arcs and active status lamps. Never on text, never animated, never a pulse.
+  - ~~Glow is permitted only as a static `drop-shadow` of ≤6px on SVG value arcs and active status lamps. Never on text, never animated, never a pulse.~~ **Withdrawn 2026-08-04 (owner: "remove glow on the dials as well.")** — the bounded-glow permission is retired and the original no-glow ban is back in force; no filter rides any instrument geometry. The dial amendment above stands unchanged.
   - Everything else stands: no gradients, no shimmer, no pulse, no Liquid Glass, no color-only state encoding.
 - Basic is the safe default for new browser profiles. It keeps Home, Files, Control, Timelapses, Settings, readiness, temperatures, camera, active-job state, guarded movement, and emergency stop visible.
 - Expert is a persisted UI-only preference. It reveals Tune, Console, low-level telemetry, full travel bounds, profiles, backup/restore, host diagnostics, and recovery restarts. Direct visits to Tune or Console in Basic mode show a plain-language safety gate instead of loading the tool.
@@ -273,7 +273,7 @@ Independent pre-deploy verification (read-only, all re-run rather than trusted):
 Measured, not read from source (fresh profile, mocked scenarios):
 
 - Computed `--color-accent` = `rgb(255,185,0)` = `#ffb900`.
-- **Glow halo hue proven at the pixel level** by differencing a filter-on against a filter-off screenshot, which isolates the glow's own contribution from the blue-tinted panel. At-temperature: arc pixel `rgb(5,223,114)`, halo delta `(-2,+40,+17)` — decisively **G > R, the halo is green**. Heating arc `rgb(255,185,0)` halo delta `(+41,+28,-5)`; cooling arc `rgb(255,100,103)` halo delta `(+44,+14,+14)`; each halo matches its own arc. Computed filter is `oklab(… / 0.45)` in every state, never `oklch`.
+- **Glow halo hue proven at the pixel level** by differencing a filter-on against a filter-off screenshot, which isolates the glow's own contribution from the blue-tinted panel. At-temperature: arc pixel `rgb(5,223,114)`, halo delta `(-2,+40,+17)` — decisively **G > R, the halo is green**. Heating arc `rgb(255,185,0)` halo delta `(+41,+28,-5)`; cooling arc `rgb(255,100,103)` halo delta `(+44,+14,+14)`; each halo matches its own arc. Computed filter is `oklab(… / 0.45)` in every state, never `oklch`. *(Historical record of removed code, kept for the law's provenance: the glow these pixels measured was deleted 2026-08-04 on owner direction. The oklab-over-oklch mixing law the measurement established survives its subject — canonical statement now on `--color-accent-soft` in index.css, still pinned by `tests/accentDefault.test.ts`.)*
 - `--color-gauge-track` relative luminance 0.0013 — an empty gauge still reads empty; it was not brightened to a 400 shade.
 - Floors at 320, 800x480, 1024, 1100, 1280, 2560: zero horizontal overflow, 2 dials at every width (151–312px, all ≥148), smallest font 11px, smallest hit target 44px, mission bar `position: fixed` and full-bleed at every width with content clearing its top edge. At 320 and 800x480 the bar's bottom edge equals the bottom nav's top edge exactly — flush, zero overlap.
 
@@ -864,6 +864,76 @@ assets are exactly the `8cd188e` source. Credentials supplied solely through
   the lit/unlit law holds on-device on both sides.
 - Screenshots: `live-8cd188e-1280x800.png`, `live-8cd188e-800x480.png`
   (session scratchpad).
+
+## Flatten + de-glow — 2026-08-04 (owner-directed reversal slice)
+
+Owner direction, verbatim: *"for elements like telemetry and thermals, please
+remove the backgrounds on each element so it is cleaner, instead ensuring even
+spacing between elements and from the sides left right top bottom."* and
+*"remove glow on the dials as well."* Four commits: de-glow, flatten, spacing
+rhythm, flat press states. This section AMENDS earlier ledger entries rather
+than letting the code silently contradict them.
+
+**Reversals (decisions that were deliberate and are now deliberately undone):**
+
+- **Binnacle instrument-well recession (SD1 §1.2, WP-BINNACLE) — REVERSED.**
+  `.instrument-well` (fill, border, inset recession) is deleted with both call
+  sites. There is no fascia plane: instruments sit flat ON the panel,
+  separated by space. Its complement, `.instrument-panel`'s raised inset
+  highlight, goes with it. The panel spec's §1/§5 well rows are now web/panel
+  divergences until the panel follows.
+- **Telemetry hairline grid — REVERSED.** The 1px-gap-over-border-color table
+  with per-tile fills becomes a real gap (`--card-pad`). Incidental finding
+  recorded: that rule had been LOSING a specificity tie (0-1-0 vs 0-1-0, same
+  layer, source order) to `.instrument-well`, so Telemetry had shipped two
+  different tile backgrounds side by side since the wells landed. The flatten
+  removed the defect by construction.
+- **Forced-colors glow contract — RETIRED WITH ITS SUBJECT.** The contract's
+  four e2e tests are deleted, not weakened, because the class they pinned no
+  longer exists. The underlying lesson is restated as a general rule: **never
+  `display: none` a class applied to load-bearing geometry** — kill the
+  decoration, keep the geometry. A no-filter sweep and a stylesheet-level
+  guard (the CRT family cannot be re-adopted) replace them.
+- **The oklab color-mix law — NOT reversed; it outlives its subject.** The
+  glow that exposed the polar-mix bug is gone; the law binds the remaining
+  mixes and its canonical statement moved to `--color-accent-soft`
+  (index.css), with `tests/accentDefault.test.ts` still enforcing it.
+- **Two-up dial arithmetic re-derived.** 174px (= 148 floor + well
+  padding/border) → 148px flat; the 800x480 short-viewport chrome trade
+  (166px + 8px padding) is deleted outright — the flat threshold fits the
+  panel with ~46px to spare. The owner's square dial modules
+  (`aspect-ratio: 1`) STAY — the flatten removed fills, not the square grid.
+- **Track legibility retune, not a compliance fix.** 60 fg/bg pairs measured;
+  nothing crosses a WCAG threshold in either direction. `--color-gauge-track`
+  0.26 → 0.282 and `--color-gauge-tick-minor` 0.34 → 0.362 preserve the exact
+  +0.097 L step each had over the deleted well. Measured live at 800x480:
+  track vs surface 1.29:1 (an empty gauge still reads empty — the release
+  claim above survives with a new number), gauge-tick 3.94:1 (≥3:1 holds).
+- **One spacing rhythm.** `--page-gutter` = `clamp(0.625rem, 1vw, 1rem)`,
+  `--grid-gap` aliased to it; tile gap inside a card = `--card-pad` = the
+  card's padding; App shell's compact bottom clearance drops its `+0.5rem`
+  double-count (the whole cause of the 2x bottom inset). Measured: insets
+  even within 0.25px on all four sides at 390 / 800x480 / 1280, and pinned by
+  a new e2e rhythm law.
+- **"Fit, not scroll" at 1280x800 — claim corrected, not forced.** Measured
+  live: the square dial modules (~290px + header) plus the 16:9 camera exceed
+  the 696px glass budget, so 1280x800 scrolls by design; a true fit would
+  require reversing the owner's squares. The stale comment was the defect.
+- **Flat press grammar.** Interactive instrument surfaces (latched tell-tale
+  cells, the readiness module) drop the hover fill for ink-brightening under
+  `@media (hover: hover)`; press = the app's existing `translateY(1px)` sink
+  plus a 2px inset accent rule; focus law untouched; 44px floors untouched.
+  Honest gap, mitigated not solved: a flat latched cell has no resting touch
+  affordance — the ACK affix now renders in the accent for exactly that
+  reason.
+- **Concentricity sweep recalibrated.** Flat tiles draw no corners, so their
+  pairs lawfully left the law's domain: the 800x480 panel pair floor moves
+  50 → 36 (measured 46 post-flatten vs 64 before). The law itself is
+  unchanged and still passes with zero violations.
+- Lit/unlit lamp discrimination re-verified after the de-glow: three channels
+  under normal palettes (severity color, stroke weight, label ink), two under
+  forced colors (weight, label underline) — the glow was never a channel, so
+  the counts are unchanged and still e2e-pinned.
 
 ## Remaining issues
 

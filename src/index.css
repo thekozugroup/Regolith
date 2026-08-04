@@ -502,7 +502,9 @@
     justify-self: center;
   }
   .readiness-ready { grid-column: 2; grid-row: 1; }
-  .readiness-status { grid-column: 2; grid-row: 2; }
+  /* Ink lives here (not a utility) so the flat hover below can brighten it
+     from the same layer. */
+  .readiness-status { grid-column: 2; grid-row: 2; color: var(--color-fg-muted); }
   .readiness-light { grid-column: 2; grid-row: 3; justify-self: start; }
   @container dashboard (min-width: 720px) {
     .readiness-module {
@@ -585,6 +587,30 @@
     color: var(--color-fg-muted);
   }
   button.telltale-cell { cursor: pointer; }
+  /* Interactive instrument surfaces on the flat ground (flatten pass): no
+     hover fill re-boxing a fill-free surface. HOVER (pointer devices only)
+     brightens the quiet ink. PRESS is geometry — the app's existing 1px
+     sink (the buttonStyles.ts press verb) — plus a 2px inset accent rule
+     along the bottom edge: a rule, not a box (no corners, encloses
+     nothing). FOCUS is untouched: the global focus-visible law stays the
+     only ring, so press and focus can never be confused. Nothing here
+     touches the box model, so the 44px min-height floors survive. Scoped
+     to button.telltale-cell — a momentary (non-interactive) cell must not
+     dress up as a control. A latched cell's inline severity color
+     deliberately outranks the hover ink — state outranks affordance — so
+     its resting affordance is the accent ACK affix (.telltale-ack). */
+  @media (hover: hover) {
+    button.telltale-cell:hover,
+    button.telltale-cell:hover .instrument-label,
+    .readiness-module:hover .readiness-status {
+      color: var(--color-fg);
+    }
+  }
+  button.telltale-cell:active,
+  .readiness-module:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
   /* Lit cells carry their severity color; the label rides along (the glyph
      already uses currentColor). Unlit labels stay fg-muted. */
   .telltale-cell[data-lit="true"] .instrument-label { color: inherit; }
@@ -624,7 +650,10 @@
   }
   .telltale-ack {
     margin-left: 6px;
-    color: var(--color-fg-muted);
+    /* Accent, not muted: on a flat ground a latched cell has no resting box
+       to say "tappable", so the one interactive cell in the cluster is the
+       one carrying an accent word. Text, not chrome. */
+    color: var(--color-accent);
     font-size: 0.6875rem;
     letter-spacing: 0.075em;
   }
