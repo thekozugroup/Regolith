@@ -199,12 +199,16 @@ test.describe("Swiss grid — alignment and floors", () => {
         cam: rect(".z-camera"),
         tel: rect(".z-telemetry"),
         tt: rect(".z-telltales"),
+        gap: parseFloat(
+          getComputedStyle(document.querySelector(".dashboard-grid")!).columnGap,
+        ),
       };
     });
-    for (const [name, zone] of Object.entries(edges)) {
+    const { gap, ...zoneEdges } = edges;
+    for (const [name, zone] of Object.entries(zoneEdges)) {
       expect(zone, `${name} zone must exist`).not.toBeNull();
     }
-    const { grid, rdy, msn, thm, cam, tel, tt } = edges as Record<
+    const { grid, rdy, msn, thm, cam, tel, tt } = zoneEdges as Record<
       string,
       { left: number; right: number; top: number }
     >;
@@ -216,9 +220,12 @@ test.describe("Swiss grid — alignment and floors", () => {
     // Column-5 starts: mission, camera, tell-tales share the halves line.
     expect(Math.abs(msn.left - cam.left)).toBeLessThanOrEqual(1);
     expect(Math.abs(msn.left - tt.left)).toBeLessThanOrEqual(1);
-    // The halves line really is the middle of the grid (gap-adjusted).
+    // The halves line really is the middle of the grid. In an 8-column grid
+    // with gap g, column 5 starts exactly g/2 past the geometric middle —
+    // derive the tolerance from the live gap (the rhythm token is fluid
+    // since the flatten pass) instead of hardcoding half of a fixed gap.
     const mid = grid.left + (grid.right - grid.left) / 2;
-    expect(Math.abs(msn.left - mid)).toBeLessThanOrEqual(6);
+    expect(Math.abs(msn.left - mid)).toBeLessThanOrEqual(gap / 2 + 1);
     // Row tops align by construction.
     expect(Math.abs(rdy.top - msn.top)).toBeLessThanOrEqual(1);
     expect(Math.abs(thm.top - cam.top)).toBeLessThanOrEqual(1);
@@ -347,6 +354,64 @@ test.describe("Swiss grid — alignment and floors", () => {
           });
         expect(offenders, `${label} ${title}: per-element fills must be gone`).toEqual([]);
       }
+    }
+    mock.assertSealed();
+  });
+
+  test("one page rhythm: equal insets on all four sides at 390, the K1 panel and 1280", async ({ page }) => {
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: idleState });
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 800, height: 480 },
+      { width: 1280, height: 800 },
+    ]) {
+      const label = `${viewport.width}x${viewport.height}`;
+      await page.setViewportSize(viewport);
+      await openDashboard(page);
+
+      // Insets are measured to the CHROME edges (app bar, mission bar,
+      // sidebar rail), not the glass: content's neighbours are the fixed
+      // chrome surfaces. The owner's rule — even spacing from the sides
+      // left, right, top AND bottom — must hold as one number. The bottom
+      // inset is only observable at full scroll (content may be taller
+      // than the glass; the K1 panel and phone always are).
+      const insets = await page.evaluate(() => {
+        window.scrollTo(0, 0);
+        const grid = document.querySelector(".dashboard-grid")!;
+        const appbar = document.querySelector("header.app-chrome")!;
+        const top = grid.getBoundingClientRect().top - appbar.getBoundingClientRect().bottom;
+        // Compact chrome translates the sidebar off-canvas rather than
+        // unmounting it — clamp at 0 so an off-screen rail contributes no
+        // left-chrome edge.
+        const aside = document.querySelector("aside");
+        const asideRight = aside ? Math.max(0, aside.getBoundingClientRect().right) : 0;
+        const left = grid.getBoundingClientRect().left - asideRight;
+        const right = document.documentElement.clientWidth - grid.getBoundingClientRect().right;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        const mission = document.querySelector(".mission-bar")!;
+        const bottom =
+          mission.getBoundingClientRect().top - grid.getBoundingClientRect().bottom;
+        window.scrollTo(0, 0);
+        const gaps = getComputedStyle(document.querySelector(".dashboard-grid")!);
+        return { top, left, right, bottom, rowGap: parseFloat(gaps.rowGap) };
+      });
+
+      const sides = [insets.top, insets.left, insets.right, insets.bottom];
+      for (const side of sides) {
+        expect(side, `${label}: inset must be positive (${JSON.stringify(insets)})`).toBeGreaterThan(0);
+      }
+      const spread = Math.max(...sides) - Math.min(...sides);
+      expect(
+        spread,
+        `${label}: all four insets must be even within 1px (${JSON.stringify(insets)})`,
+      ).toBeLessThanOrEqual(1);
+      // And the inter-module gap is the SAME number as the edge inset —
+      // one rhythm, not two.
+      expect(
+        Math.abs(insets.rowGap - insets.top),
+        `${label}: module gap must equal the edge inset (${JSON.stringify(insets)})`,
+      ).toBeLessThanOrEqual(1);
     }
     mock.assertSealed();
   });

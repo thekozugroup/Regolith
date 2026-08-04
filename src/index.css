@@ -122,7 +122,11 @@
   --space-icon: 6px; /* icon-to-label gap */
   --stack-tight: 8px; /* related rows */
   --stack: 12px; /* sibling blocks */
-  --grid-gap: 8px; /* default grid gap; documented exception: 4px jog cluster (the 1px hairline grids died in the flatten pass) */
+  /* ONE page rhythm (flatten pass): the gap between dashboard modules IS
+     the page's edge inset — aliased, not a second value. Documented
+     exception: the 4px jog cluster (the 1px hairline grids died with the
+     flatten). Inside a card the rhythm token is --card-pad instead. */
+  --grid-gap: var(--page-gutter);
   --binnacle-row: 44px; /* S2 pod row module = the hit-target floor */
 
   /* --- Gauge instrument --- */
@@ -152,9 +156,14 @@
 
   /* --- Layout --- */
   --appbar-h: 60px; /* single source for app bar height — App/AppBar/Sidebar all reference it */
-  /* Cockpit density: gutters and card padding tightened so panels, not
-     background, own the glass. Floors stay generous enough for 44px targets. */
-  --page-gutter: clamp(0.5rem, 1.2vw, 0.875rem);
+  /* Cockpit density: panels, not background, own the glass. ONE rhythm per
+     scale (flatten pass): --page-gutter is the edge inset AND the
+     inter-module gap (see --grid-gap below); --card-pad is the card's
+     padding AND the tile gap inside it. The two resolve to the same number
+     at every width (10 / 10 / 12.8 / 16 at 390 / 800 / 1280 / 2560) but
+     stay separate names: --card-pad feeds --radius-panel's derivation, and
+     the gutter must stay independently tunable for the 800x480 bezel. */
+  --page-gutter: clamp(0.625rem, 1vw, 1rem);
   --card-pad: clamp(0.625rem, 1vw, 1rem);
   /* Bottom chrome stack. The mission bar is pinned to the bottom edge on
      desktop chrome and STACKS DIRECTLY ABOVE the bottom nav on compact
@@ -396,9 +405,13 @@
       }
     }
   }
-  /* Landscape/desktop should fit, not scroll: let the grid claim the full
-     viewport height so stretched rows distribute the surface. min-height
-     (not height) — content that genuinely needs more space still scrolls. */
+  /* Landscape/desktop claims AT LEAST the viewport, so short content
+     distributes its slack across stretched rows instead of pooling at the
+     bottom. min-height (not height) — and measured honestly: at 1280x800
+     the owner's square dial modules (~290px + header) plus the 16:9 camera
+     exceed the ~696px of glass, so that viewport scrolls BY DESIGN. "Fit"
+     is only promised where content arithmetic allows it; nothing here caps
+     or hides content to fake it. */
   @media (min-width: 1024px) and (min-height: 700px) {
     .dashboard-shell {
       display: flex;
