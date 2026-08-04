@@ -4,6 +4,8 @@ import { Button } from "@/components/Button";
 import { PrintDialog, type GcodeMetadata } from "@/components/PrintDialog";
 import { PrintHistory } from "@/components/PrintHistory";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
+import { pickThumbnail, thumbnailUrlFor } from "@/lib/thumbnails";
+import { fetchFileMetadata, type FileMetadata } from "@/lib/useJobHistory";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
 import { formatBytes, cn } from "@/lib/utils";
@@ -73,6 +75,14 @@ export function Files() {
     setDialogOpen(true);
   };
 
+  // Preview URL resolved from what metadata REPORTS (directory-relative to
+  // the file), never from a guessed flat path. `undefined` while metadata is
+  // unresolved, `null` when the file genuinely embeds no preview.
+  const previewUrl =
+    selected == null || metadata == null
+      ? undefined
+      : resolveThumbnail(selected.path, metadata.thumbnails);
+
   return (
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* File list */}
@@ -104,7 +114,7 @@ export function Files() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter…"
-            className="min-h-11 min-w-0 flex-1 bg-transparent text-[12px] font-mono outline-none"
+            className="min-h-11 min-w-0 flex-1 bg-transparent text-[12px] font-mono"
           />
         </div>
 
@@ -205,9 +215,7 @@ export function Files() {
             <GcodePreview
               key={selected.path}
               path={selected.path}
-              hasThumbnail={
-                metadata == null ? undefined : (metadata.thumbnails?.length ?? 0) > 0
-              }
+              previewUrl={previewUrl}
             />
 
             {/* Filename */}
@@ -324,15 +332,52 @@ export function Files() {
   );
 }
 
+/** Resolve the best embedded preview URL for a file, or null when it has
+ *  none. The `relative_path` Moonraker reports is relative to the FILE's own
+ *  directory — never a flat `.thumbs/` guess at the gcode root. */
+function resolveThumbnail(
+  path: string,
+  thumbnails: unknown,
+  minWidth?: number,
+): string | null {
+  const relative = pickThumbnail(thumbnails, minWidth);
+  return relative ? thumbnailUrlFor(path, relative) : null;
+}
+
 /**
- * List-row thumbnail with a designed fallback. Slicers are not required to
- * embed thumbnails, so a 404 here is an expected state, not an error: the
- * old `opacity: 0` handler left an anonymous hollow square. Keyed on the
- * file path by the caller so the failure latch resets per file.
+ * List-row thumbnail resolved from what metadata REPORTS, never probed.
+ * Slicers are not required to embed thumbnails, so "none" is an expected
+ * state: it renders the designed icon tile WITHOUT ever issuing the doomed
+ * request that used to 404 into the console for every thumbless row. While
+ * metadata is still unresolved, a quiet neutral square holds the space —
+ * unknown must never render as a "no preview" claim. Keyed on the file path
+ * by the caller so the failure latch resets per file.
  */
 function ListThumb({ path }: { path: string }) {
+  const [meta, setMeta] = useState<FileMetadata | null>(null);
   const [failed, setFailed] = useState(false);
-  if (failed) {
+  useEffect(() => {
+    let live = true;
+    void fetchFileMetadata(path).then((m) => {
+      if (live) setMeta(m);
+    });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+
+  if (meta === null) {
+    // Metadata still unresolved — hold the space, claim nothing.
+    return (
+      <span
+        aria-hidden="true"
+        className="h-8 w-8 shrink-0 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)]"
+      />
+    );
+  }
+
+  const src = meta.thumbnailSmallUrl ?? meta.thumbnailUrl;
+  if (src === null || failed) {
     return (
       <span
         aria-hidden="true"
@@ -345,7 +390,7 @@ function ListThumb({ path }: { path: string }) {
   }
   return (
     <img
-      src={moonraker.thumbnailUrl(path, 32)}
+      src={src}
       onError={() => setFailed(true)}
       loading="lazy"
       className="w-8 h-8 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
@@ -356,30 +401,31 @@ function ListThumb({ path }: { path: string }) {
 
 /**
  * Detail-panel preview. The metadata endpoint already reports whether the
- * file embeds thumbnails, so a file sliced without one renders its designed
- * placeholder WITHOUT ever issuing the doomed image request (which used to
- * 404 into the console and leave a hollow frame).
+ * file embeds thumbnails — and WHERE, relative to the file's own directory —
+ * so a file sliced without one renders its designed placeholder WITHOUT ever
+ * issuing the doomed image request (which used to 404 into the console and
+ * leave a hollow frame).
  *
- *   hasThumbnail === true       → real preview (error-latched, belt+braces)
- *   hasThumbnail === false      → designed "no preview" tile
- *   hasThumbnail === undefined  → metadata still unresolved: a quiet neutral
+ *   previewUrl is a string    → real preview (error-latched, belt+braces)
+ *   previewUrl === null       → designed "no preview" tile
+ *   previewUrl === undefined  → metadata still unresolved: a quiet neutral
  *     frame. Unknown must never render as a "no preview" claim — the same
  *     rule as the em-dash readouts.
  */
 function GcodePreview({
   path,
-  hasThumbnail,
+  previewUrl,
 }: {
   path: string;
-  hasThumbnail: boolean | undefined;
+  previewUrl: string | null | undefined;
 }) {
   const [failed, setFailed] = useState(false);
-  const showImage = hasThumbnail === true && !failed;
+  const showImage = typeof previewUrl === "string" && !failed;
   return (
     <div className="aspect-square w-full max-w-[200px] mx-auto rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
       {showImage ? (
         <img
-          src={moonraker.thumbnailUrl(path, 300)}
+          src={previewUrl}
           alt={`Preview of ${path}`}
           onError={() => setFailed(true)}
           className="w-full h-full object-contain"
@@ -393,7 +439,7 @@ function GcodePreview({
             aria-hidden="true"
             className="h-8 w-8 text-[var(--color-fg-subtle)]"
           />
-          {hasThumbnail === false || failed ? (
+          {previewUrl === null || failed ? (
             <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
               No preview in this file
             </span>

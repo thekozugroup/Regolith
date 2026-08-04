@@ -32,6 +32,10 @@ export interface FileMetadata {
   slicerEstimate: number | null;
   /** URL of an embedded preview, or null when the file has none. */
   thumbnailUrl: string | null;
+  /** Smallest embedded preview that still fills a 32px list tile, or null.
+   *  Falls back to the same answer as `thumbnailUrl` when the slicer only
+   *  wrote one size. */
+  thumbnailSmallUrl: string | null;
 }
 
 /** A file's metadata never changes, so cache it forever by name. */
@@ -100,10 +104,14 @@ export async function fetchFileMetadata(
   const result = (body as { result?: Record<string, unknown> } | null)?.result;
   const raw = result?.estimated_time;
   const relative = pickThumbnail(result?.thumbnails);
+  const relativeSmall = pickThumbnail(result?.thumbnails, 32);
   const value: FileMetadata = {
     slicerEstimate:
       typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null,
     thumbnailUrl: relative ? thumbnailUrlFor(filename, relative) : null,
+    thumbnailSmallUrl: relativeSmall
+      ? thumbnailUrlFor(filename, relativeSmall)
+      : null,
   };
   metadataCache.set(filename, value);
   return value;

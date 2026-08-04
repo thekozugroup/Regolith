@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import { Button } from "./Button";
 import { ModalSurface } from "./ModalSurface";
-import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
+import { type MoonrakerFile } from "@/lib/moonraker";
+import { pickThumbnail, thumbnailUrlFor } from "@/lib/thumbnails";
 import { usePrinter } from "@/lib/usePrinter";
 import {
   KAMP_STORAGE_KEY,
@@ -69,8 +70,17 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
+
+  // Preview resolved from the path metadata REPORTS — relative to the FILE's
+  // own directory — never from a flat `.thumbs/` guess at the gcode root,
+  // which could not exist for a file in a subdirectory.
+  const previewRelative = pickThumbnail(metadata?.thumbnails);
+  const previewUrl = previewRelative
+    ? thumbnailUrlFor(file.path, previewRelative)
+    : null;
 
   const action: PrinterAction = {
     type: "start-print",
@@ -83,6 +93,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     if (!open) return;
     setAcknowledged(false);
     setError(null);
+    setThumbFailed(false);
   }, [open, file.path]);
 
   if (!open) return null;
@@ -141,15 +152,14 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           <div className="grid grid-cols-[110px_1fr] gap-3">
             <div className="aspect-square rounded-inner border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
               {/* Same rule as the Files preview: metadata says whether a
-                  thumbnail exists, so a thumbless file shows its designed
-                  placeholder instead of a 404 and a hollow black square. */}
-              {(metadata?.thumbnails?.length ?? 0) > 0 ? (
+                  thumbnail exists AND where it lives, so a thumbless file
+                  shows its designed placeholder instead of a 404 and a
+                  hollow black square. */}
+              {previewUrl !== null && !thumbFailed ? (
                 <img
-                  src={moonraker.thumbnailUrl(file.path, 300)}
+                  src={previewUrl}
                   alt=""
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  onError={() => setThumbFailed(true)}
                   className="w-full h-full object-contain"
                 />
               ) : (

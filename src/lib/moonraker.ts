@@ -12,6 +12,7 @@
  */
 
 import {
+  exponentialBackoff,
   isActiveWebSocketState,
   jitteredDelay,
   moonrakerReconnectDelay,
@@ -209,6 +210,9 @@ export class Moonraker {
   /** The field set last pushed to (or queued for) the server. */
   private activeFields = new Set<string>();
   private syncQueued = false;
+  /** Re-issues a subscribe the server REFUSED while the socket stayed open. */
+  private subscribeRetryTimer: number | null = null;
+  private subscribeRetryAttempt = 0;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private manuallyDisconnected = false;
@@ -261,6 +265,8 @@ export class Moonraker {
       // handler, and only once the link actually HELD (STABLE_LINK_MS).
       this.connSubs.forEach((cb) => cb(true));
       this.setLinkState("live");
+      // A fresh link gets a fresh retry budget.
+      this.subscribeRetryAttempt = 0;
       // Replay on reconnect with the CURRENT desired set (replace semantics:
       // a field released while offline must not resurrect here).
       this.activeFields = new Set(this.fieldRefs.keys());
@@ -279,6 +285,9 @@ export class Moonraker {
       const held = this.openedAt > 0 && Date.now() - this.openedAt >= STABLE_LINK_MS;
       this.ws = null;
       this.openedAt = 0;
+      // The open handler replays the subscription on the next socket — a
+      // retry aimed at THIS socket has nothing left to fix.
+      this.clearSubscribeRetry();
       if (held) this.reconnectAttempt = 0;
       this.connSubs.forEach((cb) => cb(false));
       this.setLinkState("down");
@@ -294,6 +303,7 @@ export class Moonraker {
   disconnect(): void {
     this.manuallyDisconnected = true;
     this.clearReconnectTimer();
+    this.clearSubscribeRetry();
     this.stopLinkWatchdog();
     const socket = this.ws;
     this.ws = null;
@@ -618,18 +628,66 @@ export class Moonraker {
     });
   }
 
+  /**
+   * Push the committed field set. Three outcomes:
+   *
+   *  - resolve: the server confirmed the subscription; merge its full status.
+   *  - reject because the socket dropped: the open handler replays — no-op.
+   *  - reject while the socket is STILL OPEN. This is a real, reachable
+   *    state: Moonraker answers subscribe with "Klippy Host not connected"
+   *    for the whole Klipper-restart window, and the 15s RPC timeout sits
+   *    well inside the 30s silence tolerance (proc-stat pushes keep the link
+   *    "live" the whole time). `activeFields` was committed before the
+   *    outcome was known, so without a rollback the queueSync equality
+   *    shortcut would suppress every later push and the dashboard would sit
+   *    frozen forever while reporting a live link. Roll the commit back so
+   *    any consumer change re-pushes, and retry on a jittered backoff so
+   *    state resumes even with no consumer change at all.
+   */
   private pushSubscription(): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return; // replayed on open
-    const objects = Object.fromEntries(
-      [...this.activeFields].map((f) => [f, null]),
-    );
+    const socket = this.ws;
+    const pushed = this.activeFields;
+    const objects = Object.fromEntries([...pushed].map((f) => [f, null]));
     this.send<{ status: PrinterState }>("printer.objects.subscribe", {
       objects,
     })
-      .then(({ status }) => this.mergeState(status))
+      .then(({ status }) => {
+        this.subscribeRetryAttempt = 0;
+        this.mergeState(status);
+      })
       .catch(() => {
-        /* connection dropped mid-flight — the open handler replays */
+        // Socket gone or replaced: the open handler owns the replay.
+        if (this.ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+        // A newer push already replaced the set; its outcome governs.
+        if (this.activeFields !== pushed) return;
+        // Un-commit: nothing is live server-side, and the next sync must
+        // say so instead of being swallowed by the equality shortcut.
+        this.activeFields = new Set();
+        this.scheduleSubscribeRetry();
       });
+  }
+
+  /** Retry a refused subscribe on a live socket, with bounded backoff. */
+  private scheduleSubscribeRetry(): void {
+    if (this.subscribeRetryTimer !== null) return;
+    const delay = jitteredDelay(
+      exponentialBackoff(this.subscribeRetryAttempt, 2000, 30_000),
+      this.random(),
+    );
+    this.subscribeRetryAttempt += 1;
+    this.subscribeRetryTimer = window.setTimeout(() => {
+      this.subscribeRetryTimer = null;
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      this.queueSync();
+    }, delay);
+  }
+
+  private clearSubscribeRetry(): void {
+    if (this.subscribeRetryTimer !== null) {
+      clearTimeout(this.subscribeRetryTimer);
+      this.subscribeRetryTimer = null;
+    }
   }
 
   onConnect(cb: ConnectionCallback): () => void {
@@ -695,11 +753,11 @@ export class Moonraker {
     return data.result;
   }
 
-  thumbnailUrl(filename: string, size: 32 | 300 = 300): string {
-    // Fluidd thumbnail convention
-    const base = filename.replace(/\.gcode$/i, "");
-    return `${HTTP_BASE}/server/files/gcodes/.thumbs/${encodeURIComponent(base)}-${size}x${size}.png`;
-  }
+  // NOTE: there is deliberately NO thumbnailUrl() helper here. The flat
+  // Fluidd guess (`.thumbs/<basename>-NxN.png` percent-encoded at the gcode
+  // root) can never resolve for nested files and 404s for every thumbless
+  // one. Previews are resolved from what `/server/files/metadata` REPORTS,
+  // via `thumbnailUrlFor()` in src/lib/thumbnails.ts.
 }
 
 export interface MoonrakerFile {

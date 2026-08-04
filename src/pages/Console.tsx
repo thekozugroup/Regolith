@@ -246,7 +246,7 @@ export function ConsolePage() {
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            className="flex-1 min-w-0 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-inner px-3 min-h-11 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
+            className="flex-1 min-w-0 bg-[var(--color-elevated)] border border-[var(--color-border)] rounded-inner px-3 min-h-11 text-[13px] font-mono focus:border-[var(--color-accent)] disabled:opacity-50"
           />
           <Button
             onClick={send}

@@ -48,7 +48,7 @@ export function ThemeSettings() {
               onChange={(e) => setDraftName(e.target.value)}
               maxLength={24}
               placeholder="Forge"
-              className="min-h-11 min-w-0 flex-1 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] focus:border-[var(--color-accent)] focus:outline-none"
+              className="min-h-11 min-w-0 flex-1 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] focus:border-[var(--color-accent)]"
             />
             <Button
               size="md"
@@ -109,7 +109,7 @@ export function ThemeSettings() {
               aria-invalid={!hexValid}
               aria-describedby={!hexValid ? accentErrorId : undefined}
               className={cn(
-                "min-h-11 min-w-0 flex-1 rounded-inner border bg-[var(--color-elevated)] px-3 text-[13px] font-mono uppercase tracking-wider focus:outline-none",
+                "min-h-11 min-w-0 flex-1 rounded-inner border bg-[var(--color-elevated)] px-3 text-[13px] font-mono uppercase tracking-wider",
                 hexValid
                   ? "border-[var(--color-border)] focus:border-[var(--color-accent)]"
                   : "border-[var(--color-error)] focus:border-[var(--color-error)]",

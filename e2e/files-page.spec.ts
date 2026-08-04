@@ -27,7 +27,12 @@ const GCODE_FILE = {
  *  Registered AFTER the harness so they take precedence over its catch-all. */
 async function fulfilFileApi(
   page: Page,
-  options: { files: Array<typeof GCODE_FILE>; timelapses?: Array<{ path: string; size: number; modified: number }> },
+  options: {
+    files: Array<typeof GCODE_FILE>;
+    timelapses?: Array<{ path: string; size: number; modified: number }>;
+    /** Metadata payload; defaults to a file with NO embedded thumbnails. */
+    metadataResult?: Record<string, unknown>;
+  },
 ) {
   await page.route("**/server/files/list*", async (route) => {
     const root = new URL(route.request().url()).searchParams.get("root");
@@ -40,13 +45,13 @@ async function fulfilFileApi(
     });
   });
   await page.route("**/server/files/metadata*", async (route) => {
-    // Metadata WITHOUT a `thumbnails` list — the signal that the slicer
-    // embedded no preview.
+    // Default: metadata WITHOUT a `thumbnails` list — the signal that the
+    // slicer embedded no preview.
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        result: {
+        result: options.metadataResult ?? {
           estimated_time: 3_600,
           layer_count: 100,
           layer_height: 0.2,
@@ -86,10 +91,10 @@ test.describe("Files page — thumbnail placeholders and designed states", () =>
     });
     await fulfilFileApi(page, { files: [GCODE_FILE] });
 
-    const bigThumbRequests: string[] = [];
+    const thumbRequests: string[] = [];
     page.on("request", (request) => {
-      if (request.url().includes("/.thumbs/") && request.url().includes("300x300")) {
-        bigThumbRequests.push(request.url());
+      if (request.url().includes("/.thumbs/")) {
+        thumbRequests.push(request.url());
       }
     });
 
@@ -97,8 +102,9 @@ test.describe("Files page — thumbnail placeholders and designed states", () =>
     const row = page.getByRole("button", { name: /benchy_0\.2mm_PLA\.gcode/ });
     await expect(row).toBeVisible();
 
-    // List row: the 32px lookup 404s → the designed icon tile replaces the
-    // broken image instead of an invisible hollow square.
+    // List row: metadata reports no thumbnails → the designed icon tile
+    // renders directly, instead of an invisible hollow square left behind by
+    // a broken probe.
     await expect(row.getByTestId("thumb-fallback")).toBeVisible();
 
     // Detail panel: metadata reports no embedded thumbnails → the designed
@@ -107,8 +113,70 @@ test.describe("Files page — thumbnail placeholders and designed states", () =>
     await expect(page.getByTestId("preview-fallback")).toBeVisible();
     await expect(page.getByText("No preview in this file")).toBeVisible();
 
-    // ...and the doomed 300px request was never issued.
-    expect(bigThumbRequests).toEqual([]);
+    // ...and NO `.thumbs` request was ever issued — not the 300px detail
+    // lookup, and not the per-row 32px probe that used to 404 for every
+    // thumbless file on every visit.
+    expect(thumbRequests).toEqual([]);
+
+    mock.assertSealed();
+  });
+
+  test("a nested file resolves previews under its own directory — never a flat guess", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      thumbnail: true, // the real, directory-relative paths are served
+    });
+    const nested = {
+      path: "calibration/benchy.gcode",
+      size: 1_234_567,
+      modified: 1_700_000_000,
+      permissions: "rw",
+    };
+    await fulfilFileApi(page, {
+      files: [nested],
+      metadataResult: {
+        estimated_time: 3_600,
+        thumbnails: [
+          { width: 32, height: 32, size: 1, relative_path: ".thumbs/benchy-32x32.png" },
+          { width: 300, height: 300, size: 2, relative_path: ".thumbs/benchy-300x300.png" },
+        ],
+      },
+    });
+
+    const thumbRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/.thumbs/")) {
+        thumbRequests.push(new URL(request.url()).pathname);
+      }
+    });
+
+    await page.goto("/print");
+    const row = page.getByRole("button", { name: /calibration\/benchy\.gcode/ });
+    await expect(row).toBeVisible();
+
+    // List tile: a real image, resolved under the file's own directory.
+    await expect(row.locator("img")).toHaveAttribute(
+      "src",
+      "/server/files/gcodes/calibration/.thumbs/benchy-32x32.png",
+    );
+
+    // Detail panel: the 300px preview, same law.
+    await row.click();
+    await expect(page.getByAltText(/Preview of/)).toHaveAttribute(
+      "src",
+      "/server/files/gcodes/calibration/.thumbs/benchy-300x300.png",
+    );
+
+    // Every request kept the directory; the old flat guess percent-encoded
+    // it into a `.thumbs` basename at the gcode root, which cannot exist.
+    expect(thumbRequests.length).toBeGreaterThan(0);
+    for (const pathname of thumbRequests) {
+      expect(pathname).toContain("/server/files/gcodes/calibration/.thumbs/");
+      expect(pathname).not.toContain("%2F");
+    }
 
     mock.assertSealed();
   });

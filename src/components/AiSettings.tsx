@@ -84,7 +84,7 @@ export function AiSettings() {
             placeholder="https://…/v1/chat/completions"
             spellCheck={false}
             className={cn(
-              "min-h-11 rounded-inner border bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none",
+              "min-h-11 rounded-inner border bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)]",
               endpointValid
                 ? "border-[var(--color-border)]"
                 : "border-[var(--color-error)]",
@@ -101,7 +101,7 @@ export function AiSettings() {
             onChange={(event) => setModelDraft(event.target.value)}
             placeholder="optional"
             spellCheck={false}
-            className="min-h-11 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none"
+            className="min-h-11 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)]"
           />
         </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
@@ -115,7 +115,7 @@ export function AiSettings() {
             placeholder={settings.hasKey ? "••••••••" : "your key"}
             autoComplete="off"
             spellCheck={false}
-            className="min-h-11 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)] focus:outline-none"
+            className="min-h-11 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 text-[13px] font-mono focus:border-[var(--color-accent)]"
           />
         </label>
       </div>
