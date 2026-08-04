@@ -13,12 +13,62 @@
 
 import {
   isActiveWebSocketState,
+  jitteredDelay,
   moonrakerReconnectDelay,
 } from "./retry";
 
 type SubscriptionCallback = (state: PrinterState) => void;
 type ConnectionCallback = (connected: boolean) => void;
 type GcodeLogCallback = (lines: GcodeLine[]) => void;
+
+/**
+ * What the link is actually doing, as opposed to what `readyState` claims.
+ *
+ *  - `down`      no socket. Either backing off, or deliberately disconnected.
+ *  - `connecting` a socket exists but has not opened.
+ *  - `live`      open, and data is arriving.
+ *  - `stale`     open, and nothing has arrived for LINK_SILENCE_MS. This is
+ *                the dangerous one: the dashboard looks live and is not.
+ */
+export type LinkState = "down" | "connecting" | "live" | "stale";
+type LinkStateCallback = (state: LinkState) => void;
+
+/**
+ * How long a socket may sit in CONNECTING before it is written off.
+ *
+ * A half-open TCP connection — the normal outcome of closing a laptop lid or
+ * moving between access points — leaves a socket that never opens and never
+ * errors. Browsers do eventually give up, but on the order of minutes, and
+ * `connect()` short-circuits on a CONNECTING socket, so nothing else would
+ * ever retry in the meantime.
+ */
+export const CONNECT_TIMEOUT_MS = 10_000;
+
+/**
+ * How long an OPEN socket may go completely silent before it is treated as
+ * dead and torn down.
+ *
+ * Moonraker sends `notify_proc_stat_update` about once a second unprompted,
+ * on top of the status diffs, so total silence is not a quiet printer — it is
+ * a link that has stopped carrying data while still reporting OPEN. The
+ * check only arms once a server-initiated notification has actually been
+ * seen, so a server that legitimately never pushes is never torn down.
+ */
+export const LINK_SILENCE_MS = 30_000;
+
+/** How often the link is inspected without waiting for an event. */
+export const LINK_CHECK_MS = 2_000;
+
+/**
+ * How long a connection must survive before it counts as a good one.
+ *
+ * The attempt counter used to reset the instant a socket opened, so a
+ * Moonraker that accepts and immediately drops — which is exactly what it
+ * does while Klipper is restarting — produced an endless 2-second reconnect
+ * storm instead of backing off. Resetting only after the link has HELD
+ * turns that flap into a proper retreat.
+ */
+export const STABLE_LINK_MS = 10_000;
 
 export interface PrinterState {
   // Print state
@@ -164,20 +214,53 @@ export class Moonraker {
   private manuallyDisconnected = false;
   private gcodeLog: GcodeLine[] = [];
   private static MAX_LOG = 200;
+  private linkSubs = new Set<LinkStateCallback>();
+  private linkState: LinkState = "down";
+  /** When the current socket was created — drives the CONNECTING timeout. */
+  private socketCreatedAt = 0;
+  /** When the current socket opened, or 0 while it has not. */
+  private openedAt = 0;
+  /** When anything last arrived on the wire. */
+  private lastMessageAt = 0;
+  /**
+   * Whether this server has ever pushed unprompted. Until it has, silence
+   * proves nothing and the staleness check stays disarmed.
+   */
+  private sawServerPush = false;
+  private linkTimer: number | null = null;
+  /** Injectable for tests; production takes the real one. */
+  private random: () => number = Math.random;
 
   // ----- Connection lifecycle -----
   connect(): void {
     this.manuallyDisconnected = false;
-    if (isActiveWebSocketState(this.ws?.readyState)) return;
+    // An explicit connect outranks a pending backoff: whoever called this
+    // wants the link NOW (a mount, a tab becoming visible, the network
+    // coming back), not in another 30 seconds.
+    this.clearReconnectTimer();
+    if (isActiveWebSocketState(this.ws?.readyState)) {
+      this.startLinkWatchdog();
+      return;
+    }
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}${WS_PATH}`;
     const socket = new WebSocket(url);
     this.ws = socket;
+    this.socketCreatedAt = Date.now();
+    this.openedAt = 0;
+    this.setLinkState("connecting");
+    this.startLinkWatchdog();
 
     socket.addEventListener("open", () => {
       if (this.ws !== socket) return;
-      this.reconnectAttempt = 0;
+      this.openedAt = Date.now();
+      this.lastMessageAt = this.openedAt;
+      // NOT reset here. A Moonraker that accepts and immediately drops —
+      // what it does throughout a Klipper restart — would otherwise pin the
+      // backoff at its floor forever. The counter clears in the close
+      // handler, and only once the link actually HELD (STABLE_LINK_MS).
       this.connSubs.forEach((cb) => cb(true));
+      this.setLinkState("live");
       // Replay on reconnect with the CURRENT desired set (replace semantics:
       // a field released while offline must not resurrect here).
       this.activeFields = new Set(this.fieldRefs.keys());
@@ -185,13 +268,20 @@ export class Moonraker {
     });
 
     socket.addEventListener("message", (e) => {
-      if (this.ws === socket) this.onMessage(e);
+      if (this.ws !== socket) return;
+      this.lastMessageAt = Date.now();
+      if (this.linkState === "stale") this.setLinkState("live");
+      this.onMessage(e);
     });
 
     socket.addEventListener("close", () => {
       if (this.ws !== socket) return;
+      const held = this.openedAt > 0 && Date.now() - this.openedAt >= STABLE_LINK_MS;
       this.ws = null;
+      this.openedAt = 0;
+      if (held) this.reconnectAttempt = 0;
       this.connSubs.forEach((cb) => cb(false));
+      this.setLinkState("down");
       this.rejectPending("Printer connection closed before the action completed.");
       if (!this.manuallyDisconnected) this.scheduleReconnect();
     });
@@ -203,25 +293,165 @@ export class Moonraker {
 
   disconnect(): void {
     this.manuallyDisconnected = true;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.clearReconnectTimer();
+    this.stopLinkWatchdog();
     const socket = this.ws;
     this.ws = null;
+    this.openedAt = 0;
     socket?.close();
     this.rejectPending("Printer connection was closed.");
     this.connSubs.forEach((cb) => cb(false));
+    this.setLinkState("down");
+  }
+
+  /**
+   * Force the link to prove itself, right now.
+   *
+   * Called when the environment says the previous socket may be a ghost — a
+   * tab becoming visible after a lid-close, the browser reporting the network
+   * back. A socket that still reports OPEN after a suspend is frequently
+   * attached to a connection that no longer exists on the other end, and it
+   * will sit there forever looking healthy while the dashboard freezes at
+   * whatever it last showed.
+   */
+  wake(): void {
+    if (this.manuallyDisconnected) return;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      // Give a live socket one check interval to show a sign of life before
+      // tearing down a link that is in fact fine.
+      if (this.isSilent(Date.now())) this.dropWedgedSocket();
+      else this.startLinkWatchdog();
+      return;
+    }
+    // Nothing open: retry immediately rather than sitting out the rest of a
+    // backoff that was scheduled before the machine went to sleep.
+    this.reconnectAttempt = 0;
+    this.connect();
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
-    const delay = moonrakerReconnectDelay(this.reconnectAttempt);
+    const delay = jitteredDelay(
+      moonrakerReconnectDelay(this.reconnectAttempt),
+      this.random(),
+    );
     this.reconnectAttempt += 1;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  // ----- Link watchdog -----
+  /**
+   * Neither of the two states this catches raises an event, which is exactly
+   * why they need a clock: a socket stuck in CONNECTING and a socket that is
+   * OPEN but carrying nothing both look like a healthy app doing nothing.
+   */
+  private startLinkWatchdog(): void {
+    if (this.linkTimer !== null) return;
+    this.linkTimer = window.setInterval(() => this.checkLink(), LINK_CHECK_MS);
+  }
+
+  private stopLinkWatchdog(): void {
+    if (this.linkTimer !== null) {
+      clearInterval(this.linkTimer);
+      this.linkTimer = null;
+    }
+  }
+
+  /** True once an OPEN socket has been silent past the tolerance. */
+  private isSilent(now: number): boolean {
+    return this.sawServerPush && now - this.lastMessageAt >= LINK_SILENCE_MS;
+  }
+
+  private checkLink(): void {
+    const now = Date.now();
+    const readyState = this.ws?.readyState;
+
+    if (readyState === WebSocket.CONNECTING) {
+      if (now - this.socketCreatedAt >= CONNECT_TIMEOUT_MS) {
+        // Never opened, never errored. Close it so the close handler can put
+        // the normal backoff in charge instead of waiting on the browser.
+        this.dropWedgedSocket();
+      }
+      return;
+    }
+
+    if (readyState === WebSocket.OPEN) {
+      if (this.isSilent(now)) {
+        // Surface the truth before tearing down, so anything watching link
+        // state sees "stale" rather than an unexplained drop.
+        this.setLinkState("stale");
+        this.dropWedgedSocket();
+      }
+      return;
+    }
+
+    // No socket: the reconnect timer owns recovery. Nothing to watch until
+    // it fires, so stop burning a wakeup every 2s on an idle background tab.
+    if (this.ws === null && this.reconnectTimer === null) this.stopLinkWatchdog();
+  }
+
+  /**
+   * Tear down a socket the browser still believes in. `close()` on a wedged
+   * connection does fire `close`, which routes recovery back through the one
+   * reconnect path rather than duplicating it here.
+   */
+  private dropWedgedSocket(): void {
+    const socket = this.ws;
+    if (!socket) return;
+    try {
+      socket.close();
+    } catch {
+      /* already closing — the close listener still runs */
+    }
+    // A wedged socket can fail to emit `close` at all. Drive the same
+    // transition by hand if the listener has not already done it.
+    if (this.ws === socket) {
+      this.ws = null;
+      this.openedAt = 0;
+      this.connSubs.forEach((cb) => cb(false));
+      this.setLinkState("down");
+      this.rejectPending("Printer connection went quiet and was reset.");
+      if (!this.manuallyDisconnected) this.scheduleReconnect();
+    }
+  }
+
+  private setLinkState(next: LinkState): void {
+    if (this.linkState === next) return;
+    this.linkState = next;
+    this.linkSubs.forEach((cb) => cb(next));
+  }
+
+  /** Current link state — what the wire is doing, not what readyState says. */
+  getLinkState(): LinkState {
+    return this.linkState;
+  }
+
+  onLinkState(cb: LinkStateCallback): () => void {
+    this.linkSubs.add(cb);
+    cb(this.linkState);
+    return () => {
+      this.linkSubs.delete(cb);
+    };
+  }
+
+  /** ms since anything last arrived, or null before the first byte ever. */
+  telemetryAge(now = Date.now()): number | null {
+    return this.lastMessageAt === 0 ? null : now - this.lastMessageAt;
+  }
+
+  /** Test seam: pin the jitter draw so backoff assertions are exact. */
+  setRandomSource(random: () => number): void {
+    this.random = random;
   }
 
   private rejectPending(message: string): void {
@@ -274,7 +504,17 @@ export class Moonraker {
       clearTimeout(pending.timer);
       if (msg.error) pending.reject(new Error(msg.error.message));
       else pending.resolve(msg.result);
-    } else if (msg.method === "notify_status_update") {
+      return;
+    }
+
+    // Anything without an id is server-initiated, which proves this server
+    // pushes without being asked — the premise the silence check rests on.
+    // It is deliberately set for EVERY notification, including the ones
+    // ignored below: `notify_proc_stat_update` alone arrives about once a
+    // second and is the most reliable heartbeat Moonraker offers.
+    this.sawServerPush = true;
+
+    if (msg.method === "notify_status_update") {
       const [diff] = msg.params as [Partial<PrinterState>];
       this.mergeState(diff);
     } else if (msg.method === "notify_gcode_response") {
