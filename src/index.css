@@ -64,8 +64,15 @@
   --color-accent-fg: #120b07;
   /* Accent-derived surfaces — always tint from the live accent, never from a
      hardcoded rgba() literal, so every surface follows the user's accent.
-     Mixed in oklab (rectangular), never oklch: a polar mix against
-     `transparent` (h=0) lets non-conforming engines drag the hue toward 0°. */
+     THE MIXING LAW (canonical statement — tests/accentDefault.test.ts pins
+     it): every color-mix interpolates in a RECTANGULAR space (oklab), never
+     a polar one (oklch). `transparent` is rgb(0 0 0 / 0), i.e. h=0 in any
+     polar space; a polar mix against it only survives if the engine applies
+     the CSS Color 4 §12.2 powerless-hue rule, so a non-conforming engine can
+     drag the source hue toward 0° (the shipped green-dial-glowing-amber
+     bug). oklab has no hue channel, so the hue cannot move. The glow that
+     first exposed this is gone; the law outlives it and binds every mix in
+     this file. */
   --color-accent-soft: color-mix(in oklab, var(--color-accent) 10%, transparent);
   --color-accent-faint: color-mix(in oklab, var(--color-accent) 5%, transparent);
   --color-accent-edge: color-mix(in oklab, var(--color-accent) 30%, transparent);
@@ -137,15 +144,6 @@
      truth, same trade as the dial track. */
   --color-segment-unlit: var(--color-gauge-track);
   --color-segment-zone: color-mix(in oklab, var(--color-warning) 18%, var(--color-gauge-track));
-
-  /* --- 80s digital, bounded --- */
-  --color-ghost-segment: oklch(0.94 0.012 85 / 0.07);
-  --glow-radius: 4px;
-  --glow-alpha: 0.45;
-  --crt-scanline-alpha: 0.025;
-  --crt-scanline-period: 2px;
-  --graticule-alpha: 0.4;
-  --graticule-step: 24px;
 
   /* --- Layout --- */
   --appbar-h: 60px; /* single source for app bar height — App/AppBar/Sidebar all reference it */
@@ -290,39 +288,7 @@
     line-height: 1;
     color: var(--color-fg);
   }
-  .readout-ghost { position: absolute; inset: 0; color: var(--color-ghost-segment); pointer-events: none; }
-
-  /* Mix in a RECTANGULAR space. `transparent` is rgb(0 0 0 / 0), i.e. h=0 in
-     any polar space; mixing there only survives if the engine applies the
-     CSS Color 4 §12.2 powerless-hue rule. oklab has no hue channel, so the
-     source hue cannot be dragged toward 0° — a green arc can never glow
-     amber. Premultiplied interpolation makes this an exact alpha operation:
-     the result is currentColor at --glow-alpha, unchanged in every other way. */
-  .phosphor-glow {
-    filter: drop-shadow(0 0 var(--glow-radius)
-      color-mix(in oklab, currentColor calc(var(--glow-alpha) * 100%), transparent));
-  }
-
-  .crt-scanlines::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--color-fg) calc(var(--crt-scanline-alpha) * 100%), transparent) 0 1px,
-      transparent 1px var(--crt-scanline-period));
-  }
-  @media (prefers-reduced-transparency: reduce) {
-    .crt-scanlines::after { display: none; }
-  }
   @media (forced-colors: active) {
-    /* Scanlines are pure decoration — drop them. The glow is a FILTER on
-       load-bearing geometry (the dial value arc, every status lamp), so kill
-       the filter only. `display: none` here erased the arc and blanked every
-       lamp in high-contrast mode. */
-    .crt-scanlines::after { display: none; }
-    .phosphor-glow { filter: none; }
     /* A lamp is NOTHING BUT its background, and forced colors strips author
        backgrounds — measured lamp-vs-backdrop contrast was 0 (invisible).
        System colors are honored, so paint the lamp in CanvasText: maximum

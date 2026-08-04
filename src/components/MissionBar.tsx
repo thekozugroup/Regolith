@@ -1,6 +1,5 @@
 import { usePrinterSelector } from "@/lib/usePrinter";
 import { computeJobTiming } from "@/lib/jobProgress";
-import { cn } from "@/lib/utils";
 
 const PRINT_STATE_COLOR: Record<string, string> = {
   printing: "var(--color-accent)",
@@ -102,7 +101,7 @@ export function MissionBar() {
             className="flex shrink-0 items-center gap-1.5"
             style={{ color: PRINT_STATE_COLOR[printState] ?? "var(--color-fg-muted)" }}
           >
-            <span aria-hidden="true" className={cn("status-lamp", isActive && "phosphor-glow")} />
+            <span aria-hidden="true" className="status-lamp" />
             <span className="instrument-label text-[11px]" style={{ color: "inherit" }}>{printState}</span>
           </span>
 
@@ -120,7 +119,7 @@ export function MissionBar() {
           </span>
 
           <span className="flex shrink-0 items-center gap-1.5" style={{ color: link.color }}>
-            <span aria-hidden="true" className={cn("status-lamp", connected && klipperReady && "phosphor-glow")} />
+            <span aria-hidden="true" className="status-lamp" />
             <span className="instrument-label text-[11px]" style={{ color: "inherit" }}>Link {link.word}</span>
           </span>
         </div>

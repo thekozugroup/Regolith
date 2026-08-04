@@ -99,7 +99,6 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
           stroke="currentColor"
           strokeWidth={12}
           strokeLinecap="butt"
-          className="phosphor-glow"
           style={{
             color: "var(--gauge-stroke)",
             strokeDasharray: `${t * 1000} 1000`,

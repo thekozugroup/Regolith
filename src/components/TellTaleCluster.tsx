@@ -24,7 +24,6 @@ import {
   type LampPhase,
   type LampReading,
 } from "@/lib/telltales";
-import { cn } from "@/lib/utils";
 
 /**
  * SD1 tell-tale block — the persistent faults-at-a-glance lamp panel,
@@ -235,7 +234,7 @@ function LampCell({
       <Icon
         aria-hidden="true"
         data-lit={litFlag}
-        className={cn("telltale-icon", lit && "phosphor-glow")}
+        className="telltale-icon"
       />
       {axes ? (
         <>

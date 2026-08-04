@@ -599,7 +599,6 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     // 1s after the mocked subscribe the 700ms bulb test has released and the
     // idle fixture holds zero lit lamps — including HOMED (axes unhomed).
     await expect(litLamps(page)).toHaveCount(0);
-    await expect(page.locator(".telltale-icon.phosphor-glow")).toHaveCount(0);
 
     // Labels are the always-visible third channel, 11px floor and up.
     const cells = await page.locator(".telltale-cell").evaluateAll((items) =>
@@ -868,7 +867,7 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     mock.assertSealed();
   });
 
-  test("lamps keep all three channels under forced colors and glow stays off text", async ({ page }) => {
+  test("lamps keep all three channels under forced colors", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await useExperience(page, "basic");
     await page.emulateMedia({ forcedColors: "active" });
@@ -901,7 +900,6 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
           color: style.color,
           strokeWidth: Number.parseFloat(style.strokeWidth),
           canvasText,
-          filter: style.filter,
           sized: box.width > 0 && box.height > 0,
         };
       });
@@ -912,8 +910,6 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
       // currentColor, which the forced palette rewrites to CanvasText.
       expect(entry.sized).toBe(true);
       expect(entry.color).toBe(entry.canvasText);
-      // Glow is a filter on geometry; forced colors kills it entirely.
-      expect(entry.filter).toBe("none");
       // Weight is the non-color lit channel and survives forced palettes:
       // lit glyphs stay heavy, dark glyphs stay hairline.
       if (entry.lit === "true") {

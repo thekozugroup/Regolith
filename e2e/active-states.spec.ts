@@ -645,92 +645,100 @@ test.describe("Regolith — live printer states", () => {
       page.locator('.gauge-dial path[stroke="var(--color-gauge-track)"]'),
       "the dial track must survive forced colors",
     ).toHaveCount(2);
-    // The forced-colors rule must kill only the glow FILTER, never the
-    // geometry that carries it: the dial value arcs and the lit status lamps
+    // De-glow (owner-directed): the dial value arcs and the lit status lamps
     // are the owner's at-a-glance heat/state signal and must stay rendered
-    // in high-contrast mode. (A previous rule set `display: none` on
-    // `.phosphor-glow` and blanked all of them — this pins the fix.)
-    const glowParts = await page.locator(".phosphor-glow").evaluateAll((items) =>
-      items.map((item) => {
-        const style = getComputedStyle(item);
-        const box = item.getBoundingClientRect();
-        return {
-          tag: item.tagName.toLowerCase(),
-          shown: style.display !== "none" && style.visibility !== "hidden",
-          unfiltered: style.filter === "none",
-          sized: box.width > 0 && box.height > 0,
-        };
-      }),
-    );
-    expect(
-      glowParts.length,
-      "a printing machine must light something up under forced colors",
-    ).toBeGreaterThan(0);
-    expect(
-      glowParts.filter((part) => !part.shown || !part.sized),
-      "every arc and lamp must stay rendered under forced colors",
-    ).toEqual([]);
-    expect(
-      glowParts.filter((part) => !part.unfiltered),
-      "the glow filter itself must be off under forced colors",
-    ).toEqual([]);
-    await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
-    mock.assertSealed();
-  });
-
-  test("the forced-colors glow rule still holds after the cockpit rework", async ({ page }) => {
-    await page.setViewportSize({ width: 800, height: 480 });
-    await page.emulateMedia({ forcedColors: "active" });
-    const mock = await openDashboard(page);
-
-    // Re-verification of the palette commit's fix, on the states the cockpit
-    // rework actually reshaped: a running job, a stopped job with a reason
-    // block, and an idle machine. The regression being guarded is a rule that
-    // hid `.phosphor-glow` outright — which erased the dial value arcs and
-    // blanked every status lamp, i.e. removed the geometry rather than the
-    // decoration.
-    for (const id of ["printing-midjob", "print-error", "at-temperature"]) {
-      await loadScenario(page, mock, id);
-      const parts = await page.locator(".phosphor-glow").evaluateAll((items) =>
+    // in high-contrast mode — as plain geometry, with no filter anywhere.
+    // (A previous rule set `display: none` on the old glow class and blanked
+    // all of them; the class is gone, the never-hide-geometry lesson stays.)
+    const litGeometry = await page
+      .locator('.gauge-dial path[stroke="currentColor"], .status-lamp')
+      .evaluateAll((items) =>
         items.map((item) => {
           const style = getComputedStyle(item);
           const box = item.getBoundingClientRect();
           return {
             tag: item.tagName.toLowerCase(),
-            filter: style.filter,
-            display: style.display,
-            visibility: style.visibility,
-            animation: style.animationName,
+            shown: style.display !== "none" && style.visibility !== "hidden",
+            unfiltered: style.filter === "none",
             sized: box.width > 0 && box.height > 0,
-            // A glow on a text-bearing element smears the glyphs; the glow
-            // belongs on geometry only.
-            ownText: Array.from(item.childNodes)
-              .filter((node) => node.nodeType === Node.TEXT_NODE)
-              .map((node) => node.textContent?.trim() ?? "")
-              .filter(Boolean)
-              .join(" "),
           };
         }),
       );
-      expect(parts.length, `${id}: nothing carries the glow class`).toBeGreaterThan(0);
-      expect(
-        parts.filter((p) => p.display === "none" || p.visibility === "hidden" || !p.sized),
-        `${id}: forced colors must kill the glow FILTER, never the geometry under it`,
-      ).toEqual([]);
-      expect(
-        parts.filter((p) => p.filter !== "none"),
-        `${id}: the glow filter must be off under forced colors`,
-      ).toEqual([]);
-      expect(
-        parts.filter((p) => p.ownText),
-        `${id}: the glow must never sit on text`,
-      ).toEqual([]);
-      expect(
-        parts.filter((p) => p.animation !== "none"),
-        `${id}: the glow must stay static, never animated`,
-      ).toEqual([]);
-      await assertNoBrokenReadouts(page, `${id} @ forced-colors`);
+    expect(
+      litGeometry.length,
+      "a printing machine must light something up under forced colors",
+    ).toBeGreaterThan(0);
+    expect(
+      litGeometry.filter((part) => !part.shown || !part.sized),
+      "every arc and lamp must stay rendered under forced colors",
+    ).toEqual([]);
+    expect(
+      litGeometry.filter((part) => !part.unfiltered),
+      "no filter may ride the arcs or lamps",
+    ).toEqual([]);
+    await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
+    mock.assertSealed();
+  });
+
+  test("dials and lamps carry no filter in any state", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+
+    // De-glow (owner-directed, flatten pass): the phosphor glow is deleted.
+    // Glow was never a state channel — arc length/color and the lamp word
+    // carry every bit it rode along with — so nothing may reintroduce a
+    // filter on instrument geometry, in any print state.
+    for (const id of ["printing-midjob", "print-error", "at-temperature"]) {
+      await loadScenario(page, mock, id);
+      const filtered = await page
+        .locator(".gauge-dial path, .status-lamp, .telltale-icon")
+        .evaluateAll((items) =>
+          items
+            .map((item) => ({
+              tag: item.tagName.toLowerCase(),
+              cls: item.getAttribute("class") ?? "",
+              filter: getComputedStyle(item).filter,
+            }))
+            .filter((part) => part.filter !== "none"),
+        );
+      expect(filtered, `${id}: no dial or lamp may carry a filter`).toEqual([]);
+      await assertNoBrokenReadouts(page, `${id} @ no-filter sweep`);
     }
+    mock.assertSealed();
+  });
+
+  test("the CRT decoration family is deleted from the stylesheet itself", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    const mock = await openDashboard(page);
+    await loadScenario(page, mock, "printing-midjob");
+
+    // Not a DOM-count check (an unused class would pass that vacuously): the
+    // RULES must be gone from the built CSS, so the decorative-CRT family
+    // (.phosphor-glow, .crt-scanlines, .readout-ghost) cannot be quietly
+    // re-adopted by a future call site.
+    const offenders = await page.evaluate(() => {
+      const found: string[] = [];
+      const walk = (rules: CSSRuleList) => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSStyleRule) {
+            if (/phosphor-glow|crt-scanlines|readout-ghost/.test(rule.selectorText)) {
+              found.push(rule.selectorText);
+            }
+          }
+          const nested = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined;
+          if (nested) walk(nested);
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          walk(sheet.cssRules);
+        } catch {
+          // Cross-origin sheets (none shipped) — skip rather than fail.
+        }
+      }
+      return found;
+    });
+    expect(offenders, "no CRT-decoration selector may survive in CSS").toEqual([]);
     mock.assertSealed();
   });
 
@@ -817,62 +825,29 @@ test.describe("Regolith — live printer states", () => {
     mock.assertSealed();
   });
 
-  test("the glow stays a bounded static drop-shadow in normal colors", async ({ page }) => {
-    await page.setViewportSize({ width: 800, height: 480 });
-    const mock = await openDashboard(page);
-    await loadScenario(page, mock, "printing-midjob");
-
-    const parts = await page.locator(".phosphor-glow").evaluateAll((items) =>
-      items.map((item) => {
-        const style = getComputedStyle(item);
-        // Largest length in the resolved filter — the blur radius, in px.
-        const radii = [...style.filter.matchAll(/([\d.]+)px/g)].map((m) => Number(m[1]));
-        return {
-          tag: item.tagName.toLowerCase(),
-          filter: style.filter,
-          maxRadius: radii.length ? Math.max(...radii) : 0,
-          animation: style.animationName,
-          transition: style.transitionProperty,
-        };
-      }),
-    );
-    expect(parts.length).toBeGreaterThan(0);
-    expect(
-      parts.filter((p) => !p.filter.startsWith("drop-shadow(")),
-      "the glow must be a drop-shadow, not a box-shadow or text-shadow",
-    ).toEqual([]);
-    expect(
-      parts.filter((p) => p.maxRadius > 6),
-      "the glow must stay bounded at 6px or under",
-    ).toEqual([]);
-    expect(
-      parts.filter((p) => p.animation !== "none" || /filter/.test(p.transition)),
-      "the glow must be static — never animated, never transitioned",
-    ).toEqual([]);
-
-    mock.assertSealed();
-  });
-
   test("a live dial draws its value arc and lit lamps in normal colors", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await openDashboard(page);
     await loadScenario(page, mock, "printing-midjob");
 
     // The value arc and the "active" lamps are the only things distinguishing
-    // a hot printer from a cold one at a glance. They carry `.phosphor-glow`;
-    // pin them here in the mode the owner normally runs (the forced-colors
-    // test above pins the same parts under high contrast).
-    const litParts = await page.locator(".phosphor-glow").evaluateAll((items) =>
-      items.map((item) => {
-        const style = getComputedStyle(item);
-        const box = item.getBoundingClientRect();
-        return {
-          tag: item.tagName.toLowerCase(),
-          shown: style.display !== "none" && style.visibility !== "hidden",
-          sized: box.width > 0 && box.height > 0,
-        };
-      }),
-    );
+    // a hot printer from a cold one at a glance. Pin them here in the mode
+    // the owner normally runs (the forced-colors test above pins the same
+    // parts under high contrast). Selected directly — the glow class that
+    // once marked them is deleted.
+    const litParts = await page
+      .locator('.gauge-dial path[stroke="currentColor"], .status-lamp')
+      .evaluateAll((items) =>
+        items.map((item) => {
+          const style = getComputedStyle(item);
+          const box = item.getBoundingClientRect();
+          return {
+            tag: item.tagName.toLowerCase(),
+            shown: style.display !== "none" && style.visibility !== "hidden",
+            sized: box.width > 0 && box.height > 0,
+          };
+        }),
+      );
     expect(litParts.length, "a printing machine must light something up").toBeGreaterThan(0);
     expect(
       litParts.filter((part) => !part.shown || !part.sized),

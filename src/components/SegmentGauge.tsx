@@ -31,8 +31,8 @@ export interface SegmentGaugeProps {
  * dial and its bar fallback, for quantities that are inherently stepped
  * (duty cycles, factor offsets, bounded temps with a warn zone). SVG carries
  * GEOMETRY ONLY — zero SVG <text>, same contract as Dial.tsx, so every glyph
- * stays HTML under the 11px gate. No glow (arcs and lamps only), no floor or
- * fallback renderer needed: segments degrade gracefully at any width.
+ * stays HTML under the 11px gate. No filters, no floor or fallback renderer
+ * needed: segments degrade gracefully at any width.
  *
  * The strip is a fixed 24px tall and stretches horizontally with its tile
  * (preserveAspectRatio="none": segments widen like SD1's, they never grow

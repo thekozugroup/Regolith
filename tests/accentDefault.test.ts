@@ -96,8 +96,10 @@ describe("default accent single source of truth", () => {
 
   test("every color-mix interpolates in a rectangular space, never oklch", () => {
     // Mixing in a polar space drags hues through arcs they were never meant
-    // to cross (see the .phosphor-glow comment in index.css). Raw oklch()
-    // literals are fine — it is only INTERPOLATION that must stay oklab.
+    // to cross (see the mixing-law comment on --color-accent-soft in
+    // index.css — the law's canonical home now that the glow it corrected is
+    // deleted). Raw oklch() literals are fine — it is only INTERPOLATION
+    // that must stay oklab.
     const polarMix = /color-mix\(\s*in[_ ]+oklch/i;
     const offenders = walk(SRC_DIR).filter((file) =>
       polarMix.test(readFileSync(file, "utf8")),
