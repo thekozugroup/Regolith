@@ -22,6 +22,7 @@ export type { PrinterProfile } from "./types";
 export {
   type FanRole,
   type ProfileSensor,
+  type ProfileStatusPin,
   type ProfileTemperatureFan,
   type ProfileFilamentSensor,
   type ProfileHeater,
@@ -156,5 +157,11 @@ export function profileFields(
   // Runout switches ride the same declare-to-subscribe path as heaters and
   // sensors — profiles without them (K1 Max base) add no subscription.
   const filament = (profile.filamentSensors ?? []).map((s) => s.klipper);
-  return [...new Set([...base, ...heaters, ...sensors, ...fans, ...filament])];
+  // Status pins (chamber LED): declare-to-subscribe, display-only. A profile
+  // must only declare pins a live objects.list proved to exist — Moonraker
+  // refuses the whole subscription set over one unknown object.
+  const pins = (profile.statusPins ?? []).map((p) => p.klipper);
+  return [
+    ...new Set([...base, ...heaters, ...sensors, ...fans, ...filament, ...pins]),
+  ];
 }

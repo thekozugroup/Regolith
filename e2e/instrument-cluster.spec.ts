@@ -848,7 +848,9 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     // Settle past the bulb test so only FIRMWARE holds.
     await expect(litLamps(page)).toHaveCount(1);
 
-    const channels = await page.locator(".telltale-lamp").evaluateAll((items) => {
+    // Scoped to the cluster grid: the Readiness light chip deliberately
+    // reuses the lamp grammar class and has its own coverage.
+    const channels = await page.locator(".telltale-grid .telltale-lamp").evaluateAll((items) => {
       // Resolve what CanvasText actually paints as, same probe technique as
       // the status-lamp forced-colors regression test.
       const probe = document.createElement("span");

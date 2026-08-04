@@ -49,6 +49,20 @@ export interface ProfileFilamentSensor {
   label: string;
 }
 
+/**
+ * A read-only status pin (`output_pin name`) whose VALUE the UI displays —
+ * e.g. the K1 Max chamber LED. Declare one ONLY after a live
+ * `printer.objects.list` proves the klipper object exists: subscribing an
+ * absent object makes Moonraker refuse the whole subscription set. Display
+ * only — toggling a pin is a printerActions concern, not a profile one.
+ */
+export interface ProfileStatusPin {
+  /** Klipper object id, e.g. `output_pin LED`. */
+  klipper: string;
+  /** Display label for UI. */
+  label: string;
+}
+
 /** A heater entry (extruder, heater_bed, heater_generic). */
 export interface ProfileHeater {
   klipper: string;
@@ -126,6 +140,12 @@ export interface PrinterProfile {
    * sensors its printer does not physically have.
    */
   filamentSensors?: ProfileFilamentSensor[];
+  /**
+   * Read-only status pins (chamber light etc.). OPTIONAL and absent by
+   * default: the light chip renders `—` when no pin is declared or no
+   * telemetry has arrived — never a false OFF claim.
+   */
+  statusPins?: ProfileStatusPin[];
   /**
    * Service-interval hours for the (deferred) MAINTENANCE tell-tale — reads
    * Moonraker history totals, never session data. Absent = no maintenance

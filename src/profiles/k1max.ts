@@ -39,6 +39,10 @@ export const K1_MAX: PrinterProfile = {
       criticalAbove: 80,
     },
   ],
+  // Chamber LED — present on the live objects.list (the light-watchdog
+  // service reads the same object). Display-only: no UI command path exists
+  // for SET_PIN, deliberately (frozen printerActions surface).
+  statusPins: [{ klipper: "output_pin LED", label: "Light" }],
   // No `filamentSensors` and no `maintenanceEveryHours`: the live
   // `printer.objects.list` on this K1 Max shows no `filament_switch_sensor`
   // object, and declaring one would render a FILAMENT tell-tale that
