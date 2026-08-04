@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from "react";
 import { calibrationFactor, type JobCalibration } from "./jobProgress";
+import { pickThumbnail, thumbnailUrlFor } from "./thumbnails";
 
 /** Enough history to see a trend without dragging in a different filament era. */
 const HISTORY_LIMIT = 20;
@@ -26,8 +27,15 @@ const CALIBRATION_TTL_MS = 5 * 60 * 1000;
 /** History/metadata are conveniences — never let one hang a render path. */
 const FETCH_TIMEOUT_MS = 8_000;
 
-/** A file's slicer estimate never changes, so cache it forever by name. */
-const metadataCache = new Map<string, number | null>();
+export interface FileMetadata {
+  /** The slicer's own estimate in seconds, or null. */
+  slicerEstimate: number | null;
+  /** URL of an embedded preview, or null when the file has none. */
+  thumbnailUrl: string | null;
+}
+
+/** A file's metadata never changes, so cache it forever by name. */
+const metadataCache = new Map<string, FileMetadata>();
 
 let calibrationCache: { at: number; value: JobCalibration | null } | null = null;
 let calibrationInFlight: Promise<JobCalibration | null> | null = null;
@@ -71,20 +79,32 @@ export async function fetchCalibration(): Promise<JobCalibration | null> {
   }
 }
 
-/** The slicer's own estimate for a gcode file, in seconds, or null. */
-export async function fetchSlicerEstimate(
+/**
+ * One read of `/server/files/metadata`, answering both questions the mission
+ * panel has about a file: how long the slicer thought it would take, and
+ * whether it carries a preview at all.
+ *
+ * Asking about the preview HERE is what removes the thumbnail 404: the panel
+ * used to guess the Fluidd path and probe it with an Image(), so every
+ * thumbless job logged a failed request on every dashboard load.
+ */
+export async function fetchFileMetadata(
   filename: string,
-): Promise<number | null> {
+): Promise<FileMetadata> {
   const cached = metadataCache.get(filename);
   if (cached !== undefined) return cached;
 
   const body = await getJson(
     `/server/files/metadata?filename=${encodeURIComponent(filename)}`,
   );
-  const raw = (body as { result?: { estimated_time?: unknown } } | null)?.result
-    ?.estimated_time;
-  const value =
-    typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null;
+  const result = (body as { result?: Record<string, unknown> } | null)?.result;
+  const raw = result?.estimated_time;
+  const relative = pickThumbnail(result?.thumbnails);
+  const value: FileMetadata = {
+    slicerEstimate:
+      typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null,
+    thumbnailUrl: relative ? thumbnailUrlFor(filename, relative) : null,
+  };
   metadataCache.set(filename, value);
   return value;
 }
@@ -92,9 +112,15 @@ export async function fetchSlicerEstimate(
 export interface JobHistoryInputs {
   slicerEstimate: number | null;
   calibration: JobCalibration | null;
+  /** Embedded preview URL for the current job, or null when it has none. */
+  thumbnailUrl: string | null;
 }
 
-const EMPTY: JobHistoryInputs = { slicerEstimate: null, calibration: null };
+const EMPTY: JobHistoryInputs = {
+  slicerEstimate: null,
+  calibration: null,
+  thumbnailUrl: null,
+};
 
 /**
  * Calibration inputs for the file currently printing. Pass `undefined` when
@@ -110,12 +136,19 @@ export function useJobHistory(filename: string | undefined): JobHistoryInputs {
       return;
     }
     let live = true;
+    setInputs(EMPTY);
+    // Two INDEPENDENT reads, applied as each lands. They were awaited
+    // together, which made the slower one gate the faster: a Moonraker whose
+    // `[history]` component is disabled or slow held the file's own metadata
+    // — including its embedded preview — hostage for the full 8s fetch
+    // timeout. Nothing here depends on the other having arrived.
     void (async () => {
-      const [calibration, slicerEstimate] = await Promise.all([
-        fetchCalibration(),
-        fetchSlicerEstimate(filename),
-      ]);
-      if (live) setInputs({ slicerEstimate, calibration });
+      const metadata = await fetchFileMetadata(filename);
+      if (live) setInputs((prev) => ({ ...prev, ...metadata }));
+    })();
+    void (async () => {
+      const calibration = await fetchCalibration();
+      if (live) setInputs((prev) => ({ ...prev, calibration }));
     })();
     return () => {
       live = false;

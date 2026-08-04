@@ -139,14 +139,48 @@ export async function installActiveMock(
       return;
     }
 
-    // Fluidd-convention thumbnail lookup issued by MissionTimeline whenever a
-    // job filename exists. Withholding it exercises the placeholder branch.
-    if (url.pathname.startsWith("/server/files/gcodes/.thumbs/")) {
+    // Embedded gcode previews. Two shapes reach here: the flat Fluidd guess
+    // the Files list row still makes for its 32px tile, and the
+    // directory-relative path Moonraker reports in metadata. Withholding
+    // both exercises the designed placeholder branches.
+    if (
+      url.pathname.startsWith("/server/files/gcodes/") &&
+      url.pathname.includes("/.thumbs/")
+    ) {
       if (!options.thumbnail) {
         await route.fulfill({ status: 404, body: "no thumbnail" });
         return;
       }
       await route.fulfill({ status: 200, contentType: "image/png", body: PNG });
+      return;
+    }
+
+    // File metadata. Only the `thumbnails` list is answered: MissionTimeline
+    // asks what previews a file HAS rather than probing a guessed path, so
+    // this fixture is what decides whether its <img> branch renders.
+    // `estimated_time` is deliberately absent — supplying one would quietly
+    // change every calibrated remaining-time assertion in the suite.
+    if (url.pathname === "/server/files/metadata") {
+      const filename = url.searchParams.get("filename") ?? "";
+      const base = filename.split("/").pop()?.replace(/\.gcode$/i, "") ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: options.thumbnail
+            ? {
+                thumbnails: [
+                  {
+                    width: 300,
+                    height: 300,
+                    size: 1,
+                    relative_path: `.thumbs/${base}-300x300.png`,
+                  },
+                ],
+              }
+            : {},
+        }),
+      });
       return;
     }
 

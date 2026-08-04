@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pause, Play, Square, FileText, Activity, X, RotateCcw, AlertTriangle } from "lucide-react";
 import { ActionConfirmDialog } from "./ActionConfirmDialog";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { usePrinter } from "@/lib/usePrinter";
 import { useGcodeLog } from "@/lib/useGcodeLog";
-import { moonraker } from "@/lib/moonraker";
 import {
   guardPrinterAction,
   runPrinterAction,
@@ -83,7 +82,6 @@ export function MissionTimeline() {
   const { state, connected } = usePrinter();
   const ps = state.print_stats;
   const sd = state.virtual_sdcard;
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<{
@@ -106,7 +104,9 @@ export function MissionTimeline() {
   // Calibration inputs for the early-job estimate: this printer's measured
   // bias against its slicer's guesses, plus the guess for THIS file. Both are
   // optional read-only REST reads that fail to null — see lib/useJobHistory.
-  const { slicerEstimate, calibration } = useJobHistory(
+  // The preview comes from the same metadata read: Moonraker is asked what
+  // the file actually contains rather than being probed at a guessed path.
+  const { slicerEstimate, calibration, thumbnailUrl } = useJobHistory(
     isPrintingFile ? filename : undefined,
   );
 
@@ -132,19 +132,6 @@ export function MissionTimeline() {
   const filamentMm = ps?.filament_used ?? 0;
   const layerText = formatLayer(ps?.info?.current_layer, ps?.info?.total_layer);
   const reason = jobReason(ps?.message);
-
-  // Resolve thumbnail (prints only)
-  useEffect(() => {
-    if (!filename) {
-      setThumbUrl(null);
-      return;
-    }
-    const url = moonraker.thumbnailUrl(filename, 300);
-    const img = new Image();
-    img.onload = () => setThumbUrl(url);
-    img.onerror = () => setThumbUrl(null);
-    img.src = url;
-  }, [filename]);
 
   const dispatch = async (action: PrinterAction) => {
     setActionBusy(action.type);
@@ -309,9 +296,9 @@ export function MissionTimeline() {
       <div className="mission-media-grid">
         {/* Thumbnail */}
         <div className="flex aspect-square items-center justify-center overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)]">
-          {thumbUrl ? (
+          {thumbnailUrl ? (
             <img
-              src={thumbUrl}
+              src={thumbnailUrl}
               alt={filename}
               className="w-full h-full object-contain"
             />
