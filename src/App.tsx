@@ -8,6 +8,10 @@ import { AppBar } from "./components/AppBar";
 import { HealthAlerts } from "./components/HealthAlerts";
 import { MissionBar } from "./components/MissionBar";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
+import {
+  ChromeErrorBoundary,
+  CrashSeam,
+} from "./components/ChromeErrorBoundary";
 import { useNotifications } from "./lib/useNotifications";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { useExperienceMode } from "./lib/useExperienceMode";
@@ -78,20 +82,43 @@ function AppShell() {
   useKeyboardShortcuts();
   return (
     <>
-      <Sidebar />
-      <AppBar />
-      <HealthAlerts />
+      {/* Each persistent surface is contained separately. They render on
+          every route, ABOVE the route boundary, so one throw used to take the
+          whole document — including the navigation needed to get anywhere
+          else. Losing one panel now costs exactly that panel. */}
+      <ChromeErrorBoundary id="sidebar" label="Navigation unavailable — reload to restore it">
+        <CrashSeam id="sidebar" />
+        <Sidebar />
+      </ChromeErrorBoundary>
+      <ChromeErrorBoundary id="appbar" label="Toolbar unavailable — reload to restore it">
+        <CrashSeam id="appbar" />
+        <AppBar />
+      </ChromeErrorBoundary>
+      {/* Alerts fail LOUD, not silent: this host carries the thermal-runaway
+          and stale-telemetry warnings, so its absence has to be stated
+          outright rather than looking like "nothing is wrong". */}
+      <ChromeErrorBoundary
+        id="health-alerts"
+        label="Printer alerts unavailable — watch the machine directly until this is reloaded"
+      >
+        <CrashSeam id="health-alerts" />
+        <HealthAlerts />
+      </ChromeErrorBoundary>
       {/* Mission bar renders BEFORE main so the dashboard task order
           ("is it OK?" first) holds in the DOM; it is pinned to the bottom
           of the glass visually. Content clearance = mission bar height,
           plus the bottom nav's on compact chrome (they stack). */}
-      <MissionBar />
+      <ChromeErrorBoundary id="mission-bar" label="Status bar unavailable — reload to restore it">
+        <CrashSeam id="mission-bar" />
+        <MissionBar />
+      </ChromeErrorBoundary>
       <main
         id="main-content"
         tabIndex={-1}
         className="mt-[var(--appbar-h)] min-h-[calc(100dvh-var(--appbar-h))] pb-[calc(var(--bottomnav-h)+var(--mission-h)+0.5rem)] transition-[margin-left] duration-[var(--dur-slow)] ease-[var(--ease-emphasized)] desk:ml-[var(--sidebar-w,14rem)] desk:pb-[var(--mission-h)]"
       >
         <RouteErrorBoundary key={location.pathname}>
+          <CrashSeam id="route" />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />

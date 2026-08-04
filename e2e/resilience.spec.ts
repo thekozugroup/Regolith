@@ -14,6 +14,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   assertOwnerTrust,
   installActiveMock,
+  type ActiveMock,
 } from "./support/active-state-harness";
 import { SCENARIOS } from "./support/printer-scenarios";
 
@@ -35,6 +36,12 @@ const CORRUPTED_KEYS: Record<string, string> = {
   "forge.ai.feature.explain": "maybe",
   "forge.ai.feature.postmortem": "null",
 };
+
+async function openDashboard(page: Page): Promise<ActiveMock> {
+  const mock = await installActiveMock(page, SCENARIOS[0]);
+  await page.goto("/");
+  return mock;
+}
 
 /** Console errors and uncaught page errors, collected for the whole test. */
 function collectConsole(page: Page): { errors: string[]; warnings: string[] } {
@@ -75,6 +82,9 @@ test.describe("Corrupted persisted state", () => {
     ).toBeVisible();
 
     await page.goto("/");
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
     await assertOwnerTrust(page, "corrupted-storage");
     expect(log.errors, "corrupted storage logged errors").toEqual([]);
     mock.assertSealed();
@@ -131,6 +141,47 @@ test.describe("Corrupted persisted state", () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("region", { name: "Printer status" })).toBeVisible();
     expect(log.errors, "unusable storage logged errors").toEqual([]);
+    mock.assertSealed();
+  });
+});
+
+test.describe("Chrome error containment", () => {
+  test("a throwing chrome panel is contained — the rest of the shell survives", async ({
+    page,
+  }) => {
+    const mock = await openDashboard(page);
+    // Fault injection through the app's own boundary test hook (dev/test
+    // builds only). MissionBar sits OUTSIDE <main>, above the route
+    // boundary; before ChromeErrorBoundary its first render throw took the
+    // whole document with it.
+    await page.evaluate(() => {
+      window.localStorage.setItem("forge.debug.crash", "mission-bar");
+    });
+    await page.reload();
+
+    // The route still rendered, navigation still works, and the failure is
+    // named rather than silent.
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("navigation").first()).toBeVisible();
+    await expect(page.getByText("Status bar unavailable")).toBeVisible();
+    mock.assertSealed();
+  });
+
+  test("a throwing route is contained — the chrome around it survives", async ({
+    page,
+  }) => {
+    const mock = await openDashboard(page);
+    await page.evaluate(() => {
+      window.localStorage.setItem("forge.debug.crash", "route");
+    });
+    await page.reload();
+
+    await expect(page.getByRole("heading", { name: "View could not load" })).toBeVisible();
+    // Chrome the owner needs in order to get OUT of the broken view.
+    await expect(page.getByRole("region", { name: "Printer status" })).toBeVisible();
+    await expect(page.getByRole("navigation").first()).toBeVisible();
     mock.assertSealed();
   });
 });
