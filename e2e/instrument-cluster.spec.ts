@@ -923,6 +923,31 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
       }
     }
 
+    // The SECOND structural lit channel: under forced colors a lit cell
+    // underlines its label. text-decoration is geometry, not color, so the
+    // forced palette must paint it — lit/unlit discrimination never rests on
+    // stroke weight alone.
+    const marks = await page
+      .locator(".telltale-grid .telltale-cell")
+      .evaluateAll((cells) =>
+        cells.map((cell) => {
+          const label = cell.querySelector(".instrument-label");
+          return {
+            lit: cell.getAttribute("data-lit"),
+            underlined: label
+              ? getComputedStyle(label).textDecorationLine.includes("underline")
+              : null,
+          };
+        }),
+      );
+    expect(marks.length).toBe(8);
+    // Non-vacuous on both sides: this scenario holds exactly one lit lamp
+    // (FIRMWARE) among unlit neighbours.
+    expect(marks.filter((m) => m.lit === "true").length).toBe(1);
+    for (const mark of marks) {
+      expect(mark.underlined, `lit=${mark.lit} label underline`).toBe(mark.lit === "true");
+    }
+
     mock.assertSealed();
   });
 });

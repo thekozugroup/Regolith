@@ -677,6 +677,16 @@
     .telltale-icon, .telltale-icon[data-lit="true"] { color: CanvasText; }
     .telltale-lamp { border: 1px solid CanvasText; background: transparent; }
     .telltale-lamp[data-lit="true"] { background: CanvasText; }
+    /* Stroke weight alone is a thin discriminator once the forced palette
+       flattens every severity ink to CanvasText — so a lit cell gets a
+       SECOND, structural channel: its label is underlined. text-decoration
+       is geometry, not color, so forced colors must paint it; unlit labels
+       stay bare. (Normal palettes never see this rule — there the severity
+       color carries the state.) */
+    .telltale-cell[data-lit="true"] .instrument-label {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
   }
 
   /* Mission media split: thumbnail rail only when the Card itself is wide
