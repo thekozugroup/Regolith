@@ -109,6 +109,13 @@ export function ConsolePage() {
         title="Console"
         icon={<Terminal />}
         className="h-full flex flex-col"
+        // The body must be a flex column that is allowed to shrink: without
+        // it the feed's flex-1 is inert and the column overflows the
+        // overflow-hidden panel, clipping the G-code input and Send button
+        // out of reach on the K1 Max's own 800x480 panel. overflow-y-auto is
+        // the last-resort escape hatch — if a short viewport still cannot fit
+        // the fixed rows, the body scrolls instead of discarding the tail.
+        bodyClassName="flex min-h-0 flex-col overflow-y-auto"
         action={
           <Button
             size="sm"
@@ -149,7 +156,7 @@ export function ConsolePage() {
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="bleed -mt-[var(--card-pad)] min-h-[200px] flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
+          className="bleed -mt-[var(--card-pad)] min-h-0 flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
         >
           {lines.length === 0 && (
             <div className="text-[var(--color-fg-muted)] italic">
@@ -211,8 +218,11 @@ export function ConsolePage() {
           </div>
         )}
 
-        {/* Input row — always visible above keyboard / below feed */}
-        <div className="flex gap-2 pt-3 -mb-1">
+        {/* Input row — always visible above keyboard / below feed. No
+            negative bottom margin here: the row now sits against the panel's
+            bottom corner, and the concentricity law needs the full card pad
+            as its gap (inner = outer − gap). */}
+        <div className="flex gap-2 pt-3">
           <span className="self-center text-[var(--color-accent)] font-mono select-none">
             ›
           </span>
