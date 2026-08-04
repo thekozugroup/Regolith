@@ -34,6 +34,19 @@ function tickLine(deg: number, rOuter: number, rInner: number) {
   return { x1, y1, x2, y2 };
 }
 
+/**
+ * The scale is fixed geometry — 41 ticks at 6° steps, every fifth one major —
+ * so it depends on nothing the dial is handed. Built once at module load
+ * rather than rebuilt on every render: two dials refreshing at the telemetry
+ * cadence were allocating 41 objects and 41 more line geometries apiece, four
+ * times a second, to draw marks that never move.
+ */
+const TICKS = Array.from({ length: 41 }, (_, i) => {
+  const deg = SWEEP_START + 6 * i;
+  const major = i % 5 === 0;
+  return { deg, major, line: tickLine(deg, 64, major ? 56 : 60) };
+});
+
 export interface DialProps {
   actual: number | null | undefined;
   target: number;
@@ -55,10 +68,6 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
   const deltaD = showDelta
     ? arcPath(TRACK_R, Math.min(valueAngle, targetAngle), Math.max(valueAngle, targetAngle))
     : null;
-  const ticks = Array.from({ length: 41 }, (_, i) => ({
-    deg: SWEEP_START + 6 * i,
-    major: i % 5 === 0,
-  }));
   const targetIndexStyle = {
     transform: `rotate(${targetAngle}deg)`,
     transformOrigin: "100px 100px",
@@ -98,18 +107,15 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
           }}
         />
         {/* Ticks — minor hidden on small dials via .dial-ticks-minor */}
-        {ticks.map(({ deg, major }) => {
-          const line = tickLine(deg, 64, major ? 56 : 60);
-          return (
-            <line
-              key={deg}
-              {...line}
-              className={major ? undefined : "dial-ticks-minor"}
-              stroke={major ? "var(--color-gauge-tick)" : "var(--color-gauge-tick-minor)"}
-              strokeWidth={major ? 2 : 1}
-            />
-          );
-        })}
+        {TICKS.map(({ deg, major, line }) => (
+          <line
+            key={deg}
+            {...line}
+            className={major ? undefined : "dial-ticks-minor"}
+            stroke={major ? "var(--color-gauge-tick)" : "var(--color-gauge-tick-minor)"}
+            strokeWidth={major ? 2 : 1}
+          />
+        ))}
         {/* Target index */}
         {active && (
           <g style={targetIndexStyle}>
