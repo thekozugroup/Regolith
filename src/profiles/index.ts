@@ -111,24 +111,37 @@ export function onProfileChange(cb: () => void): () => void {
   return () => window.removeEventListener(CHANGE_EVENT, cb);
 }
 
+export interface ProfileFieldsOptions {
+  /**
+   * Include `motion_report`. It streams live position at Moonraker's full
+   * batch cadence, so it is claimed only while something renders it —
+   * Control's live-position readout and the Dashboard expert "Live Vel."
+   * tile (WP-PERF). Progress comes from `virtual_sdcard`; the old
+   * `display_status` subscription had no reader and was dropped outright.
+   */
+  motion?: boolean;
+}
+
 /**
  * Klipper object names a profile cares about — used to build the
  * moonraker subscription field list dynamically.
  */
-export function profileFields(profile: PrinterProfile): string[] {
+export function profileFields(
+  profile: PrinterProfile,
+  opts: ProfileFieldsOptions = {},
+): string[] {
   const base = [
     "print_stats",
     "idle_timeout",
     "toolhead",
-    "display_status",
     "virtual_sdcard",
     "fan",
     "webhooks",
     "gcode_move",
-    "motion_report",
     // MESH ACTIVE tell-tale: profile_name is the only proof a mesh is loaded.
     "bed_mesh",
   ];
+  if (opts.motion) base.push("motion_report");
   const heaters = profile.heaters.map((h) => h.klipper);
   const sensors = profile.sensors.map((s) => s.klipper);
   const fans = profile.fans.map((f) => f.klipper);

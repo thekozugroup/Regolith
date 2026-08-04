@@ -55,3 +55,18 @@ describe("profileFields — tell-tale data layer", () => {
     }
   });
 });
+
+// WP-PERF: display_status had no reader anywhere in src (progress renders
+// from virtual_sdcard) and motion_report streams live position at full
+// batch cadence, so it is claimed only while something renders it.
+describe("profileFields — WP-PERF subscription hygiene", () => {
+  test("display_status is never subscribed", () => {
+    expect(profileFields(K1_MAX)).not.toContain("display_status");
+    expect(profileFields(K1_MAX, { motion: true })).not.toContain("display_status");
+  });
+
+  test("motion_report is subscribed only on an explicit claim", () => {
+    expect(profileFields(K1_MAX)).not.toContain("motion_report");
+    expect(profileFields(K1_MAX, { motion: true })).toContain("motion_report");
+  });
+});

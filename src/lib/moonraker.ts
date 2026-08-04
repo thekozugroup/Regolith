@@ -59,8 +59,6 @@ export interface PrinterState {
     axis_minimum?: [number, number, number, number];
     axis_maximum?: [number, number, number, number];
   };
-  // Display status (progress)
-  display_status?: { progress: number; message: string };
   // Virtual SD
   virtual_sdcard?: {
     progress: number;
@@ -146,13 +144,21 @@ export class Moonraker {
   private nextId = 1;
   private pending = new Map<
     number,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    {
+      resolve: (v: unknown) => void;
+      reject: (e: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
   private state: PrinterState = {};
   private subs = new Set<SubscriptionCallback>();
   private connSubs = new Set<ConnectionCallback>();
   private gcodeLogSubs = new Set<GcodeLogCallback>();
-  private subscribedFields = new Set<string>();
+  /** How many mounted consumers currently want each klipper object. */
+  private fieldRefs = new Map<string, number>();
+  /** The field set last pushed to (or queued for) the server. */
+  private activeFields = new Set<string>();
+  private syncQueued = false;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private manuallyDisconnected = false;
@@ -172,10 +178,10 @@ export class Moonraker {
       if (this.ws !== socket) return;
       this.reconnectAttempt = 0;
       this.connSubs.forEach((cb) => cb(true));
-      // Re-subscribe on reconnect
-      if (this.subscribedFields.size > 0) {
-        this.subscribe([...this.subscribedFields]);
-      }
+      // Replay on reconnect with the CURRENT desired set (replace semantics:
+      // a field released while offline must not resurrect here).
+      this.activeFields = new Set(this.fieldRefs.keys());
+      if (this.activeFields.size > 0) this.pushSubscription();
     });
 
     socket.addEventListener("message", (e) => {
@@ -220,7 +226,10 @@ export class Moonraker {
 
   private rejectPending(message: string): void {
     const error = new Error(message);
-    this.pending.forEach(({ reject }) => reject(error));
+    this.pending.forEach(({ reject, timer }) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     this.pending.clear();
   }
 
@@ -233,18 +242,20 @@ export class Moonraker {
       }
       const id = this.nextId++;
       const req: RpcRequest = { jsonrpc: "2.0", method, params, id };
-      this.pending.set(id, {
-        resolve: resolve as (v: unknown) => void,
-        reject,
-      });
-      this.ws.send(JSON.stringify(req));
-
-      setTimeout(() => {
+      // Captured so settlement can clear it — an uncleared 15s handle per
+      // RPC accumulates across a long session (the WP-PERF timer leak).
+      const timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
           reject(new Error(`RPC timeout: ${method}`));
         }
       }, 15000);
+      this.pending.set(id, {
+        resolve: resolve as (v: unknown) => void,
+        reject,
+        timer,
+      });
+      this.ws.send(JSON.stringify(req));
     });
   }
 
@@ -260,6 +271,7 @@ export class Moonraker {
       const pending = this.pending.get(msg.id);
       if (!pending) return;
       this.pending.delete(msg.id);
+      clearTimeout(pending.timer);
       if (msg.error) pending.reject(new Error(msg.error.message));
       else pending.resolve(msg.result);
     } else if (msg.method === "notify_status_update") {
@@ -309,24 +321,64 @@ export class Moonraker {
   }
 
   // ----- Subscriptions -----
-  subscribe(
-    fields: string[],
-    cb?: SubscriptionCallback
-  ): () => void {
-    fields.forEach((f) => this.subscribedFields.add(f));
-    const objects = Object.fromEntries(fields.map((f) => [f, null]));
-    this.send<{ status: PrinterState }>(
-      "printer.objects.subscribe",
-      { objects }
-    )
+  /**
+   * Ref-counted: each mounting consumer declares the fields it needs and
+   * releases them on unmount. The union of live claims is pushed to the
+   * server as a REPLACEMENT set (Moonraker's own subscribe semantics), and
+   * pushes are coalesced per microtask, so N consumers mounting in one
+   * React commit produce exactly one `printer.objects.subscribe` RPC.
+   */
+  subscribe(fields: string[], cb?: SubscriptionCallback): () => void {
+    const claimed = [...new Set(fields)];
+    claimed.forEach((f) =>
+      this.fieldRefs.set(f, (this.fieldRefs.get(f) ?? 0) + 1),
+    );
+    if (cb) this.subs.add(cb);
+    this.queueSync();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (cb) this.subs.delete(cb);
+      claimed.forEach((f) => {
+        const n = this.fieldRefs.get(f) ?? 0;
+        if (n <= 1) this.fieldRefs.delete(f);
+        else this.fieldRefs.set(f, n - 1);
+      });
+      this.queueSync();
+    };
+  }
+
+  private queueSync(): void {
+    if (this.syncQueued) return;
+    this.syncQueued = true;
+    queueMicrotask(() => {
+      this.syncQueued = false;
+      const desired = new Set(this.fieldRefs.keys());
+      if (
+        desired.size === this.activeFields.size &&
+        [...desired].every((f) => this.activeFields.has(f))
+      ) {
+        return; // same set already live — no RPC
+      }
+      // REPLACE, never union: dropped fields must actually stop streaming.
+      this.activeFields = desired;
+      this.pushSubscription();
+    });
+  }
+
+  private pushSubscription(): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return; // replayed on open
+    const objects = Object.fromEntries(
+      [...this.activeFields].map((f) => [f, null]),
+    );
+    this.send<{ status: PrinterState }>("printer.objects.subscribe", {
+      objects,
+    })
       .then(({ status }) => this.mergeState(status))
       .catch(() => {
-        /* WS likely not ready yet, will retry on connect */
+        /* connection dropped mid-flight — the open handler replays */
       });
-    if (cb) this.subs.add(cb);
-    return () => {
-      if (cb) this.subs.delete(cb);
-    };
   }
 
   onConnect(cb: ConnectionCallback): () => void {

@@ -57,7 +57,9 @@ export function Dashboard() {
     posY: state.toolhead?.position?.[1],
     posZ: state.toolhead?.position?.[2],
     homedAxes: state.toolhead?.homed_axes,
-  }));
+    // motion_report only streams while claimed — the expert "Live Vel."
+    // tile is its sole Dashboard reader (WP-PERF).
+  }), { motion: isExpert });
 
   return (
     <div className="dashboard-shell mx-auto max-w-[min(100%,2200px)] p-[var(--page-gutter)]">

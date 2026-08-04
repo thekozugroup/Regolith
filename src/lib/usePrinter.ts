@@ -4,20 +4,35 @@ import { profileFields } from "@/profiles";
 import { useProfile } from "./useProfile";
 import { selectionEquals } from "./selection";
 
-export function usePrinter() {
+export interface UsePrinterOptions {
+  /**
+   * Claim the `motion_report` subscription while mounted. Pass true only
+   * from consumers that actually render live motion (Control's position
+   * readout, the Dashboard expert velocity tile) — the field streams at
+   * full batch cadence and is dropped from the server set when the last
+   * claimant unmounts (WP-PERF).
+   */
+  motion?: boolean;
+}
+
+export function usePrinter(options: UsePrinterOptions = {}) {
+  const motion = options.motion === true;
   const profile = useProfile();
   const [state, setState] = useState<PrinterState>(moonraker.getState());
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     moonraker.connect();
-    const unsubState = moonraker.subscribe(profileFields(profile), setState);
+    const unsubState = moonraker.subscribe(
+      profileFields(profile, { motion }),
+      setState,
+    );
     const unsubConn = moonraker.onConnect(setConnected);
     return () => {
       unsubState();
       unsubConn();
     };
-  }, [profile]);
+  }, [profile, motion]);
 
   return { state, connected, mr: moonraker, profile };
 }
@@ -34,7 +49,9 @@ export function usePrinter() {
  */
 export function usePrinterSelector<T>(
   selector: (state: PrinterState, connected: boolean) => T,
+  options: UsePrinterOptions = {},
 ): T {
+  const motion = options.motion === true;
   const profile = useProfile();
   const selectorRef = useRef(selector);
   const [selected, setSelected] = useState<T>(() =>
@@ -54,7 +71,10 @@ export function usePrinterSelector<T>(
       setSelected((prev) => (selectionEquals(prev, next) ? prev : next));
     };
     moonraker.connect();
-    const unsubState = moonraker.subscribe(profileFields(profile), update);
+    const unsubState = moonraker.subscribe(
+      profileFields(profile, { motion }),
+      update,
+    );
     const unsubConn = moonraker.onConnect((isUp) => {
       connected = isUp;
       update();
@@ -64,7 +84,7 @@ export function usePrinterSelector<T>(
       unsubState();
       unsubConn();
     };
-  }, [profile]);
+  }, [profile, motion]);
 
   return selected;
 }

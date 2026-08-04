@@ -26,7 +26,9 @@ const DISTANCES = [0.1, 1, 10, 25, 50, 100];
 const BASIC_DISTANCES = [1, 10, 50];
 
 export function Control() {
-  const { state } = usePrinter();
+  // motion: the live-position readout below renders motion_report, so this
+  // route claims the subscription while mounted (WP-PERF).
+  const { state } = usePrinter({ motion: true });
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
   const [dist, setDist] = useState(1);
