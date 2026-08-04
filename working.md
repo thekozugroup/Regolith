@@ -704,6 +704,34 @@ authorization. No config, service, or watchdog contact; no print started.
   backups retained. Rollback command:
   `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
 
+## Final gate validation — 2026-08-04, `5324d46`
+
+Deploy-gate re-check at exact HEAD `5324d468def28bd564a84623e0daa17806eeb460`.
+Working tree was clean against this HEAD (no tracked-file diff; local `main`
+even with `origin/main`). Only untracked, user-owned/tooling paths present
+(`scripts/`, `.a5c/`, `.claude/`, `CLAUDE.md`, build caches) — left
+untracked, not staged.
+
+- `bun run lint` — exit 0.
+- `bun run test` — exit 0 (277 unit tests pass, `deploy.test.sh` 11/11,
+  `setup.test.sh` pass).
+- `bun run build` — exit 0.
+- `bun run test:e2e` — exit 0, **151/151 passed**, above the 143 baseline
+  (no shrink).
+- Frozen files (`printerActions.ts`, `moonraker.ts`, `safety.ts`,
+  `deploy.sh`, `scripts/`) untouched — confirmed via clean `git diff`.
+- `e2e/concentricity-law.spec.ts` re-run in isolation: 5/5 passed, including
+  the subject-pair-count floor test — no selector rot.
+- `e2e/instrument-cluster.spec.ts` "Tell-tale cluster — SD1 lamp block"
+  re-run in isolation: 6/6 passed (uniform cell sizes, icon-only
+  engine-light rendering verified).
+- Grepped tracked files at this HEAD for the literal printer password: no
+  matches — password stays clean of tracked history at HEAD (see prior
+  scrub entry for the historical-commit caveat, still unresolved; provide
+  the password only via `$PRINTER_PASSWORD`, never a literal).
+- No console errors observed in the e2e run (`console-hygiene.spec.ts`
+  passed as part of the full suite).
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
