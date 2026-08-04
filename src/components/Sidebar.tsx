@@ -224,8 +224,11 @@ export function Sidebar() {
           // pad (radius = pad + inner; same fix as the brand popover).
           panelClassName="app-chrome max-w-none p-2 [--modal-pad:0.5rem]"
         >
-            <div className="flex items-center justify-between px-2 py-1">
-              <h2 id={moreTitleId} className="text-[17px] font-semibold tracking-tight">
+            {/* No extra inset on the row: the close button sits AT the p-2
+                pad, so its corner gap is uniform and the derived cascade
+                (inner = outer − pad) holds; the title keeps its own inset. */}
+            <div className="flex items-center justify-between">
+              <h2 id={moreTitleId} className="px-2 text-[17px] font-semibold tracking-tight">
                 More
               </h2>
               <button

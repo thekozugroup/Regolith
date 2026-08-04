@@ -222,11 +222,9 @@ export function BrandLogo({
           aria-label="Choose brand icon"
           // Derived-radius rule: this compact popover pads with p-2 (8px),
           // not the modal's default --modal-pad (16px). Overriding the pad
-          // token HERE makes .modal-panel's cascade re-derive the inner
-          // radius from the pad the markup actually uses: --radius-inner =
-          // max(0, --radius-modal − 8px) = 12px, concentric with the 20px
-          // outer corner instead of assuming a 16px pad that isn't there.
-          // (--radius-modal itself resolves at :root and stays 20px.)
+          // token HERE makes .modal-panel derive BOTH sides from the pad
+          // the markup actually uses: outer = 8px + control = 12px, and
+          // --radius-inner = control (4px) for the corner children.
           className="modal-panel [--modal-pad:0.5rem] fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] shadow-2xl overflow-hidden"
           style={{
             left: Math.min(anchor.x, window.innerWidth - 290),

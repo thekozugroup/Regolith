@@ -101,7 +101,11 @@
   --modal-pad: 1rem; /* formalizes the modal's p-4 */
   --group-pad: 0.25rem; /* formalizes the control group's p-1 */
   --radius-panel: calc(var(--card-pad) + var(--radius-control)); /* 14–20px fluid */
-  --radius-modal: calc(var(--modal-pad) + var(--radius-control)); /* 20px */
+  /* NOTE: no :root --radius-modal token. A custom property substitutes its
+     var()s where it is DECLARED, so a root-level modal radius would freeze
+     the default 1rem pad and per-surface pad overrides ([--modal-pad:...])
+     could never re-derive the outer corner. .modal-panel derives both sides
+     at the element instead. */
   --radius-group: calc(var(--group-pad) + var(--radius-control)); /* 8px */
   /* Default outside any container: a bare control on the page ground keeps
      the control radius. Containers override this for their descendants. */
@@ -229,13 +233,36 @@
      leaves for children (inner = outer − pad). Geometry only — surfaces
      keep their own backgrounds/borders. */
   .modal-panel {
-    border-radius: var(--radius-modal);
-    --radius-inner: max(0px, calc(var(--radius-modal) - var(--modal-pad)));
+    /* Derived AT THE ELEMENT (outer = pad + control), never via a :root
+       token: pad overrides like [--modal-pad:0.5rem] (brand popover, more
+       sheet, health toasts) must re-derive the OUTER corner too, and a
+       root-declared token would have frozen the default pad into it. */
+    --radius-modal-derived: calc(var(--modal-pad) + var(--radius-control));
+    border-radius: var(--radius-modal-derived);
+    --radius-inner: max(0px, calc(var(--radius-modal-derived) - var(--modal-pad)));
   }
   .control-group {
     border-radius: var(--radius-group);
     --radius-inner: max(0px, calc(var(--radius-group) - var(--group-pad)));
   }
+  /* A control group NESTED in the cascade (card bodies today) hands its
+     corner to the slot it occupies: own radius = the panel's published
+     inner (radius-panel − card-pad), and its children take the remainder —
+     which the group's own pad consumes entirely, so they run sharp
+     (sharp-inside-round is lawful, and the derived value would be sub-2px
+     everywhere). Ground-level groups keep --radius-group above. */
+  .instrument-panel .control-group {
+    border-radius: max(0px, calc(var(--radius-panel) - var(--card-pad)));
+    --radius-inner: max(0px, calc(var(--radius-panel) - var(--card-pad) - var(--group-pad)));
+  }
+  /* Panel header slot: header controls butt against the panel's 1px top
+     border while sitting a full --card-pad from the side — a skew corner
+     with NO uniform concentric radius (the top-right corner would derive
+     outer − 1px while the bottom-right derives the control radius; one
+     radius cannot satisfy both). Sharp-inside-round is the single lawful
+     shape, so the slot publishes 0 for its children — they still write
+     rounded-inner, never a literal. */
+  .panel-header { --radius-inner: 0px; }
   /* Full-bleed strip inside a Card: cancels --card-pad so dividers and row
      hovers reach the panel edge. */
   .bleed { margin-inline: calc(-1 * var(--card-pad)); }
