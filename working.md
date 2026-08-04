@@ -509,6 +509,67 @@ modifications; only the expected untracked scratch paths (`.a5c/`, `.claude/`,
 This entry is gate evidence only — no deploy was performed as part of this
 validation pass; see the Deploy phase agent's own record for the live swap.
 
+## Live release — 2026-08-04, `3e38c9f` (Swiss grid + readiness module)
+
+Deployed static assets built at sha `3e38c9f8bd95a69f9753549f3c43e8834c7aec8d`
+(`main`, even with `origin/main`; tree had no tracked modifications). Backup
+timestamp `20260804T125648Z`.
+
+- `./deploy.sh --preflight` (`PRINTER_HOST=192.168.50.179`) exited 0 and changed
+  no remote files.
+- Idle re-confirmed immediately before the deploy with two Moonraker samples
+  10.2 s apart (12:56:05Z / 12:56:15Z): `webhooks=ready`,
+  `print_stats=cancelled`, `idle_timeout=Idle`, `virtual_sdcard.is_active=false`,
+  hotend `26.3 C`/target 0, bed `24.3 C`/target 0, toolhead position identical
+  across both samples (`296.50, 153.00, 150.04`). **No print was started.**
+- `./deploy.sh` exited 0 first try — no dropbear flake, automatic rollback did
+  not trigger. In-script gates green: lint, 277 unit tests + 11 deployment
+  safety tests + guided setup checks, `tsc -b && vite build`. Archive 164,525
+  bytes, SHA-256 `c3c0cefffc36012aa9e0229cf4bc830fba5f5222eaa6895a3770c33df85c6e2d`;
+  remote size/hash and staged file list matched before the atomic swap;
+  required-asset HTTP verification passed.
+- Live `index.html` moved `ffd9036110b76ae699160ee6e710aa030c93b1305112adee4f4ccb2726076609`
+  → `3e7eb1ba97154f69c77de4c2874824a8a88bea49710f5f2eaa32b43ca331b317`. Live
+  bundles: `index-CKaJoMdf.js` / `index-BKw1cIeX.css` / `Dashboard-BNJNZHHz.js`.
+- New verified backup `/usr/data/regolith-backups/fluidd-before-20260804T125648Z.tgz`,
+  159,430 bytes, SHA-256 `07903799015c8295829fb01cdea44627c9c8ce373bf70162904455fef6565cb2`,
+  32 files; retention kept five and pruned the oldest (`20260802T180532Z`) only
+  after the new archive verified.
+- **Rollback is armed:** `/usr/data/fluidd.previous/index.html` is exactly the
+  pre-deploy `8cffd40` live build (`ffd90361…6609`), re-verified after the swap.
+
+```sh
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+```
+
+On-device verification (SSH loopback tunnels — page through printer nginx :80,
+camera through printer :8080; every byte from the printer, nothing modified),
+interactive Chromium plus headless capture at 1280x800 and 800x480:
+
+- 1280x800: Readiness module renders top-left with the `K1MaxSilhouette`
+  line-art and READY lamp; disclosure opens from the readiness body-button
+  (hostname `forge`, Buildroot 2020.02.1, Klipper `09faed31`, HOMED, MESH
+  adaptive, **LINK connected**, camera path) and closes cleanly; cards sit on
+  the Swiss grid with aligned column edges; camera streams LIVE.
+- 800x480: touch chrome kept per the pinned e2e law — bottom nav, no desktop
+  sidebar, Thermals dials above the fold, mission bar reading `LINK READY`;
+  Readiness present below the fold (y≈1094) by design (mobile DOM task order).
+- **Zero console errors, zero page errors, zero failed requests at both
+  viewports** (initial run showed 3 `ERR_CONNECTION_REFUSED` on
+  `localhost:8080/?action=stream` — the camera port not yet tunneled, a tunnel
+  artifact, not an app defect; clean once :8080 was forwarded).
+- **Live-tick proof:** 197 DOM mutations observed in `main` over 15.03 s of
+  MutationObserver watch; raw Moonraker over the same idle period ticked
+  hotend `26.28→26.29 C` and bed `24.28→24.35 C` across two samples 15.3 s
+  apart (13:00:16Z / 13:00:31Z), matching the displayed `26.3` / `24.3`
+  rounding — the subscription path delivers live pushes on hardware.
+- Screenshots (session scratchpad): `ondevice-1280x800.png`,
+  `ondevice-1280x800-disclosure.png`, `ondevice-800x480.png`.
+
+Final state: printer untouched apart from the static asset swap and its backup —
+no G-code, motion, heating, print control, service restart, or configuration
+change; the owner's `scripts/` watchdog was not contacted.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
