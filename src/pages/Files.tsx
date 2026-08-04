@@ -121,9 +121,44 @@ export function Files() {
           </div>
         )}
         {!err && filtered.length === 0 && !loading && (
-          <div className="text-[12px] text-[var(--color-fg-muted)] py-8 text-center uppercase tracking-[0.1em]">
-            {filter ? "No matches" : "No files"}
+          <div className="py-8 text-center" data-testid="files-empty">
+            <FileText
+              aria-hidden="true"
+              className="w-8 h-8 mx-auto text-[var(--color-fg-subtle)] mb-2"
+            />
+            <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              {filter ? "No matching files" : "No print files yet"}
+            </div>
+            <div className="text-[11px] text-[var(--color-fg-subtle)] mt-1">
+              {filter
+                ? "Try a shorter search."
+                : "Upload gcode from your slicer to see it here."}
+            </div>
           </div>
+        )}
+
+        {/* Steady placeholder rows during the initial load — the list keeps
+            its shape instead of collapsing to blank glass. No shimmer: calm
+            by default, and nothing to silence under reduced motion. */}
+        {loading && files.length === 0 && !err && (
+          <ul
+            aria-hidden="true"
+            data-testid="files-skeleton"
+            className="divide-y divide-[var(--color-border)] bleed"
+          >
+            {[0, 1, 2].map((row) => (
+              <li
+                key={row}
+                className="flex items-center gap-3 px-[var(--card-pad)] py-2"
+              >
+                <span className="h-8 w-8 shrink-0 rounded-inner bg-[var(--color-elevated)]" />
+                <span className="min-w-0 flex-1 space-y-1.5">
+                  <span className="block h-3 w-3/5 rounded-inner bg-[var(--color-elevated)]" />
+                  <span className="block h-2.5 w-2/5 rounded-inner bg-[var(--color-elevated)]" />
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
 
         <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
@@ -140,14 +175,7 @@ export function Files() {
                 )}
                 onClick={() => setSelected(f)}
               >
-                <img
-                  src={moonraker.thumbnailUrl(f.path, 32)}
-                  onError={(e) =>
-                    ((e.target as HTMLImageElement).style.opacity = "0")
-                  }
-                  className="w-8 h-8 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
-                  alt=""
-                />
+                <ListThumb key={f.path} path={f.path} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-medium truncate">
                     {f.path}
@@ -172,18 +200,15 @@ export function Files() {
           </div>
         ) : (
           <div className="space-y-[var(--stack)]">
-            {/* Big thumbnail */}
-            <div className="aspect-square w-full max-w-[200px] mx-auto rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
-              <img
-                src={moonraker.thumbnailUrl(selected.path, 300)}
-                alt={`Preview of ${selected.path}`}
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  img.style.display = "none";
-                }}
-                className="w-full h-full object-contain"
-              />
-            </div>
+            {/* Big thumbnail — or a designed placeholder. Keyed on the path
+                so the failure latch resets when another file is selected. */}
+            <GcodePreview
+              key={selected.path}
+              path={selected.path}
+              hasThumbnail={
+                metadata == null ? undefined : (metadata.thumbnails?.length ?? 0) > 0
+              }
+            />
 
             {/* Filename */}
             <div className="text-center">
@@ -294,6 +319,86 @@ export function Files() {
           open={dialogOpen}
           onClose={closePrintDialog}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * List-row thumbnail with a designed fallback. Slicers are not required to
+ * embed thumbnails, so a 404 here is an expected state, not an error: the
+ * old `opacity: 0` handler left an anonymous hollow square. Keyed on the
+ * file path by the caller so the failure latch resets per file.
+ */
+function ListThumb({ path }: { path: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="thumb-fallback"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)]"
+      >
+        <FileText className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
+      </span>
+    );
+  }
+  return (
+    <img
+      src={moonraker.thumbnailUrl(path, 32)}
+      onError={() => setFailed(true)}
+      loading="lazy"
+      className="w-8 h-8 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] object-cover shrink-0"
+      alt=""
+    />
+  );
+}
+
+/**
+ * Detail-panel preview. The metadata endpoint already reports whether the
+ * file embeds thumbnails, so a file sliced without one renders its designed
+ * placeholder WITHOUT ever issuing the doomed image request (which used to
+ * 404 into the console and leave a hollow frame).
+ *
+ *   hasThumbnail === true       → real preview (error-latched, belt+braces)
+ *   hasThumbnail === false      → designed "no preview" tile
+ *   hasThumbnail === undefined  → metadata still unresolved: a quiet neutral
+ *     frame. Unknown must never render as a "no preview" claim — the same
+ *     rule as the em-dash readouts.
+ */
+function GcodePreview({
+  path,
+  hasThumbnail,
+}: {
+  path: string;
+  hasThumbnail: boolean | undefined;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showImage = hasThumbnail === true && !failed;
+  return (
+    <div className="aspect-square w-full max-w-[200px] mx-auto rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden flex items-center justify-center">
+      {showImage ? (
+        <img
+          src={moonraker.thumbnailUrl(path, 300)}
+          alt={`Preview of ${path}`}
+          onError={() => setFailed(true)}
+          className="w-full h-full object-contain"
+        />
+      ) : (
+        <div
+          className="flex flex-col items-center gap-2 p-4 text-center"
+          data-testid="preview-fallback"
+        >
+          <FileText
+            aria-hidden="true"
+            className="h-8 w-8 text-[var(--color-fg-subtle)]"
+          />
+          {hasThumbnail === false || failed ? (
+            <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              No preview in this file
+            </span>
+          ) : null}
+        </div>
       )}
     </div>
   );

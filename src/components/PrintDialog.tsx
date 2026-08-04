@@ -42,6 +42,14 @@ export interface GcodeMetadata {
   filament_type?: string;
   first_layer_extr_temp?: number;
   first_layer_bed_temp?: number;
+  /** Embedded previews as Moonraker reports them; absent when the slicer
+   *  wrote none — the signal the UI uses to skip a doomed thumbnail fetch. */
+  thumbnails?: Array<{
+    width?: number;
+    height?: number;
+    size?: number;
+    relative_path?: string;
+  }>;
 }
 
 export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps) {
@@ -131,14 +139,24 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           {/* Preview */}
           <div className="grid grid-cols-[110px_1fr] gap-3">
             <div className="aspect-square rounded-inner border border-[var(--color-border)] bg-black overflow-hidden flex items-center justify-center">
-              <img
-                src={moonraker.thumbnailUrl(file.path, 300)}
-                alt=""
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-                className="w-full h-full object-contain"
-              />
+              {/* Same rule as the Files preview: metadata says whether a
+                  thumbnail exists, so a thumbless file shows its designed
+                  placeholder instead of a 404 and a hollow black square. */}
+              {(metadata?.thumbnails?.length ?? 0) > 0 ? (
+                <img
+                  src={moonraker.thumbnailUrl(file.path, 300)}
+                  alt=""
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <Layers3
+                  aria-hidden="true"
+                  className="h-7 w-7 text-[var(--color-fg-subtle)]"
+                />
+              )}
             </div>
             <div className="min-w-0 flex flex-col justify-between">
               <div>

@@ -96,6 +96,28 @@ export function Timelapses() {
             </div>
           </div>
         )}
+        {/* Steady placeholder rows during the initial load — the list keeps
+            its shape instead of collapsing to blank glass. */}
+        {loading && files.length === 0 && !err && (
+          <ul
+            aria-hidden="true"
+            data-testid="timelapse-skeleton"
+            className="divide-y divide-[var(--color-border)] bleed"
+          >
+            {[0, 1, 2].map((row) => (
+              <li
+                key={row}
+                className="flex items-center gap-3 px-[var(--card-pad)] py-2"
+              >
+                <span className="h-9 w-12 shrink-0 rounded-inner bg-[var(--color-elevated)]" />
+                <span className="min-w-0 flex-1 space-y-1.5">
+                  <span className="block h-3 w-3/5 rounded-inner bg-[var(--color-elevated)]" />
+                  <span className="block h-2.5 w-2/5 rounded-inner bg-[var(--color-elevated)]" />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
           {files.map((f) => (
             <li key={f.path}>
