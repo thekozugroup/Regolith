@@ -27,17 +27,21 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * SD1 tell-tale block — the persistent faults-at-a-glance lamp panel.
- * HealthAlerts toasts remain the interrupt channel; both read the SAME
- * detectors in src/lib/health.ts so they can never disagree.
+ * SD1 tell-tale block — the persistent faults-at-a-glance lamp panel,
+ * drawn as ENGINE LIGHTS (owner: "no square on the side, just the colored
+ * active icons"): the glyph ITSELF is the lamp — no lamp square, no cell
+ * backdrop, no well chrome. HealthAlerts toasts remain the interrupt
+ * channel; both read the SAME detectors in src/lib/health.ts so they can
+ * never disagree.
  *
- * Every lamp carries three channels (no color-only state): lamp shape
- * (filled vs outlined), an icon, and an always-visible 11px label. Latched
- * lamps stay lit after their condition clears until acknowledged — the
- * whole 44px cell is the acknowledge target. A 700ms one-shot bulb-test
- * lights every cell on the first WebSocket connect (a discrete on→off step,
- * not a pulse — reduced-motion-safe by construction), ref-guarded so a
- * reconnect never re-runs it.
+ * Every lamp carries three channels (no color-only state): glyph weight
+ * (lit strokes are heavy, unlit are hairline), severity color, and an
+ * always-visible 11px label. Latched lamps stay lit after their condition
+ * clears until acknowledged — the whole 44px cell is the acknowledge
+ * target. A 700ms one-shot bulb-test lights every cell on the first
+ * WebSocket connect (a discrete on→off step, not a pulse —
+ * reduced-motion-safe by construction), ref-guarded so a reconnect never
+ * re-runs it.
  */
 
 /** Key-on bulb check duration — one discrete step, no stagger, no repeat. */
@@ -185,24 +189,22 @@ export function TellTaleCluster() {
             ))}
         </div>
       )}
-      <div className="instrument-well overflow-hidden">
-        <ul
-          className="telltale-grid"
-          aria-label="System indicators"
-          data-testing={testing || undefined}
-        >
-          {lamps.map((lamp) => (
-            <LampCell
-              key={lamp.id}
-              lamp={lamp}
-              cell={cells[lamp.id] ?? { phase: "off" }}
-              testing={testing}
-              axes={lamp.id === "homed" ? homedAxes(state) : undefined}
-              onAcknowledge={() => acknowledge(lamp)}
-            />
-          ))}
-        </ul>
-      </div>
+      <ul
+        className="telltale-grid"
+        aria-label="System indicators"
+        data-testing={testing || undefined}
+      >
+        {lamps.map((lamp) => (
+          <LampCell
+            key={lamp.id}
+            lamp={lamp}
+            cell={cells[lamp.id] ?? { phase: "off" }}
+            testing={testing}
+            axes={lamp.id === "homed" ? homedAxes(state) : undefined}
+            onAcknowledge={() => acknowledge(lamp)}
+          />
+        ))}
+      </ul>
     </Card>
   );
 }
@@ -226,14 +228,15 @@ function LampCell({
 
   const body = (
     <>
-      <span className="flex items-center gap-[var(--space-icon)]">
-        <span
-          aria-hidden="true"
-          data-lit={litFlag}
-          className={cn("telltale-lamp", lit && "phosphor-glow")}
-        />
-        <Icon aria-hidden="true" className="h-3 w-3 flex-none" />
-      </span>
+      {/* The glyph IS the lamp: severity-colored heavy stroke when lit,
+          dim hairline outline when dark — weight is the non-color channel
+          that survives forced colors, and the unlit tick color keeps the
+          3:1 discoverability floor (never invisible, never looking lit). */}
+      <Icon
+        aria-hidden="true"
+        data-lit={litFlag}
+        className={cn("telltale-icon", lit && "phosphor-glow")}
+      />
       {axes ? (
         <>
           <span aria-hidden="true" className="instrument-label">

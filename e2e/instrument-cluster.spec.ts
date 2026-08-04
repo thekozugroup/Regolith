@@ -599,7 +599,7 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     // 1s after the mocked subscribe the 700ms bulb test has released and the
     // idle fixture holds zero lit lamps — including HOMED (axes unhomed).
     await expect(litLamps(page)).toHaveCount(0);
-    await expect(page.locator(".telltale-lamp.phosphor-glow")).toHaveCount(0);
+    await expect(page.locator(".telltale-icon.phosphor-glow")).toHaveCount(0);
 
     // Labels are the always-visible third channel, 11px floor and up.
     const cells = await page.locator(".telltale-cell").evaluateAll((items) =>
@@ -623,6 +623,22 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
       expect(cell.labelPx, `${cell.id}: label below the 11px floor`).toBeGreaterThanOrEqual(11);
       expect(cell.icons, `${cell.id}: icon channel missing`).toBeGreaterThanOrEqual(1);
     }
+
+    // Engine-light uniformity (owner rule): every system cell is the SAME
+    // size — equal grid tracks and 1fr rows, no cell grows past its peers.
+    const widths = cells.map((cell) => cell.width);
+    const heights = cells.map((cell) => cell.height);
+    expect(Math.max(...widths) - Math.min(...widths), "cell widths must be uniform").toBeLessThanOrEqual(1);
+    expect(Math.max(...heights) - Math.min(...heights), "cell heights must be uniform").toBeLessThanOrEqual(1);
+
+    // Engine lights, not wells: the glyph is the lamp. No lamp square, no
+    // cell backdrop, no well recession around the grid.
+    await expect(page.locator(".telltale-grid .telltale-lamp")).toHaveCount(0);
+    expect(await page.locator(".telltale-grid").evaluate((grid) => grid.closest(".instrument-well") != null)).toBe(false);
+    const backdrops = await page.locator(".telltale-cell").evaluateAll((items) =>
+      items.map((cell) => getComputedStyle(cell).backgroundColor),
+    );
+    for (const backdrop of backdrops) expect(backdrop).toBe("rgba(0, 0, 0, 0)");
 
     // Nothing lit ⇒ nothing announced.
     await expect(
@@ -754,50 +770,69 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     mock.assertSealed();
   });
 
-  test("unlit lamp outline clears the 3:1 non-text floor against its cell", async ({ page }) => {
-    // Regression: the unlit outline is the shape channel that encodes lamp
+  test("unlit lamp glyph clears the 3:1 non-text floor against its backdrop", async ({ page }) => {
+    // Regression: the unlit glyph is the shape channel that encodes lamp
     // state, so it is a meaningful non-text element under WCAG 1.4.11 —
-    // --color-border-strong measured 1.921:1 on the cell well and may not
-    // carry it. Painted-pixel probe: both colors resolved through a canvas
-    // so color-mix/oklch serialization differences cannot skew the math.
+    // an engine light that is off must stay DISCOVERABLE (clearly off,
+    // never invisible). Cells are transparent now, so the effective
+    // backdrop is the first opaque ancestor (the instrument panel).
+    // Painted-pixel probe: both colors resolved through a canvas so
+    // color-mix/oklch serialization differences cannot skew the math.
     await page.setViewportSize({ width: 1280, height: 900 });
     await useExperience(page, "basic");
     const mock = await installActiveMock(page, { state: coldIdleUnhomed });
     await openSystems(page);
-    // Past the bulb test: all lamps dark, i.e. outlined-unlit.
+    // Past the bulb test: all lamps dark, i.e. hairline-unlit.
     await expect(litLamps(page)).toHaveCount(0);
 
-    const ratio = await lamp(page, "homed")
-      .locator(".telltale-lamp")
+    const probe = await lamp(page, "homed")
+      .locator(".telltale-icon")
       .evaluate((el) => {
-        const paint = (color: string): [number, number, number] => {
+        const paint = (color: string): [number, number, number, number] => {
           const canvas = document.createElement("canvas");
           canvas.width = canvas.height = 1;
           const ctx = canvas.getContext("2d")!;
           ctx.fillStyle = color;
           ctx.fillRect(0, 0, 1, 1);
-          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-          return [r!, g!, b!];
+          const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+          return [r!, g!, b!, a!];
         };
         const toLinear = (byte: number) => {
           const c = byte / 255;
           return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
         };
-        const luminance = ([r, g, b]: [number, number, number]) =>
+        const luminance = ([r, g, b]: [number, number, number, number]) =>
           0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-        const border = luminance(paint(getComputedStyle(el).borderTopColor));
-        const cell = el.closest(".telltale-cell")!;
-        const backdrop = luminance(paint(getComputedStyle(cell).backgroundColor));
-        const [hi, lo] = border > backdrop ? [border, backdrop] : [backdrop, border];
-        return (hi + 0.05) / (lo + 0.05);
+        // The glyph paints stroke: currentColor → the computed color.
+        const glyph = luminance(paint(getComputedStyle(el).color));
+        // Effective backdrop: walk up to the first opaque background.
+        let node: Element | null = el.parentElement;
+        let backdropColor: [number, number, number, number] | null = null;
+        while (node) {
+          const candidate = paint(getComputedStyle(node).backgroundColor);
+          if (candidate[3] === 255) {
+            backdropColor = candidate;
+            break;
+          }
+          node = node.parentElement;
+        }
+        if (!backdropColor) return { ratio: 0, backdrop: "none", unlitColor: "" };
+        const backdrop = luminance(backdropColor);
+        const [hi, lo] = glyph > backdrop ? [glyph, backdrop] : [backdrop, glyph];
+        return {
+          ratio: (hi + 0.05) / (lo + 0.05),
+          backdrop: `rgb(${backdropColor[0]}, ${backdropColor[1]}, ${backdropColor[2]})`,
+          unlitColor: getComputedStyle(el).color,
+        };
       });
-    expect(ratio, "unlit lamp outline vs cell backdrop").toBeGreaterThanOrEqual(3);
+    expect(probe.ratio, `unlit glyph ${probe.unlitColor} vs backdrop ${probe.backdrop}`).toBeGreaterThanOrEqual(3);
 
-    // And unlit must still not read as lit: the well stays transparent.
-    const background = await lamp(page, "homed")
-      .locator(".telltale-lamp")
-      .evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(background).toBe("rgba(0, 0, 0, 0)");
+    // And unlit must still not read as lit: the dark glyph keeps the
+    // hairline stroke — the heavy lit weight may never leak onto it.
+    const strokes = await page.locator(".telltale-icon").evaluateAll((items) =>
+      items.map((item) => Number.parseFloat(getComputedStyle(item).strokeWidth)),
+    );
+    for (const stroke of strokes) expect(stroke).toBeLessThanOrEqual(1.6);
 
     mock.assertSealed();
   });
@@ -848,9 +883,9 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     // Settle past the bulb test so only FIRMWARE holds.
     await expect(litLamps(page)).toHaveCount(1);
 
-    // Scoped to the cluster grid: the Readiness light chip deliberately
-    // reuses the lamp grammar class and has its own coverage.
-    const channels = await page.locator(".telltale-grid .telltale-lamp").evaluateAll((items) => {
+    // Scoped to the cluster grid: the Readiness light chip keeps the square
+    // lamp grammar (.telltale-lamp) and has its own coverage.
+    const channels = await page.locator(".telltale-grid .telltale-icon").evaluateAll((items) => {
       // Resolve what CanvasText actually paints as, same probe technique as
       // the status-lamp forced-colors regression test.
       const probe = document.createElement("span");
@@ -863,9 +898,8 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
         const box = item.getBoundingClientRect();
         return {
           lit: item.getAttribute("data-lit"),
-          borderWidth: style.borderTopWidth,
-          borderStyle: style.borderTopStyle,
-          background: style.backgroundColor,
+          color: style.color,
+          strokeWidth: Number.parseFloat(style.strokeWidth),
           canvasText,
           filter: style.filter,
           sized: box.width > 0 && box.height > 0,
@@ -874,18 +908,18 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     });
     expect(channels.length).toBe(8);
     for (const entry of channels) {
-      // The outline is the shape channel that must survive forced colors.
+      // The glyph must keep painting under forced colors: its stroke rides
+      // currentColor, which the forced palette rewrites to CanvasText.
       expect(entry.sized).toBe(true);
-      expect(entry.borderStyle).toBe("solid");
-      expect(entry.borderWidth).toBe("1px");
+      expect(entry.color).toBe(entry.canvasText);
       // Glow is a filter on geometry; forced colors kills it entirely.
       expect(entry.filter).toBe("none");
+      // Weight is the non-color lit channel and survives forced palettes:
+      // lit glyphs stay heavy, dark glyphs stay hairline.
       if (entry.lit === "true") {
-        // Lit = filled with the forced-colors ink (the CanvasText pattern).
-        expect(entry.background).toBe(entry.canvasText);
+        expect(entry.strokeWidth).toBeGreaterThanOrEqual(2.4);
       } else {
-        // Unlit = outline only, distinguishable from the filled state.
-        expect(entry.background).not.toBe(entry.canvasText);
+        expect(entry.strokeWidth).toBeLessThanOrEqual(1.6);
       }
     }
 
