@@ -10,6 +10,7 @@ import {
   type ClassifiedCorner,
   type CornerObservation,
 } from "./support/concentricity";
+import { fulfilFileApi, tryOpen, visit } from "./support/sweep-helpers";
 
 /**
  * THE CONCENTRICITY LAW, as a test — the 2026-08 full-app audit sweep ported
@@ -22,7 +23,11 @@ import {
  * compact 390px chrome and the 1280px desk chrome, with each overlay a route
  * owns opened and re-measured (more sheet, brand popover, readiness
  * disclosure, file detail + print dialog, timelapse detail + delete confirm,
- * settings disclosures + confirm, control/tune disclosures).
+ * settings disclosures + confirm, control/tune disclosures). The K1 Max's
+ * OWN 800x480 panel — the deploy target's short landscape chrome — runs the
+ * dashboard + files (print dialog) + console subset: the full pair sweep
+ * stays at 390/1280 to bound runtime, but the panel is measured, its dialogs
+ * included, and its pair count holds its own non-vacuity floor.
  *
  * This sweep supersedes the four representative placements in
  * button-law.spec.ts (kept as the even-chrome law's home).
@@ -50,126 +55,18 @@ const ROUTES = [
 
 const MODES = ["basic", "expert"] as const;
 
+/** The K1 Max's own touch panel. Runs the dashboard+files+console subset —
+ *  which carries the readiness dialog and the print dialog — at the short
+ *  landscape chrome the printer itself displays. */
+const PANEL_VIEWPORT = { name: "800x480", width: 800, height: 480 } as const;
+const PANEL_ROUTE_NAMES = ["Dashboard", "Files", "Console"] as const;
+
 /** Calibrated 2026-08-04: this port measured 286 subject pairs across the
  *  four sweep combinations (69 + 63 + 79 + 75 — post-enforcement, i.e. after
  *  the header slot and nested control groups went lawfully sharp). The floor
  *  is ~80% of that: layout work may legitimately retire some pairs, but a
  *  collapse below this means the sweep went blind. */
 const PAIR_FLOOR = 230;
-
-const GCODE_FILE = {
-  path: "calibration/benchy_0.2mm_PLA_K1Max.gcode",
-  size: 1_234_567,
-  modified: 1_700_000_000,
-  permissions: "rw",
-};
-
-/** Local REST fixtures — registered AFTER the harness so they win. */
-async function fulfilFileApi(page: Page) {
-  await page.route("**/server/files/list*", async (route) => {
-    const root = new URL(route.request().url()).searchParams.get("root");
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result:
-          root === "timelapse"
-            ? [
-                { path: "benchy_2024.mp4", size: 9_000_000, modified: 1_700_000_000 },
-                { path: "tower_2024.mp4", size: 4_000_000, modified: 1_699_000_000 },
-              ]
-            : [
-                GCODE_FILE,
-                { ...GCODE_FILE, path: "tower.gcode" },
-                { ...GCODE_FILE, path: "brackets/mount_v3.gcode" },
-              ],
-      }),
-    });
-  });
-  await page.route("**/server/files/metadata*", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: {
-          estimated_time: 3_600,
-          layer_count: 100,
-          layer_height: 0.2,
-          object_height: 20,
-          filament_total: 3000,
-          slicer: "OrcaSlicer",
-        },
-      }),
-    });
-  });
-  await page.route("**/server/history/list*", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: {
-          jobs: [
-            {
-              job_id: "1",
-              filename: "tower.gcode",
-              status: "completed",
-              start_time: 1_699_000_000,
-              end_time: 1_699_003_600,
-              print_duration: 3600,
-              filament_used: 2400,
-            },
-          ],
-        },
-      }),
-    });
-  });
-  await page.route("**/server/history/totals", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: {
-          job_totals: {
-            total_jobs: 12,
-            total_time: 86_400,
-            total_filament_used: 120_000,
-            longest_job: 20_000,
-          },
-        },
-      }),
-    });
-  });
-}
-
-/** Navigate without waiting on the camera stream (its MJPEG-ish <img> keeps
- *  the load event pending) and past the lazy route chunk's fallback. */
-async function visit(page: Page, path: string) {
-  await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
-  await page
-    .waitForFunction(
-      () => {
-        const main = document.querySelector("#main-content");
-        if (!main) return false;
-        if ((main.textContent ?? "").includes("Loading view")) return false;
-        return main.querySelectorAll("*").length > 12;
-      },
-      null,
-      { timeout: 8_000 },
-    )
-    .catch(() => {});
-  await page.waitForTimeout(320);
-}
-
-/** Try to open an overlay; returns true when it actually opened. */
-async function tryOpen(page: Page, open: () => Promise<void>, verify: string): Promise<boolean> {
-  try {
-    await open();
-    await page.waitForTimeout(240);
-    return (await page.locator(verify).count()) > 0;
-  } catch {
-    return false;
-  }
-}
 
 interface SweepTotals {
   subject: number;
@@ -187,9 +84,10 @@ async function capture(page: Page, where: string, totals: SweepTotals) {
 
 async function sweepState(
   page: Page,
-  viewport: (typeof VIEWPORTS)[number],
+  viewport: { name: string; width: number; height: number },
   stateKey: "idle" | "active-print",
   totals: SweepTotals,
+  routes: readonly (typeof ROUTES)[number][] = ROUTES,
 ) {
   for (const mode of MODES) {
     // Written into the live origin and picked up by the next navigation.
@@ -198,7 +96,7 @@ async function sweepState(
       localStorage.setItem("forge.sidebar.collapsed", "0");
     }, mode);
 
-    for (const route of ROUTES) {
+    for (const route of routes) {
       const where = `${viewport.name} · ${route.name} · ${stateKey}/${mode}`;
       await visit(page, route.path);
       await capture(page, where, totals);
@@ -348,6 +246,13 @@ async function sweepState(
  *  worker, single file) so the final floor assertion sees the whole sweep. */
 const grandTotal = { subject: 0, sweeps: 0 };
 
+/** The 800x480 panel subset keeps its own ledger and floor — its pair counts
+ *  must not dilute the calibrated full-sweep floor above. Calibrated
+ *  2026-08-04: 64 pairs measured across the two panel sweeps (36 idle +
+ *  28 active-print); floor ~80%, same rationale as PAIR_FLOOR. */
+const PANEL_PAIR_FLOOR = 50;
+const panelTotal = { subject: 0, sweeps: 0 };
+
 test.describe("Concentricity law — full-glass sweep", () => {
   for (const viewport of VIEWPORTS) {
     for (const stateKey of ["idle", "active-print"] as const) {
@@ -384,14 +289,59 @@ test.describe("Concentricity law — full-glass sweep", () => {
     }
   }
 
+  // The K1 Max's OWN 800x480 panel — the deploy target. Subset sweep
+  // (dashboard + files + console, dialogs included), both modes, both states.
+  for (const stateKey of ["idle", "active-print"] as const) {
+    test(`every nested corner obeys inner = outer − gap at ${PANEL_VIEWPORT.name} (the K1's own panel), ${stateKey}`, async ({ page }) => {
+      test.setTimeout(360_000);
+      page.setDefaultTimeout(4_000);
+      page.setDefaultNavigationTimeout(15_000);
+
+      const sc = scenario(stateKey === "idle" ? "at-temperature" : "printing-midjob");
+      await installActiveMock(page, {
+        state: sc.state,
+        camera: "ok",
+        thumbnail: true,
+      });
+      await fulfilFileApi(page);
+      await page.setViewportSize({
+        width: PANEL_VIEWPORT.width,
+        height: PANEL_VIEWPORT.height,
+      });
+      await visit(page, "/");
+
+      const totals: SweepTotals = { subject: 0, violations: [] };
+      const routes = ROUTES.filter((r) =>
+        (PANEL_ROUTE_NAMES as readonly string[]).includes(r.name),
+      );
+      await sweepState(page, PANEL_VIEWPORT, stateKey, totals, routes);
+
+      expect(
+        totals.violations,
+        `concentricity law violations at ${PANEL_VIEWPORT.name}/${stateKey}`,
+      ).toEqual([]);
+      // Non-vacuity: three routes' worth of glass must still be seen.
+      expect(totals.subject, "panel sweep measured no nested corners — probe blind?").toBeGreaterThan(20);
+
+      panelTotal.subject += totals.subject;
+      panelTotal.sweeps += 1;
+    });
+  }
+
   test("the sweep still sees the glass: subject-pair count holds its floor", () => {
-    // Runs after the four sweeps above (single worker, in-file order). If a
+    // Runs after the sweeps above (single worker, in-file order). If a
     // sweep failed, its pairs are missing — this floor then fails too, which
     // is correct: a partial sweep is not a passing law.
-    expect(grandTotal.sweeps, "all four sweep combinations must have run").toBe(4);
+    expect(grandTotal.sweeps, "all four full-sweep combinations must have run").toBe(4);
     expect(
       grandTotal.subject,
       `subject pairs collapsed below the calibrated floor (${PAIR_FLOOR}) — selector rot or a blind probe`,
     ).toBeGreaterThanOrEqual(PAIR_FLOOR);
+    // And the deploy target's own panel must have been non-vacuously swept.
+    expect(panelTotal.sweeps, "both 800x480 panel sweeps must have run").toBe(2);
+    expect(
+      panelTotal.subject,
+      `800x480 panel pairs collapsed below the calibrated floor (${PANEL_PAIR_FLOOR})`,
+    ).toBeGreaterThanOrEqual(PANEL_PAIR_FLOOR);
   });
 });
