@@ -37,7 +37,9 @@ export function buttonClassName({
 } = {}): string {
   return cn(
     "inline-flex min-w-11 items-center justify-center gap-1.5 rounded-inner font-medium",
-    "transition-[background,border-color,color,transform] duration-100",
+    // Motion rides the tokens: --dur-fast for immediate control feedback,
+    // the standard easing curve — never a literal duration.
+    "transition-[background,border-color,color,transform] duration-[var(--dur-fast)] ease-[var(--ease-standard)]",
     "active:translate-y-px",
     "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0",
     VARIANT_CLASSES[variant],

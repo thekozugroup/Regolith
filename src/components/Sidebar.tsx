@@ -121,7 +121,7 @@ export function Sidebar() {
           the global reduced-motion rule. */}
       <aside
         data-collapsed={collapsed || undefined}
-        className="app-chrome fixed left-0 top-0 bottom-[var(--mission-h)] z-20 hidden w-[var(--sidebar-w,14rem)] flex-col overflow-hidden border-r border-[var(--color-border)] transition-[width] duration-200 desk:flex"
+        className="app-chrome fixed left-0 top-0 bottom-[var(--mission-h)] z-20 hidden w-[var(--sidebar-w,14rem)] flex-col overflow-hidden border-r border-[var(--color-border)] transition-[width] duration-[var(--dur-slow)] ease-[var(--ease-emphasized)] desk:flex"
       >
         <div
           className={cn(

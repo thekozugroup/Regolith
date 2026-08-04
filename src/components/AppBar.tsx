@@ -28,7 +28,7 @@ export function AppBar() {
   const location = useLocation();
 
   return (
-    <header className="app-chrome fixed top-0 left-0 right-0 z-20 flex h-[var(--appbar-h)] items-center gap-3 border-b border-[var(--color-border)] px-[var(--page-gutter)] transition-[left] duration-200 desk:left-[var(--sidebar-w,14rem)]">
+    <header className="app-chrome fixed top-0 left-0 right-0 z-20 flex h-[var(--appbar-h)] items-center gap-3 border-b border-[var(--color-border)] px-[var(--page-gutter)] transition-[left] duration-[var(--dur-slow)] ease-[var(--ease-emphasized)] desk:left-[var(--sidebar-w,14rem)]">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <h1 className="min-w-0 truncate text-[17px] font-semibold tracking-tight">
           {ROUTE_TITLES[location.pathname] ?? "Regolith"}

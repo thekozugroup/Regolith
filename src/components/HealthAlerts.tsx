@@ -214,7 +214,14 @@ export function HealthAlerts() {
           key={a.id}
           data-alert-id={a.id}
           className={cn(
-            "modal-panel flex items-start gap-2 px-3 py-2 border backdrop-blur-sm shadow-lg",
+            // Derived-radius rule: toasts pad with p-3 (12px), not the
+            // modal's default --modal-pad (16px). Overriding the pad token
+            // HERE makes .modal-panel's cascade re-derive the inner radius
+            // from the pad the markup actually uses: --radius-inner =
+            // max(0, --radius-modal − 12px) = 8px, concentric with the 20px
+            // outer corner. (--radius-modal itself resolves at :root and
+            // stays 20px.) Same re-check BrandLogo's popover got.
+            "modal-panel [--modal-pad:0.75rem] flex items-start gap-2 p-3 border backdrop-blur-sm shadow-lg",
             a.severity === "error"
               ? "bg-(--color-error)/12 border-(--color-error)/50"
               : "bg-(--color-warning)/12 border-(--color-warning)/50",
