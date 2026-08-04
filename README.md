@@ -49,6 +49,38 @@ Edit only `VITE_REGOLITH_PRINTER_HOST` in `.env.local`, then start Vite. Values 
 
 Regolith targets `forge.local` by default. The deployment changes static web files only under `/usr/data`; it does not send G-code, move axes, heat components, edit printer configuration, or restart services.
 
+### Before you start: SSH keys
+
+SSH into your printer once and install a key. Keys are the supported way in; everything below assumes they work:
+
+```sh
+ssh root@forge.local          # accept and verify the printer's identity
+ssh-copy-id root@forge.local  # deploys are passwordless from here on
+```
+
+If a key is unavailable, `deploy.sh` falls back to a silent password prompt or `PRINTER_PASSWORD` through `sshpass -e`, so the secret never reaches process arguments. That path is a fallback, not the intended setup.
+
+### Any Klipper printer
+
+Nothing in the deployment is specific to a K1 Max — the defaults just happen to match one. Four environment variables describe where your printer keeps its WebUI:
+
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `PRINTER_HOST` | `forge.local` | Hostname or LAN address of the printer |
+| `PRINTER_USER` | `root` | SSH account on the printer |
+| `FLUIDD_ROOT` | `/usr/data` | Writable data root the WebUI lives under |
+| `WEBUI_DIR` | `fluidd` | Directory nginx serves, inside `FLUIDD_ROOT` |
+
+So a printer serving its WebUI from `/home/pi/mainsail` as user `pi`:
+
+```sh
+PRINTER_HOST=voron.local PRINTER_USER=pi FLUIDD_ROOT=/home/pi WEBUI_DIR=mainsail ./deploy.sh --preflight
+```
+
+Every remote path — staging slot, previous slot, upload archive, and backups — is derived from those two path values, and all four are validated before a single remote command runs. Machine-specific behaviour (pins, axis limits, macros, tell-tales) is not set here: that lives in a Regolith profile under `src/profiles`.
+
+The rest of this section uses the defaults for brevity; substitute your own values throughout.
+
 ### Guided setup on macOS
 
 The simplest path is the guided setup. In Finder, double-click `Install Regolith.command`, or run:
@@ -71,13 +103,7 @@ bash "Install Regolith.command" --rollback
 
 ### Manual install
 
-First, verify SSH access. An SSH key is recommended:
-
-```sh
-ssh root@forge.local
-```
-
-If key authentication is unavailable, install `sshpass` from a trusted package manager. Then either let the script ask for the printer password silently or provide it through the environment. The script uses `sshpass -e`; the password never appears in process arguments.
+Verify SSH access first, as described under **Before you start** above. If key authentication is unavailable, install `sshpass` from a trusted package manager. Then either let the script ask for the printer password silently or provide it through the environment. The script uses `sshpass -e`; the password never appears in process arguments.
 
 Optional environment flow (input stays hidden and does not enter shell history):
 
@@ -94,7 +120,7 @@ Run the read-only preflight first:
 ./deploy.sh --preflight
 ```
 
-Preflight refuses to continue unless all printer state fields are present, Klipper is ready, no print or calibration is active, virtual SD is inactive, `/usr/data/fluidd` exists, required remote tools exist, and at least 32 MB is free. It does not change remote files.
+Preflight refuses to continue unless all printer state fields are present, Klipper is ready, no print or calibration is active, virtual SD is inactive, `$FLUIDD_ROOT/$WEBUI_DIR` exists, required remote tools exist, and at least 32 MB is free. It does not change remote files. A "Remote preflight failed" message usually means `FLUIDD_ROOT`/`WEBUI_DIR` do not match where this printer actually serves its WebUI.
 
 Deploy after preflight passes:
 
@@ -118,7 +144,9 @@ PRINTER_HOST=k1max.local ./deploy.sh --preflight
 PRINTER_HOST=k1max.local ./deploy.sh
 ```
 
-Host values are validated before any command runs. SSH uses the system known-hosts file with `StrictHostKeyChecking=accept-new`; an existing changed host key is rejected.
+Host, user, and path values are validated before any command runs. SSH uses the system known-hosts file with `StrictHostKeyChecking=accept-new`; an existing changed host key is rejected.
+
+If the printer refuses an SSH session mid-run — dropbear does this occasionally under memory pressure — read-only and idempotent steps retry up to twice with a short backoff. Steps that mutate the live slot (backup, atomic swap, rollback swap) are never retried; they fail closed so a lost acknowledgement can never be replayed.
 
 ## Roll back
 
@@ -128,7 +156,7 @@ Rollback is also idle-gated and HTTP-verified:
 ./deploy.sh --rollback
 ```
 
-This swaps `/usr/data/fluidd` and `/usr/data/fluidd.previous`, so the operation remains reversible. If the selected previous slot fails HTTP verification, the script restores the original slot and verifies recovery.
+This swaps the live slot and `<live>.previous`, so the operation remains reversible. Pass the same `PRINTER_HOST`, `PRINTER_USER`, `FLUIDD_ROOT`, and `WEBUI_DIR` you deployed with; a successful deploy prints the exact rollback command to reuse. If the selected previous slot fails HTTP verification, the script restores the original slot and verifies recovery.
 
 ## Browser regression testing
 

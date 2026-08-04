@@ -87,7 +87,15 @@ MOCK_CURL
 cat > "${MOCK_BIN}/ssh" <<'MOCK_SSH'
 #!/usr/bin/env bash
 set -euo pipefail
+# The mock matches exact remote paths. They are parameterised only so a case can
+# assert that a retargeted printer layout reaches the remote shell intact; an
+# unmatched command still fails loudly as an unhandled mock invocation.
+data_root="${MOCK_DATA_ROOT:-/usr/data}"
+webui_dir="${MOCK_WEBUI_DIR:-fluidd}"
+live_dir="${data_root}/${webui_dir}"
+upload_path="${data_root}/regolith-deploy.tgz"
 command_text="${!#}"
+printf 'SSH_TARGET %s\n' "${@: -2:1}" >> "$MOCK_LOG"
 printf 'SSH %s\n' "$command_text" >> "$MOCK_LOG"
 bash -n <<< "$command_text" || exit 93
 
@@ -98,19 +106,28 @@ if [ "$command_text" = "true" ]; then
   exit 0
 fi
 if [[ "$command_text" == *'REGOLITH_PREFLIGHT_OK'* ]]; then
+  printf 'PREFLIGHT_ATTEMPT\n' >> "$MOCK_LOG"
+  if [ "${MOCK_SCENARIO:-idle}" = "flaky_auth" ] && [ ! -f "$MOCK_TRANSPORT_FAILED" ]; then
+    : > "$MOCK_TRANSPORT_FAILED"
+    printf 'SSH_REFUSED\n' >> "$MOCK_LOG"
+    exit 255
+  fi
+  if [ "${MOCK_SCENARIO:-idle}" = "preflight_fail" ]; then
+    exit 1
+  fi
   printf 'REGOLITH_PREFLIGHT_OK available_kb=1048576\n'
   exit 0
 fi
-if [[ "$command_text" == *'cat > /usr/data/regolith-deploy.tgz'* ]]; then
+if [[ "$command_text" == *"cat > ${upload_path}"* ]]; then
   printf 'WRITE_UPLOAD\n' >> "$MOCK_LOG"
   cat > "${MOCK_REMOTE}/regolith-deploy.tgz"
   exit 0
 fi
-if [[ "$command_text" == *'wc -c < /usr/data/regolith-deploy.tgz'* ]]; then
+if [[ "$command_text" == *"wc -c < ${upload_path}"* ]]; then
   wc -c < "${MOCK_REMOTE}/regolith-deploy.tgz"
   exit 0
 fi
-if [[ "$command_text" == *'sha256sum /usr/data/regolith-deploy.tgz'* ]]; then
+if [[ "$command_text" == *"sha256sum ${upload_path}"* ]]; then
   if command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "${MOCK_REMOTE}/regolith-deploy.tgz" | awk '{print $1}'
   else
@@ -125,35 +142,48 @@ if [[ "$command_text" == *'REGOLITH_STAGE_OK'* ]]; then
   cp -R "${MOCK_PROJECT}/dist/." "${MOCK_REMOTE}/next/"
   exit 0
 fi
-if [[ "$command_text" == *'cd /usr/data/fluidd.next'* ]]; then
+if [[ "$command_text" == *"cd ${live_dir}.next"* ]]; then
   cd "${MOCK_REMOTE}/next"
   find . -type f -print | sed 's|^\./||' | LC_ALL=C sort
   exit 0
 fi
-if [[ "$command_text" == *'fluidd-before-'* ]]; then
+if [[ "$command_text" == *"${webui_dir}-before-"* ]]; then
   printf 'WRITE_BACKUP\n' >> "$MOCK_LOG"
   if [[ "$command_text" == *'retention_keep=5'* ]]; then
     printf 'WRITE_RETENTION\n' >> "$MOCK_LOG"
   fi
+  if [ "${MOCK_SCENARIO:-idle}" = "backup_refused" ]; then
+    printf 'SSH_REFUSED\n' >> "$MOCK_LOG"
+    exit 255
+  fi
   if [ "${MOCK_SCENARIO:-idle}" = "backup_invalid" ]; then
     exit 1
   fi
-  printf 'backup=/usr/data/regolith-backups/fluidd-before-mock.tgz size=1024 sha256=mock files=2 retained=5 pruned=0\n'
+  printf 'backup=%s/regolith-backups/%s-before-mock.tgz size=1024 sha256=mock files=2 retained=5 pruned=0\n' \
+    "$data_root" "$webui_dir"
   exit 0
 fi
 if [[ "$command_text" == *'REGOLITH_SWAP_OK'* ]]; then
   printf 'WRITE_SWAP\n' >> "$MOCK_LOG"
+  if [ "${MOCK_SCENARIO:-idle}" = "swap_refused" ]; then
+    printf 'SSH_REFUSED\n' >> "$MOCK_LOG"
+    exit 255
+  fi
   exit 0
 fi
 if [[ "$command_text" == *'REGOLITH_ROLLBACK_OK'* ]]; then
   printf 'WRITE_ROLLBACK\n' >> "$MOCK_LOG"
+  if [ "${MOCK_SCENARIO:-idle}" = "rollback_refused" ]; then
+    printf 'SSH_REFUSED\n' >> "$MOCK_LOG"
+    exit 255
+  fi
   exit 0
 fi
-if [[ "$command_text" == *'test -d /usr/data/fluidd.previous'* ]]; then
+if [[ "$command_text" == *"test -d ${live_dir}.previous"* ]]; then
   exit 0
 fi
-if [[ "$command_text" == *'rm -f /usr/data/regolith-deploy.tgz'* ]] || \
-   [[ "$command_text" == *'rm -rf /usr/data/fluidd.next'* ]]; then
+if [[ "$command_text" == *"rm -f ${upload_path}"* ]] || \
+   [[ "$command_text" == *"rm -rf ${live_dir}.next"* ]]; then
   printf 'WRITE_CLEANUP\n' >> "$MOCK_LOG"
   exit 0
 fi
@@ -182,6 +212,7 @@ prepare_case() {
   LOG_FILE="${CASE_DIR}/mock.log"
   OUTPUT_FILE="${CASE_DIR}/output.log"
   HTTP_FAILED_FILE="${CASE_DIR}/http-failed"
+  TRANSPORT_FAILED_FILE="${CASE_DIR}/transport-failed"
   mkdir -p "$PROJECT_DIR" "$REMOTE_DIR"
   cp "${ROOT}/deploy.sh" "${PROJECT_DIR}/deploy.sh"
   chmod +x "${PROJECT_DIR}/deploy.sh"
@@ -191,16 +222,32 @@ prepare_case() {
 invoke() {
   local scenario="$1"
   shift
+  # Layout variables are passed only when a case sets them, so the unset case
+  # exercises the script's own built-in defaults rather than the test's copy.
+  local -a layout_env=()
+  if [ -n "${TEST_PRINTER_USER:-}" ]; then
+    layout_env+=("PRINTER_USER=${TEST_PRINTER_USER}")
+  fi
+  if [ -n "${TEST_FLUIDD_ROOT:-}" ]; then
+    layout_env+=("FLUIDD_ROOT=${TEST_FLUIDD_ROOT}")
+  fi
+  if [ -n "${TEST_WEBUI_DIR:-}" ]; then
+    layout_env+=("WEBUI_DIR=${TEST_WEBUI_DIR}")
+  fi
   (
     cd "$PROJECT_DIR"
-    PATH="${MOCK_BIN}:$PATH" \
+    env PATH="${MOCK_BIN}:$PATH" \
       MOCK_SCENARIO="$scenario" \
       MOCK_LOG="$LOG_FILE" \
       MOCK_PROJECT="$PROJECT_DIR" \
       MOCK_REMOTE="$REMOTE_DIR" \
       MOCK_HTTP_FAILED="$HTTP_FAILED_FILE" \
+      MOCK_TRANSPORT_FAILED="$TRANSPORT_FAILED_FILE" \
+      MOCK_DATA_ROOT="${TEST_FLUIDD_ROOT:-/usr/data}" \
+      MOCK_WEBUI_DIR="${TEST_WEBUI_DIR:-fluidd}" \
       PRINTER_PASSWORD="${TEST_PASSWORD:-}" \
       PRINTER_HOST="${TEST_HOST:-forge.local}" \
+      ${layout_env[@]+"${layout_env[@]}"} \
       bash ./deploy.sh "$@"
   ) > "$OUTPUT_FILE" 2>&1
 }
@@ -264,6 +311,121 @@ if grep -q '^WRITE_' "$LOG_FILE"; then
 fi
 pass_test "preflight is read-only"
 
+prepare_case default-layout
+invoke idle --preflight || fail_test "default layout preflight succeeds"
+grep -q '^SSH_TARGET root@forge.local$' "$LOG_FILE" \
+  || fail_test "default SSH target is root@forge.local"
+grep -Eq '^[[:space:]]*test -w /usr/data$' "$LOG_FILE" \
+  || fail_test "default data root is /usr/data"
+grep -Eq '^[[:space:]]*test -d /usr/data/fluidd$' "$LOG_FILE" \
+  || fail_test "default live directory is /usr/data/fluidd"
+if grep -q '^SSHPASS -e$' "$LOG_FILE"; then
+  fail_test "working key auth still fell back to a password"
+fi
+pass_test "unset environment keeps the K1 Max defaults and key-first auth"
+
+# The mock only answers the layout it is given, so a deploy that still carried a
+# hardcoded /usr/data path anywhere would reach an unhandled mock command.
+prepare_case custom-layout
+TEST_PRINTER_USER='maker'
+TEST_FLUIDD_ROOT='/opt/printer-data'
+TEST_WEBUI_DIR='webui'
+invoke idle || fail_test "custom printer layout deploys end to end"
+grep -q '^SSH_TARGET maker@forge.local$' "$LOG_FILE" \
+  || fail_test "PRINTER_USER override reached the SSH target"
+grep -Eq '^[[:space:]]*test -w /opt/printer-data$' "$LOG_FILE" \
+  || fail_test "FLUIDD_ROOT override composed the remote data root"
+grep -Eq '^[[:space:]]*test -d /opt/printer-data/webui$' "$LOG_FILE" \
+  || fail_test "WEBUI_DIR override composed the remote live directory"
+grep -Fq 'cat > /opt/printer-data/regolith-deploy.tgz' "$LOG_FILE" \
+  || fail_test "FLUIDD_ROOT override composed the upload path"
+grep -Fq '/opt/printer-data/webui.next' "$LOG_FILE" \
+  || fail_test "WEBUI_DIR override composed the staging slot"
+grep -Fq '/opt/printer-data/regolith-backups/webui-before-' "$LOG_FILE" \
+  || fail_test "FLUIDD_ROOT override composed the backup path"
+grep -q '^WRITE_SWAP$' "$LOG_FILE" || fail_test "custom layout reached the atomic swap"
+if grep -q '/usr/data' "$LOG_FILE"; then
+  fail_test "custom layout still sent a hardcoded K1 Max path"
+fi
+pass_test "PRINTER_USER, FLUIDD_ROOT, and WEBUI_DIR retarget every remote path"
+unset TEST_PRINTER_USER TEST_FLUIDD_ROOT TEST_WEBUI_DIR
+
+prepare_case unsafe-root
+TEST_FLUIDD_ROOT='/usr/data;touch-bad'
+if invoke idle --preflight; then
+  fail_test "unsafe FLUIDD_ROOT rejected"
+fi
+grep -q 'Invalid FLUIDD_ROOT' "$OUTPUT_FILE" || fail_test "unsafe FLUIDD_ROOT error is clear"
+[ ! -s "$LOG_FILE" ] || fail_test "unsafe FLUIDD_ROOT reached command mocks"
+unset TEST_FLUIDD_ROOT
+
+prepare_case unsafe-webui-dir
+TEST_WEBUI_DIR='../etc'
+if invoke idle --preflight; then
+  fail_test "unsafe WEBUI_DIR rejected"
+fi
+grep -q 'Invalid WEBUI_DIR' "$OUTPUT_FILE" || fail_test "unsafe WEBUI_DIR error is clear"
+[ ! -s "$LOG_FILE" ] || fail_test "unsafe WEBUI_DIR reached command mocks"
+unset TEST_WEBUI_DIR
+
+prepare_case unsafe-user
+TEST_PRINTER_USER='root maker'
+if invoke idle --preflight; then
+  fail_test "unsafe PRINTER_USER rejected"
+fi
+grep -q 'Invalid PRINTER_USER' "$OUTPUT_FILE" || fail_test "unsafe PRINTER_USER error is clear"
+[ ! -s "$LOG_FILE" ] || fail_test "unsafe PRINTER_USER reached command mocks"
+unset TEST_PRINTER_USER
+pass_test "layout overrides are validated before any remote command"
+
+prepare_case flaky-auth
+invoke flaky_auth --preflight || fail_test "transient SSH refusal must recover"
+grep -q '^SSH_REFUSED$' "$LOG_FILE" || fail_test "flaky transport scenario refused once"
+grep -q 'SSH session refused' "$OUTPUT_FILE" || fail_test "retry of a refused session is reported"
+grep -q 'Preflight passed. No remote files changed.' "$OUTPUT_FILE" \
+  || fail_test "retry completed the read-only preflight"
+preflight_attempts="$(grep -c '^PREFLIGHT_ATTEMPT$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$preflight_attempts" = "2" ] \
+  || fail_test "refused preflight should be retried exactly once here (attempts: ${preflight_attempts})"
+pass_test "transient SSH transport refusal is retried and recovers"
+
+prepare_case preflight-failure
+if invoke preflight_fail --preflight; then
+  fail_test "a failing remote preflight must fail the run"
+fi
+preflight_attempts="$(grep -c '^PREFLIGHT_ATTEMPT$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$preflight_attempts" = "1" ] \
+  || fail_test "a real remote failure must not be retried (attempts: ${preflight_attempts})"
+grep -q 'Remote preflight failed' "$OUTPUT_FILE" || fail_test "remote preflight error is clear"
+pass_test "a genuine remote failure fails closed on the first attempt"
+
+prepare_case backup-refused
+if invoke backup_refused; then
+  fail_test "refused session on the backup step must fail the deployment"
+fi
+backup_attempts="$(grep -c '^WRITE_BACKUP$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$backup_attempts" = "1" ] \
+  || fail_test "mutating backup step must not be retried (attempts: ${backup_attempts})"
+if grep -q '^WRITE_SWAP$' "$LOG_FILE"; then
+  fail_test "refused backup reached the live swap"
+fi
+prepare_case swap-refused
+if invoke swap_refused; then
+  fail_test "refused session on the atomic swap must fail the deployment"
+fi
+swap_attempts="$(grep -c '^WRITE_SWAP$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$swap_attempts" = "1" ] \
+  || fail_test "atomic swap must not be retried (attempts: ${swap_attempts})"
+
+prepare_case rollback-refused
+if invoke rollback_refused --rollback; then
+  fail_test "refused session on the rollback swap must fail"
+fi
+rollback_attempts="$(grep -c '^WRITE_ROLLBACK$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$rollback_attempts" = "1" ] \
+  || fail_test "rollback swap must not be retried (attempts: ${rollback_attempts})"
+pass_test "refused session on a mutating step fails closed instead of retrying"
+
 prepare_case success
 invoke idle || fail_test "successful deployment path"
 grep -q '^WRITE_SWAP$' "$LOG_FILE" || fail_test "success path performed atomic swap"
@@ -285,7 +447,10 @@ if grep -q '^WRITE_SWAP$' "$LOG_FILE"; then
 fi
 grep -q 'Could not create and verify persistent backup' "$OUTPUT_FILE" \
   || fail_test "invalid backup error is clear"
-pass_test "invalid backup set blocks swap before retention"
+backup_attempts="$(grep -c '^WRITE_BACKUP$' "$LOG_FILE" | tr -d '[:space:]')"
+[ "$backup_attempts" = "1" ] \
+  || fail_test "mutating backup step must fail closed, not retry (attempts: ${backup_attempts})"
+pass_test "invalid backup set blocks swap before retention without retrying"
 
 prepare_case http-failure
 if invoke http_fail; then
@@ -314,6 +479,29 @@ grep -q 'StrictHostKeyChecking=accept-new' "${ROOT}/deploy.sh" \
   || fail_test "accept-new host key policy missing"
 grep -q 'sshpass -e' "${ROOT}/deploy.sh" \
   || fail_test "environment-only sshpass mode missing"
+if grep -Eq '^[[:space:]]*(export[[:space:]]+)?(PRINTER_PASSWORD|SSHPASS)=[^"$]' "${ROOT}/deploy.sh"; then
+  fail_test "deployment script assigns a literal credential"
+fi
 pass_test "no embedded secret or insecure SSH flags"
+
+grep -Fq 'PRINTER_USER="${PRINTER_USER:-root}"' "${ROOT}/deploy.sh" \
+  || fail_test "PRINTER_USER default drifted from root"
+grep -Fq 'FLUIDD_ROOT="${FLUIDD_ROOT:-/usr/data}"' "${ROOT}/deploy.sh" \
+  || fail_test "FLUIDD_ROOT default drifted from /usr/data"
+grep -Fq 'WEBUI_DIR="${WEBUI_DIR:-fluidd}"' "${ROOT}/deploy.sh" \
+  || fail_test "WEBUI_DIR default drifted from fluidd"
+env_line="$(grep -n 'FLUIDD_ROOT="${FLUIDD_ROOT:-' "${ROOT}/deploy.sh" | head -1 | cut -d: -f1)"
+readonly_line="$(grep -n '^readonly PRINTER_USER FLUIDD_ROOT WEBUI_DIR$' "${ROOT}/deploy.sh" | head -1 | cut -d: -f1)"
+[ -n "$env_line" ] && [ -n "$readonly_line" ] && [ "$env_line" -lt "$readonly_line" ] \
+  || fail_test "layout environment must be resolved before it is made readonly"
+pass_test "printer layout defaults are unchanged and env-resolved before readonly"
+
+key_line="$(grep -n 'BatchMode=yes' "${ROOT}/deploy.sh" | head -1 | cut -d: -f1)"
+password_line="$(grep -n 'sshpass -e ssh' "${ROOT}/deploy.sh" | head -1 | cut -d: -f1)"
+[ -n "$key_line" ] && [ -n "$password_line" ] && [ "$key_line" -lt "$password_line" ] \
+  || fail_test "key authentication must be attempted before the password fallback"
+grep -q 'ssh-copy-id' "${ROOT}/deploy.sh" \
+  || fail_test "key setup instructions missing from the auth path"
+pass_test "key authentication is first and documented, password stays the fallback"
 
 printf '1..%d\n' "$pass_count"

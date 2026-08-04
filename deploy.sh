@@ -6,19 +6,29 @@
 #   ./deploy.sh                      # validate, build, deploy, verify
 #   ./deploy.sh --rollback           # swap live and previous builds
 #
-# Authentication prefers an existing SSH key. If key auth fails, set
-# PRINTER_PASSWORD or run interactively for a silent prompt. Password auth
-# requires sshpass and uses SSHPASS/sshpass -e so secrets never enter argv.
+# Any Klipper printer that serves a static WebUI directory works. Defaults
+# match a Creality K1 Max running Fluidd; override for another machine:
+#   PRINTER_HOST   printer hostname or LAN address     (forge.local)
+#   PRINTER_USER   SSH account on the printer          (root)
+#   FLUIDD_ROOT    writable data root on the printer   (/usr/data)
+#   WEBUI_DIR      served WebUI directory under it     (fluidd)
+# Printer-specific behaviour (pins, limits, macros) belongs in a Regolith
+# profile under src/profiles, not here.
+#
+# SSH keys are the supported way in. SSH into the printer once, then run
+#   ssh-copy-id PRINTER_USER@PRINTER_HOST
+# and every later deploy is passwordless. Without a key the script falls back
+# to PRINTER_PASSWORD or a silent prompt through sshpass -e, so the secret
+# never enters argv.
 
 set -Eeuo pipefail
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PRINTER_USER="root"
-readonly LIVE_DIR="/usr/data/fluidd"
-readonly NEXT_DIR="/usr/data/fluidd.next"
-readonly PREVIOUS_DIR="/usr/data/fluidd.previous"
-readonly UPLOAD_PATH="/usr/data/regolith-deploy.tgz"
-readonly BACKUP_DIR="/usr/data/regolith-backups"
+
+# Resolved from the environment before anything below is made readonly.
+PRINTER_USER="${PRINTER_USER:-root}"
+FLUIDD_ROOT="${FLUIDD_ROOT:-/usr/data}"
+WEBUI_DIR="${WEBUI_DIR:-fluidd}"
 
 MODE="deploy"
 PRINTER_HOST="${PRINTER_HOST:-forge.local}"
@@ -37,7 +47,7 @@ warn() { printf '    WARN  %s\n' "$*" >&2; }
 fail() { printf '    ERROR  %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 for argument in "$@"; do
@@ -73,7 +83,35 @@ validate_host() {
   done
 }
 
+validate_absolute_path() {
+  local path="$1"
+  [ "${#path}" -le 128 ] || return 1
+  [[ "$path" =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
+  [[ "$path" != *//* && "$path" != */ && "$path" != *..* ]] || return 1
+}
+
+validate_path_segment() {
+  local segment="$1"
+  [ "${#segment}" -le 64 ] || return 1
+  [[ "$segment" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+  [[ "$segment" != *..* ]] || return 1
+}
+
 validate_host "$PRINTER_HOST" || fail "Invalid PRINTER_HOST. Use forge.local or a plain trusted LAN hostname/IP."
+validate_path_segment "$PRINTER_USER" || fail "Invalid PRINTER_USER. Use a plain account name such as root."
+validate_absolute_path "$FLUIDD_ROOT" || fail "Invalid FLUIDD_ROOT. Use an absolute path such as /usr/data."
+validate_path_segment "$WEBUI_DIR" || fail "Invalid WEBUI_DIR. Use one directory name such as fluidd."
+
+# Every remote path is composed here and spliced into the remote scripts below,
+# so the validators above are the only thing standing between an override and a
+# remote shell. Keep them strict.
+readonly PRINTER_USER FLUIDD_ROOT WEBUI_DIR
+readonly LIVE_DIR="${FLUIDD_ROOT}/${WEBUI_DIR}"
+readonly NEXT_DIR="${LIVE_DIR}.next"
+readonly PREVIOUS_DIR="${LIVE_DIR}.previous"
+readonly ROLLBACK_DIR="${LIVE_DIR}.rollback-candidate"
+readonly UPLOAD_PATH="${FLUIDD_ROOT}/regolith-deploy.tgz"
+readonly BACKUP_DIR="${FLUIDD_ROOT}/regolith-backups"
 TARGET="${PRINTER_USER}@${PRINTER_HOST}"
 
 require_command() {
@@ -94,19 +132,60 @@ remote() {
   "${SSH_COMMAND[@]}" "$TARGET" "$@"
 }
 
+# ssh exits 255 only when it could not establish or authenticate the session.
+# Dropbear on a memory-constrained printer occasionally refuses a mid-run auth;
+# that is transient and safe to repeat. Every other status is the remote
+# command's own exit code and is returned untouched, so real remote failures
+# still fail closed on the first attempt.
+#
+# Usage: remote_retry <stdin-file|-> <remote command>
+# Only use this for steps that are idempotent or read-only. Steps that mutate
+# the live slot are called through plain remote() and stay failing-closed.
+readonly REMOTE_ATTEMPTS=3
+readonly SSH_TRANSPORT_STATUS=255
+
+remote_retry() {
+  local stdin_file="$1"
+  shift
+  local attempt=1
+  local status
+  while :; do
+    status=0
+    if [ "$stdin_file" = "-" ]; then
+      remote "$@" || status=$?
+    else
+      # Reopened per attempt, and the remote redirect truncates, so a retry
+      # rewrites the file rather than appending to a partial upload.
+      remote "$@" < "$stdin_file" || status=$?
+    fi
+    if [ "$status" -eq 0 ]; then
+      return 0
+    fi
+    if [ "$status" -ne "$SSH_TRANSPORT_STATUS" ] || [ "$attempt" -ge "$REMOTE_ATTEMPTS" ]; then
+      return "$status"
+    fi
+    warn "SSH session refused by ${PRINTER_HOST} (attempt ${attempt}/${REMOTE_ATTEMPTS}). Retrying in ${attempt}s."
+    sleep "$attempt"
+    attempt=$((attempt + 1))
+  done
+}
+
+# Deliberately never retried. A swap whose acknowledgement was lost must not be
+# replayed, so this stays failing-closed; the guards below also refuse to run
+# twice because the source directories no longer exist after a completed swap.
 swap_live_previous() {
   remote '
     set -eu
-    test -d /usr/data/fluidd
-    test -d /usr/data/fluidd.previous
-    rm -rf /usr/data/fluidd.rollback-candidate
-    mv /usr/data/fluidd /usr/data/fluidd.rollback-candidate
-    if mv /usr/data/fluidd.previous /usr/data/fluidd; then
-      mv /usr/data/fluidd.rollback-candidate /usr/data/fluidd.previous
-      chmod -R 755 /usr/data/fluidd
+    test -d '"$LIVE_DIR"'
+    test -d '"$PREVIOUS_DIR"'
+    rm -rf '"$ROLLBACK_DIR"'
+    mv '"$LIVE_DIR"' '"$ROLLBACK_DIR"'
+    if mv '"$PREVIOUS_DIR"' '"$LIVE_DIR"'; then
+      mv '"$ROLLBACK_DIR"' '"$PREVIOUS_DIR"'
+      chmod -R 755 '"$LIVE_DIR"'
       echo REGOLITH_ROLLBACK_OK
     else
-      mv /usr/data/fluidd.rollback-candidate /usr/data/fluidd
+      mv '"$ROLLBACK_DIR"' '"$LIVE_DIR"'
       exit 1
     fi
   '
@@ -148,7 +227,7 @@ cleanup() {
       warn "Automatic rollback could not be verified. Do not operate printer through this UI."
     fi
   elif [ "$status" -ne 0 ] && [ "$UPLOAD_STARTED" -eq 1 ] && [ "$AUTH_READY" -eq 1 ]; then
-    remote 'rm -rf /usr/data/fluidd.next; rm -f /usr/data/regolith-deploy.tgz' >/dev/null 2>&1 || true
+    remote "rm -rf ${NEXT_DIR}; rm -f ${UPLOAD_PATH}" >/dev/null 2>&1 || true
   fi
 
   if [ -n "$TEMP_DIR" ] && [[ "$TEMP_DIR" == /tmp/regolith-deploy.* ]]; then
@@ -171,24 +250,29 @@ SSH_OPTIONS=(
 )
 
 step "Connect to ${PRINTER_HOST}"
+# Key authentication is the primary path and is always tried first.
 if ssh "${SSH_OPTIONS[@]}" -o BatchMode=yes "$TARGET" true >/dev/null 2>&1; then
   SSH_COMMAND=(ssh "${SSH_OPTIONS[@]}" -o BatchMode=yes)
   ok "SSH key authentication"
 else
+  warn "No usable SSH key for ${TARGET}. Keys are the supported path:"
+  warn "  ssh ${TARGET}              # trust the printer once"
+  warn "  ssh-copy-id ${TARGET}      # then deploys need no password"
+  warn "Falling back to password authentication for this run only."
   if [ -z "${PRINTER_PASSWORD:-}" ]; then
     if [ -t 0 ]; then
       read -r -s -p "Printer password for ${TARGET}: " PRINTER_PASSWORD
       printf '\n'
     else
-      fail "SSH key authentication failed. Set PRINTER_PASSWORD or run interactively."
+      fail "SSH key authentication failed. Run 'ssh-copy-id ${TARGET}', or set PRINTER_PASSWORD with sshpass installed."
     fi
   fi
   require_command sshpass
   export SSHPASS="$PRINTER_PASSWORD"
   unset PRINTER_PASSWORD
   SSH_COMMAND=(sshpass -e ssh "${SSH_OPTIONS[@]}")
-  remote true >/dev/null 2>&1 || fail "Authentication failed for ${TARGET}."
-  ok "Password authentication through sshpass -e"
+  remote true >/dev/null 2>&1 || fail "Authentication failed for ${TARGET}. Check PRINTER_USER, or run 'ssh-copy-id ${TARGET}'."
+  ok "Password authentication through sshpass -e (run ssh-copy-id to skip this)"
 fi
 AUTH_READY=1
 
@@ -197,18 +281,19 @@ ARCHIVE_PATH="${TEMP_DIR}/regolith-deploy.tgz"
 INDEX_PATH="${TEMP_DIR}/index.html"
 
 step "Read-only remote preflight"
-remote '
+# Read-only, so a refused session is safe to retry.
+remote_retry - '
   set -eu
-  test -d /usr/data
-  test -w /usr/data
-  test -d /usr/data/fluidd
+  test -d '"$FLUIDD_ROOT"'
+  test -w '"$FLUIDD_ROOT"'
+  test -d '"$LIVE_DIR"'
   command -v tar >/dev/null
   command -v sha256sum >/dev/null
-  available_kb=$(df -Pk /usr/data | awk "NR==2 {print \$4}")
+  available_kb=$(df -Pk '"$FLUIDD_ROOT"' | awk "NR==2 {print \$4}")
   test -n "$available_kb"
   test "$available_kb" -ge 32768
   printf "REGOLITH_PREFLIGHT_OK available_kb=%s\n" "$available_kb"
-' >/dev/null || fail "Remote preflight failed. Need writable /usr/data, current /usr/data/fluidd, tar, sha256sum, and 32 MB free."
+' >/dev/null || fail "Remote preflight failed. Need writable ${FLUIDD_ROOT}, current ${LIVE_DIR}, tar, sha256sum, and 32 MB free. Override FLUIDD_ROOT/WEBUI_DIR if this printer serves its WebUI elsewhere."
 
 state_json="$($CURL_BIN --fail --silent --show-error --connect-timeout 5 --max-time 10 \
   "http://${PRINTER_HOST}/printer/objects/query?print_stats&idle_timeout&webhooks&virtual_sdcard")" \
@@ -256,8 +341,8 @@ fi
 
 if [ "$MODE" = "rollback" ]; then
   step "Rollback to previous verified slot"
-  remote 'test -d /usr/data/fluidd.previous' \
-    || fail "No previous build exists at /usr/data/fluidd.previous."
+  remote_retry - "test -d ${PREVIOUS_DIR}" \
+    || fail "No previous build exists at ${PREVIOUS_DIR}."
   swap_live_previous >/dev/null || fail "Rollback swap failed; live directory was preserved."
   SWAP_ACTIVE=1
   http_verify || fail "Rolled-back UI failed HTTP verification. Restoring original slot."
@@ -285,10 +370,12 @@ ok "Archive ${local_size} bytes, SHA-256 ${local_hash}"
 
 step "Upload and verify archive"
 UPLOAD_STARTED=1
-remote 'umask 022; cat > /usr/data/regolith-deploy.tgz' < "$ARCHIVE_PATH" \
+# Truncating write of a staging file outside the live slot: a retry rewrites it
+# whole, and the size/SHA-256 comparison below still has to pass.
+remote_retry "$ARCHIVE_PATH" "umask 022; cat > ${UPLOAD_PATH}" \
   || fail "Archive upload failed. Live UI was not changed."
-remote_size="$(remote 'wc -c < /usr/data/regolith-deploy.tgz' | tr -d '[:space:]')"
-remote_hash="$(remote 'sha256sum /usr/data/regolith-deploy.tgz | awk "{print \$1}"' | tr -d '[:space:]')"
+remote_size="$(remote_retry - "wc -c < ${UPLOAD_PATH}" | tr -d '[:space:]')"
+remote_hash="$(remote_retry - 'sha256sum '"$UPLOAD_PATH"' | awk "{print \$1}"' | tr -d '[:space:]')"
 [ "$remote_size" = "$local_size" ] \
   || fail "Archive size mismatch (local ${local_size}, remote ${remote_size})."
 [ "$remote_hash" = "$local_hash" ] \
@@ -296,39 +383,44 @@ remote_hash="$(remote 'sha256sum /usr/data/regolith-deploy.tgz | awk "{print \$1
 ok "Remote size and SHA-256 match"
 
 step "Extract isolated staging slot"
-remote '
+# Self-cleaning (rm -rf first) and confined to the staging slot, so a refused
+# session can be repeated without touching the live directory.
+remote_retry - '
   set -eu
-  if tar -tzf /usr/data/regolith-deploy.tgz | grep -Eq "(^/|(^|/)\.\.(/|$))"; then
+  if tar -tzf '"$UPLOAD_PATH"' | grep -Eq "(^/|(^|/)\.\.(/|$))"; then
     echo "Unsafe archive path" >&2
     exit 1
   fi
-  rm -rf /usr/data/fluidd.next
-  mkdir -p /usr/data/fluidd.next
-  tar -xzf /usr/data/regolith-deploy.tgz -C /usr/data/fluidd.next
-  test -f /usr/data/fluidd.next/index.html
-  chmod -R 755 /usr/data/fluidd.next
+  rm -rf '"$NEXT_DIR"'
+  mkdir -p '"$NEXT_DIR"'
+  tar -xzf '"$UPLOAD_PATH"' -C '"$NEXT_DIR"'
+  test -f '"$NEXT_DIR"'/index.html
+  chmod -R 755 '"$NEXT_DIR"'
   echo REGOLITH_STAGE_OK
 ' >/dev/null || fail "Staging extract failed. Live UI was not changed."
 
-remote_files="$(remote 'cd /usr/data/fluidd.next && find . -type f -print | sed "s|^\./||" | LC_ALL=C sort')"
+remote_files="$(remote_retry - 'cd '"$NEXT_DIR"' && find . -type f -print | sed "s|^\./||" | LC_ALL=C sort')"
 [ "$remote_files" = "$local_files" ] || fail "Staged file list differs from local dist. Live UI was not changed."
 ok "Staged file list matches local dist"
 
 step "Create persistent known-good backup and enforce retention"
+# Deliberately not retried: this both creates an archive and prunes older ones,
+# so a replay after a lost acknowledgement would write a second backup and evict
+# an extra known-good archive. It stays failing-closed before the live swap.
 backup_result="$(remote '
   set -eu
   retention_keep=5
-  mkdir -p /usr/data/regolith-backups
+  mkdir -p '"$BACKUP_DIR"'
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
-  backup="/usr/data/regolith-backups/fluidd-before-${stamp}.tgz"
+  backup="'"$BACKUP_DIR"'/'"$WEBUI_DIR"'-before-${stamp}.tgz"
   test ! -e "$backup"
-  tar -czf "$backup" -C /usr/data fluidd
+  tar -czf "$backup" -C '"$FLUIDD_ROOT"' '"$WEBUI_DIR"'
   size=$(wc -c < "$backup" | tr -d "[:space:]")
   hash=$(sha256sum "$backup" | awk "{print \$1}")
   count=$(tar -tzf "$backup" | wc -l | tr -d "[:space:]")
   test "$size" -gt 0
   test "$count" -gt 0
-  backups=$(find /usr/data/regolith-backups -type f -name "fluidd-before-*.tgz" | LC_ALL=C sort -r)
+  backups=$(find '"$BACKUP_DIR"' -type f -name "'"$WEBUI_DIR"'-before-*.tgz" | LC_ALL=C sort -r)
   test -n "$backups"
   total=0
   new_rank=0
@@ -362,17 +454,20 @@ backup_result="$(remote '
 ok "$backup_result"
 
 step "Atomic static-asset swap"
+# Deliberately not retried: replaying a swap whose acknowledgement was lost
+# could discard the real previous slot. It fails closed and the trap below
+# restores the previous build.
 remote '
   set -eu
-  test -d /usr/data/fluidd
-  test -f /usr/data/fluidd.next/index.html
-  rm -rf /usr/data/fluidd.previous
-  mv /usr/data/fluidd /usr/data/fluidd.previous
-  if mv /usr/data/fluidd.next /usr/data/fluidd; then
-    chmod -R 755 /usr/data/fluidd
+  test -d '"$LIVE_DIR"'
+  test -f '"$NEXT_DIR"'/index.html
+  rm -rf '"$PREVIOUS_DIR"'
+  mv '"$LIVE_DIR"' '"$PREVIOUS_DIR"'
+  if mv '"$NEXT_DIR"' '"$LIVE_DIR"'; then
+    chmod -R 755 '"$LIVE_DIR"'
     echo REGOLITH_SWAP_OK
   else
-    mv /usr/data/fluidd.previous /usr/data/fluidd
+    mv '"$PREVIOUS_DIR"' '"$LIVE_DIR"'
     exit 1
   fi
 ' >/dev/null || fail "Atomic swap failed; previous live directory was restored."
@@ -380,11 +475,17 @@ SWAP_ACTIVE=1
 
 step "Verify live HTML and every referenced asset"
 http_verify || fail "Live HTTP verification failed."
-remote 'rm -f /usr/data/regolith-deploy.tgz; rm -rf /usr/data/fluidd.next' >/dev/null \
+# Removing staging leftovers is idempotent, so a refused session can be retried.
+remote_retry - "rm -f ${UPLOAD_PATH}; rm -rf ${NEXT_DIR}" >/dev/null \
   || fail "Post-deploy cleanup failed."
 SWAP_ACTIVE=0
 UPLOAD_STARTED=0
 
+rollback_env="$(printf 'PRINTER_HOST=%q' "$PRINTER_HOST")"
+[ "$PRINTER_USER" = "root" ] || rollback_env="${rollback_env} $(printf 'PRINTER_USER=%q' "$PRINTER_USER")"
+[ "$FLUIDD_ROOT" = "/usr/data" ] || rollback_env="${rollback_env} $(printf 'FLUIDD_ROOT=%q' "$FLUIDD_ROOT")"
+[ "$WEBUI_DIR" = "fluidd" ] || rollback_env="${rollback_env} $(printf 'WEBUI_DIR=%q' "$WEBUI_DIR")"
+
 printf '\nDeploy verified: http://%s/\n' "$PRINTER_HOST"
-printf 'Rollback: PRINTER_HOST=%q ./deploy.sh --rollback\n' "$PRINTER_HOST"
+printf 'Rollback: %s ./deploy.sh --rollback\n' "$rollback_env"
 printf 'Persistent backup: %s\n' "$backup_result"

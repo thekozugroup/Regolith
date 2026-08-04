@@ -30,8 +30,18 @@ Options:
   --rollback   Restore the previous verified WebUI slot
   --help       Show this help
 
-Set PRINTER_HOST to use a trusted address other than forge.local.
-The printer password is requested silently when needed and is never saved.
+Works with any Klipper printer. Set these for a machine whose WebUI is not at
+root@forge.local:/usr/data/fluidd:
+  PRINTER_HOST   printer hostname or LAN address     (forge.local)
+  PRINTER_USER   SSH account on the printer          (root)
+  FLUIDD_ROOT    writable data root on the printer   (/usr/data)
+  WEBUI_DIR      served WebUI directory under it     (fluidd)
+
+Machine-specific behaviour lives in a Regolith profile, not here.
+
+SSH into the printer once and run ssh-copy-id PRINTER_USER@PRINTER_HOST so
+setup needs no password. The printer password is requested silently when a key
+is unavailable and is never saved.
 EOF
 }
 
