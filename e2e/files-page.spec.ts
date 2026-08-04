@@ -129,3 +129,43 @@ test.describe("Files page — thumbnail placeholders and designed states", () =>
     mock.assertSealed();
   });
 });
+
+test.describe("Timelapses page — in-app delete confirmation", () => {
+  test("delete asks in-app (never window.confirm), focuses Cancel, and Escape backs out", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await fulfilFileApi(page, {
+      files: [],
+      timelapses: [{ path: "benchy_2024.mp4", size: 8_400_000, modified: 1_700_000_000 }],
+    });
+
+    // A surviving window.confirm would block the page invisibly — record it.
+    const nativeDialogs: string[] = [];
+    page.on("dialog", (dialog) => {
+      nativeDialogs.push(`${dialog.type()}: ${dialog.message()}`);
+      void dialog.dismiss().catch(() => {});
+    });
+
+    await page.goto("/timelapses");
+    await page.getByRole("button", { name: /benchy_2024\.mp4/ }).click();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+    // The app's own dialog, with the calm copy and focus resting on Cancel
+    // so Enter cannot fire the destructive action.
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Delete this timelapse?");
+    await expect(dialog).toContainText("You can't undo this");
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+
+    // Escape closes every dialog; nothing was ever sent to the printer.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /benchy_2024\.mp4/ })).toBeVisible();
+
+    expect(nativeDialogs, "the page fell back to a native dialog").toEqual([]);
+    mock.assertSealed();
+  });
+});

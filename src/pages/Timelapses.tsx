@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { buttonClassName } from "@/components/buttonStyles";
+import { ActionConfirmDialog } from "@/components/ActionConfirmDialog";
 import { Film, Download, Trash2, Play, RefreshCw } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
 
@@ -16,6 +17,8 @@ export function Timelapses() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<TimelapseFile | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TimelapseFile | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -41,18 +44,25 @@ export function Timelapses() {
     load();
   }, []);
 
+  // In-app confirmation, never `window.confirm`: the native dialog blocks
+  // the main thread, so the HealthAlerts watchdog (and every live readout)
+  // would freeze for as long as it sat open — the same rule every guarded
+  // printer action already follows via ActionConfirmDialog.
   const remove = async (file: TimelapseFile) => {
-    if (!confirm(`Delete timelapse "${file.path}"? This is permanent.`)) return;
+    setPendingDelete(null);
+    setDeleteError(null);
     try {
       const res = await fetch(
         `/server/files/timelapse/${encodeURIComponent(file.path)}`,
         { method: "DELETE" },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`the printer answered HTTP ${res.status}`);
       setSelected(null);
       await load();
     } catch (e) {
-      alert(`Delete failed: ${(e as Error).message}`);
+      setDeleteError(
+        `The timelapse wasn't deleted — ${(e as Error).message}.`,
+      );
     }
   };
 
@@ -171,6 +181,14 @@ export function Timelapses() {
               {formatBytes(selected.size)} ·{" "}
               {new Date(selected.modified * 1000).toLocaleString()}
             </div>
+            {deleteError && (
+              <div
+                role="alert"
+                className="text-[11px] leading-relaxed text-[var(--color-error)]"
+              >
+                {deleteError}
+              </div>
+            )}
             <div className="flex gap-2 pt-2">
               <a
                 href={downloadUrl(selected)}
@@ -179,13 +197,33 @@ export function Timelapses() {
               >
                 <Download className="w-3 h-3" /> Download
               </a>
-              <Button size="md" variant="danger" onClick={() => remove(selected)}>
+              <Button
+                size="md"
+                variant="danger"
+                onClick={() => {
+                  setDeleteError(null);
+                  setPendingDelete(selected);
+                }}
+              >
                 <Trash2 className="w-3 h-3" /> Delete
               </Button>
             </div>
           </div>
         )}
       </Card>
+
+      {pendingDelete && (
+        <ActionConfirmDialog
+          details={{
+            risk: "critical",
+            title: "Delete this timelapse?",
+            message: `"${pendingDelete.path}" will be removed from the printer. You can't undo this.`,
+            confirmLabel: "Delete",
+          }}
+          onConfirm={() => remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 }

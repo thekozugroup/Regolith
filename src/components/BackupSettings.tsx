@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
+import { ActionConfirmDialog } from "./ActionConfirmDialog";
 import { Download, Upload, Trash2, Database } from "lucide-react";
 
 /**
@@ -90,13 +91,12 @@ export function BackupSettings() {
     reader.readAsText(file);
   };
 
+  // In-app confirmation, never `window.confirm` — the native dialog blocks
+  // the main thread and freezes the HealthAlerts watchdog while open.
+  const [confirmingWipe, setConfirmingWipe] = useState(false);
+
   const wipe = () => {
-    if (
-      !confirm(
-        "Reset all UI settings to defaults?\nDevice name, theme, brand icon, printer image, all preferences will be cleared. Printer config is NOT affected.",
-      )
-    )
-      return;
+    setConfirmingWipe(false);
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -134,9 +134,28 @@ export function BackupSettings() {
           </Button>
         </div>
 
-        <Button onClick={wipe} variant="danger" size="md" className="w-full">
+        <Button
+          onClick={() => setConfirmingWipe(true)}
+          variant="danger"
+          size="md"
+          className="w-full"
+        >
           <Trash2 className="w-3 h-3" /> Reset all UI settings
         </Button>
+
+        {confirmingWipe && (
+          <ActionConfirmDialog
+            details={{
+              risk: "critical",
+              title: "Reset all UI settings?",
+              message:
+                "Device name, theme, brand icon, printer image, and every saved preference return to their defaults, then the page reloads. The printer's own configuration isn't affected.",
+              confirmLabel: "Reset settings",
+            }}
+            onConfirm={wipe}
+            onCancel={() => setConfirmingWipe(false)}
+          />
+        )}
 
         {status && (
           <div className="text-[11px] text-[var(--color-accent)] tabular-nums pt-1">
