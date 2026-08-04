@@ -219,14 +219,20 @@ export function MissionTimeline() {
   if (!hasJob) {
     return (
       <>
-      <Card title="Mission Status" icon={<FileText />}>
-        <div className="flex items-center justify-between py-1">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
-              {printState}
-            </div>
-            <div className="text-[14px] font-medium mt-1">Ready to print</div>
+      {/* A designed resting state: the short idle readout centers in
+          whatever height the stretched dashboard row hands this card,
+          instead of leaving a hollow panel (no effect when the card is
+          content-sized, e.g. on compact chrome). */}
+      <Card
+        title="Mission Status"
+        icon={<FileText />}
+        bodyClassName="flex flex-col items-center justify-center"
+      >
+        <div className="flex flex-col items-center gap-1 py-1 text-center">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
+            {printState}
           </div>
+          <div className="text-[14px] font-medium">Ready to print</div>
         </div>
       </Card>
       {/* A confirmation opened from another branch must survive the state

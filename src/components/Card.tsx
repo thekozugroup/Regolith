@@ -7,12 +7,17 @@ export function Card({
   action,
   children,
   className,
+  bodyClassName,
 }: {
   title: string;
   icon?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Extra classes on the body (the flex-1 region below the header). Lets a
+   *  stretched dashboard card distribute its slack — e.g. center a short
+   *  instrument group — instead of leaving a hollow tail below the content. */
+  bodyClassName?: string;
 }) {
   const titleId = useId();
 
@@ -37,7 +42,9 @@ export function Card({
       </header>
       {/* flex-1: when a grid row stretches the card, the body absorbs the
           extra height instead of leaving a blank tail below it. */}
-      <div className="min-h-0 flex-1 p-[var(--card-pad)]">{children}</div>
+      <div className={cn("min-h-0 flex-1 p-[var(--card-pad)]", bodyClassName)}>
+        {children}
+      </div>
     </section>
   );
 }

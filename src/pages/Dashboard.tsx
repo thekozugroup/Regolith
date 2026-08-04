@@ -85,7 +85,15 @@ export function Dashboard() {
 
         {/* Z4 — VIEWPORT */}
         <div>
-          <Card title="Camera" icon={<Camera />}>
+          <Card
+            title="Camera"
+            icon={<Camera />}
+            // Center the full-bleed viewport when the stretched row leaves
+            // slack — symmetric margins instead of a hollow tail. The feed
+            // itself keeps its 16:9 box (object-cover: growing it would
+            // crop the print out of frame).
+            bodyClassName="flex flex-col justify-center"
+          >
             <div className="relative -m-[var(--card-pad)] aspect-video overflow-hidden bg-black">
               <CameraStream className="absolute inset-0" />
               {isExpert && t.posX != null && (
@@ -160,7 +168,15 @@ const ThermalsPanel = memo(function ThermalsPanel({
   const hotend = profile.heaters.find((heater) => heater.klipper === "extruder");
   const bedH = profile.heaters.find((heater) => heater.klipper === "heater_bed");
   return (
-    <Card title="Thermals" icon={<Flame />}>
+    <Card
+      title="Thermals"
+      icon={<Flame />}
+      // Center the instrument group when a stretched dashboard row makes
+      // this card taller than its dials — slack splits above/below the
+      // instruments instead of pooling in a hollow tail. No effect when
+      // the card is content-sized (compact chrome).
+      bodyClassName="flex flex-col justify-center"
+    >
       <div className="thermal-grid">
         <ThermalGauge label={hotend?.label ?? "Hotend"} actual={extTemp} target={extTarget} power={extPower} maxTemp={hotend?.maxTemp ?? 300} icon={<Flame className="w-3 h-3" />} />
         <ThermalGauge label={bedH?.label ?? "Bed"} actual={bedTemp} target={bedTarget} power={bedPower} maxTemp={bedH?.maxTemp ?? 120} icon={<ThermometerSun className="w-3 h-3" />} />
