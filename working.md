@@ -384,6 +384,23 @@ the previously fixed timer leak stays fixed. Every ring buffer is bounded and
 was re-checked: gcode log 200, temperature history 90, sparkline 60, job
 history 20.
 
+## Pre-deploy validation record — 2026-08-04, `8cffd40`
+
+Validation run for sha `8cffd40993a9c792fe484e732e6cdb67ef9a7cd4` (branch `main`, even with `origin/main`, no tracked-file changes). All four gates re-run fresh at this HEAD on 2026-08-04, real exit codes:
+
+- `bun run lint` — exit 0.
+- `bun run test` — exit 0: 277 pass, 0 fail, 3,443 `expect()` calls, plus the 11 deployment safety tests and guided setup checks.
+- `bun run test:e2e` — exit 0: 135 passed (1.8m), strict local mocks, zero printer contact.
+- `bun run build` — exit 0 (`tsc -b && vite build`).
+
+What this release contains since the last hardware-proven baseline `68181d0` (50 commits; the `7dd3c0d` slice — MissionBar cockpit, amber-400/oklab glow, active-print read-out fixes — is already live on the K1 Max):
+
+- **SD1 instrument-cluster redesign**: neutral chroma-0 palette (Variant A, provisional), derived concentric radius/spacing tokens, binnacle instrument wells + Z5 strip, SegmentGauge strips, the eight-lamp tell-tale cluster, collapsible desk sidebar with the 800x480 height gate, ETA calibration + thermal-slope heuristics (on by default, never labeled AI), and the AI gateway off by default behind a build-failing import fence.
+- **WP-PERF subscription rework** (`c4e0c0f`, `06113a4`, `c840027`, `31d30e2`, `df2107a`): ref-counted field-level Moonraker subscriptions (−27.6% WS payload), selector subscriptions so telemetry ticks stop committing the shell, navigation no longer redrawn for the progress sliver, declared landing-route chunks, assistant off the cold path.
+- **Polish/harden/perf backlog**: persisted-storage fuzz fixes (every key survives corruption/dead storage), chrome error boundaries instead of white screens, unhandled-rejection capture with a lint gate, reconnect hardening (jittered backoff, storm retreat, ghost-link watchdog, subscribe retry in `8cffd40`), sleep/wake link survival, metadata-gated thumbnail probes, in-app dialogs for timelapse delete/settings reset, file placeholders/skeletons, focus rings, modulepreload, and the Sidebar split.
+
+Printer idle re-confirmed cold before this record (`print_stats=cancelled`, extruder 25.5 C/0, bed 23.65 C/0). Deployment itself is recorded separately below once it happens; this entry is the gate evidence for `8cffd40`.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
