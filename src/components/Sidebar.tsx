@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { readStoredFlag, writeStoredFlag } from "@/lib/safeStorage";
 import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
+import { usePrinterName } from "@/lib/usePrinterName";
 
 const NAV = [
   { to: "/", icon: LayoutDashboard, label: "Home" },
@@ -105,6 +106,7 @@ export function Sidebar() {
   // above, so this tree now renders on navigation, experience mode, and the
   // rail toggle: the three things that actually change it.
   const [experienceMode] = useExperienceMode();
+  const printerName = usePrinterName();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsedPreference);
@@ -161,7 +163,12 @@ export function Sidebar() {
           {!collapsed && (
             <div className="min-w-0">
               <div className="truncate text-[15px] font-semibold tracking-tight">Regolith</div>
-              <div className="truncate text-[11px] text-[var(--color-fg-muted)]">Instrument panel</div>
+              {/* The printer's own name (hostname from /printer/info), not a
+                  static tagline — degrades to the profile name until the one
+                  cached probe resolves. instrument-label = the same 11px
+                  muted treatment, uppercased per label convention; truncate
+                  keeps long hostnames inside the fixed brand row. */}
+              <div className="instrument-label truncate">{printerName}</div>
             </div>
           )}
         </div>

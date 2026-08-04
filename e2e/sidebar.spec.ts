@@ -47,6 +47,18 @@ async function installLocalMock(page: Page): Promise<{ escaped: string[]; writes
       await route.abort("blockedbyclient");
       return;
     }
+    if (url.pathname === "/printer/info") {
+      // The brand area shows the printer's own name (hostname), not a
+      // static tagline — give the probe the owner's machine to assert on.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: { hostname: "forge", state: "ready", state_message: "Printer is ready", software_version: "test" },
+        }),
+      });
+      return;
+    }
     if (url.hostname === "127.0.0.1" && url.port === "4173") {
       await route.continue();
       return;
@@ -92,6 +104,12 @@ test.describe("Collapsible sidebar — icon rail", () => {
     const audit = await installLocalMock(page);
     await page.goto("/");
     await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
+
+    // Brand area: the line under "Regolith" is the printer's own name
+    // (hostname from /printer/info), not the old "Instrument panel" tagline.
+    // CSS uppercases it; the DOM keeps the raw reported name.
+    await expect(page.locator("aside")).toContainText("forge");
+    await expect(page.locator("aside")).not.toContainText("Instrument panel");
 
     // Expanded geometry: sidebar at its full width, app bar and content
     // offset by exactly that width.
