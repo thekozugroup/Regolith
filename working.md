@@ -783,6 +783,31 @@ Credentials supplied solely through `$PRINTER_PASSWORD` (never a literal).
   (anchor hash match exact). Rollback command:
   `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
 
+## Final gate validation — 2026-08-04, `8cd188e`
+
+Deploy-gate check at exact HEAD `8cd188e654da6133317b74747b920e986cd11fc3`
+(`fix: give lit tell-tales a structural channel under forced colors`), the
+sync target carrying the test-law and forced-colors work (`ed4bf53`,
+`5b4c153`, `8cd188e`) on top of live `81f2084`. Working tree clean against
+this HEAD (no tracked-file diff; local `main` even with `origin/main`). Only
+untracked, user-owned/tooling paths present (`scripts/`, `.a5c/`, `.claude/`,
+`CLAUDE.md`, build caches) — left untracked, not staged.
+
+- `bun run lint` — exit 0.
+- `bun run test` — exit 0 (277 unit tests pass across 25 files, 0 fail;
+  `deploy.test.sh` and `setup.test.sh` pass).
+- `bun run build` — exit 0, `dist/index.html` produced.
+- `bun run test:e2e` — exit 0, **153/153 passed** (7.8m), above the 143
+  baseline (no shrink). Provenance note: a first background attempt at this
+  gate stalled and was killed (its recorded 143 was the SIGTERM, not a test
+  result); the citable run is the fresh synchronous re-run executed after
+  freeing an orphaned `vite preview` left on port 4173 by the killed
+  attempt. lint/test/build exit codes are from completed runs with logs
+  retained in the session scratchpad (`gates/`).
+- Grepped tracked files at this HEAD for the literal printer password: no
+  matches — credentials remain `$PRINTER_PASSWORD`-only in tracked content
+  (historical-commit caveat from the prior scrub entry still stands).
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
