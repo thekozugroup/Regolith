@@ -267,7 +267,7 @@ export function Control() {
             </Pill>
           </Row>
           <Row label="Homed">
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {(["X", "Y", "Z"] as const).map((a) => {
                 const ok =
                   safety.homed[a.toLowerCase() as "x" | "y" | "z"];
@@ -291,7 +291,7 @@ export function Control() {
             <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold mb-1">
               Travel limits
             </div>
-            <div className="grid grid-cols-3 gap-[var(--grid-gap)] font-mono tabular-nums text-[11px]">
+            <div className="grid grid-cols-3 gap-[var(--grid-gap)] tabular-nums text-[11px]">
               {(["X", "Y", "Z"] as const).map((a, i) => (
                 <div key={a}>
                   <div className="text-[var(--color-fg-muted)]">{a}</div>
@@ -337,10 +337,10 @@ function BedView({
     <div className="space-y-[var(--stack)]">
       <div className="relative aspect-[4/3] overflow-hidden border border-[var(--color-border-strong)] bg-[var(--color-bg)]">
         {/* Origin label */}
-        <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
+        <div className="absolute bottom-1 left-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)]">
           Front · 0,0
         </div>
-        <div className="absolute top-1 right-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
+        <div className="absolute top-1 right-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)]">
           {maxX.toFixed(0)},{maxY.toFixed(0)}
         </div>
         {/* Center crosshair */}
@@ -365,7 +365,7 @@ function BedView({
           />
         )}
         {!homed && (
-          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)] font-mono">
+          <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)]">
             Not homed
           </div>
         )}
@@ -376,7 +376,7 @@ function BedView({
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             X
           </div>
-          <div className="text-[14px] font-semibold tabular-nums font-mono">
+          <div className="text-[14px] font-semibold tabular-nums">
             {livePos[0]?.toFixed(2) ?? "—"}
           </div>
         </div>
@@ -384,7 +384,7 @@ function BedView({
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             Y
           </div>
-          <div className="text-[14px] font-semibold tabular-nums font-mono">
+          <div className="text-[14px] font-semibold tabular-nums">
             {livePos[1]?.toFixed(2) ?? "—"}
           </div>
         </div>
@@ -392,7 +392,7 @@ function BedView({
           <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
             Z
           </div>
-          <div className="text-[14px] font-semibold tabular-nums font-mono">
+          <div className="text-[14px] font-semibold tabular-nums">
             {z?.toFixed(3) ?? "—"}
           </div>
         </div>

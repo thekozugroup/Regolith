@@ -120,7 +120,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
         <div className="text-[var(--color-fg-muted)] uppercase tracking-[0.1em] font-semibold">
           Profile · {mesh.profile_name}
         </div>
-        <div className="font-mono tabular-nums text-[var(--color-fg-muted)]">
+        <div className="tabular-nums text-[var(--color-fg-muted)]">
           {rows}×{cols}
         </div>
       </div>
@@ -147,7 +147,7 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
                     className="aspect-square relative group flex items-center justify-center"
                     style={{ backgroundColor: colorFor(v) }}
                   >
-                    <span className="font-mono text-[11px] tabular-nums text-white/85 mix-blend-luminosity pointer-events-none">
+                    <span className="text-[11px] tabular-nums text-white/85 mix-blend-luminosity pointer-events-none">
                       {deviation >= 0 ? "+" : ""}
                       {deviation.toFixed(2)}
                     </span>
@@ -199,7 +199,7 @@ function Stat({
       </div>
       <div
         className={cn(
-          "text-[13px] font-semibold tabular-nums font-mono mt-0.5",
+          "text-[13px] font-semibold tabular-nums mt-0.5",
           warn && "text-[var(--color-warning)]",
         )}
       >

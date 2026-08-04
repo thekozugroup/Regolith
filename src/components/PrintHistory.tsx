@@ -163,7 +163,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
-      <div className="text-[14px] font-semibold tabular-nums font-mono mt-0.5">
+      <div className="text-[14px] font-semibold tabular-nums mt-0.5">
         {value}
       </div>
     </div>

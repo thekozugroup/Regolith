@@ -326,7 +326,7 @@ function Stat({
         {icon && <span className="text-[var(--color-fg-muted)]">{icon}</span>}
         {label}
       </div>
-      <div className="text-[12px] font-mono font-medium tabular-nums mt-0.5">
+      <div className="text-[12px] font-medium tabular-nums mt-0.5">
         {value}
       </div>
     </div>

@@ -100,7 +100,7 @@ export function Dashboard() {
             <div className="relative -m-[var(--card-pad)] aspect-video overflow-hidden bg-black">
               <CameraStream className="absolute inset-0" />
               {isExpert && t.posX != null && (
-                <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 font-mono text-[11px] tabular-nums">
+                <div className="absolute bottom-2 left-2 z-10 flex gap-2 border border-white/20 bg-black/78 px-2 py-1 text-[11px] tabular-nums">
                   <span>X{t.posX?.toFixed(1) ?? "—"}</span>
                   <span>Y{t.posY?.toFixed(1) ?? "—"}</span>
                   <span>Z{t.posZ?.toFixed(2) ?? "—"}</span>

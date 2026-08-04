@@ -204,7 +204,7 @@ export function SettingsPage() {
           )}
           <Row label="CPU">{info.cpu ?? "—"}</Row>
           <Row label="Memory">
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {info.memUsed && info.memTotal
                 ? `${formatBytes(info.memUsed * 1024)} / ${formatBytes(info.memTotal * 1024)}`
                 : "—"}
@@ -225,12 +225,12 @@ export function SettingsPage() {
             />
           </div>
           <Row label="Uptime">
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {info.uptime ? formatDuration(info.uptime) : "—"}
             </span>
           </Row>
           <Row label="Load (1·5·15m)">
-            <span className="font-mono tabular-nums text-[var(--color-fg-muted)]">
+            <span className="tabular-nums text-[var(--color-fg-muted)]">
               {info.load
                 ? info.load.map((l) => l.toFixed(2)).join(" · ")
                 : "—"}

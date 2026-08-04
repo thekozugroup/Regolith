@@ -8,6 +8,32 @@
 @custom-variant desk (@media (min-width: 48rem) and (min-height: 600px));
 @custom-variant compact (@media not ((min-width: 48rem) and (min-height: 600px)));
 
+/* --- Inter (self-hosted) ---
+   Official InterVariable.woff2 (v4, rsms.me), subset to Latin-1 + the
+   typographic/math/geometric codepoints the UI renders (105 kB vs 344 kB
+   full; tnum/calt/ss01/zero and both axes retained — provenance and the
+   subset command live in working.md). Served from public/fonts so the URL
+   is stable for the index.html preload. `swap` keeps first paint on the
+   metric-matched fallback below, so theme/accent paint is never blocked. */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+/* Metric-compatible fallback: local Arial adjusted to Inter's measured
+   advance widths and vertical metrics (computed with fontTools against
+   Inter wght 400 / opsz 14), so the swap lands with ~zero layout shift. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial");
+  size-adjust: 105.15%;
+  ascent-override: 92.13%;
+  descent-override: 22.94%;
+  line-gap-override: 0%;
+}
+
 @theme {
   /* Regolith Instrument Cluster — opaque, precise, calm.
      Ground ramp is chroma-0 neutral (owner: "no blue tint"). Write `0 0`,
@@ -52,7 +78,14 @@
   --color-error: oklch(0.704 0.191 22.216); /* red-400 */
   --color-info: oklch(0.789 0.154 211.53); /* cyan-400 */
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  /* Inter is the UI face (owner: "use inter for both webui and touch panel
+     font" — the touch panel already ships it). Fallback chain: the
+     metric-adjusted local Arial (zero-shift swap), then system-ui sans. */
+  --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Mono survives ONLY for machine text — Console log/input, G-code, file
+     paths, hex colors, endpoints/keys, version strings — where slice-anywhere
+     alignment and code-ness are the point. Numeric telemetry (readouts,
+     clocks, dial numerals) is Inter with tabular figures instead. */
   --font-mono: "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 
   /* --- Derived radius system (S3 §3.2) ---
@@ -216,12 +249,15 @@
     text-transform: uppercase;
   }
 
-  .instrument-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; }
+  /* Instrument numerals are Inter with tabular figures (tnum) — equal digit
+     advances keep ticking values from jittering; verified headlessly (111
+     vs 999 advance widths must be equal). Mono is reserved for machine text. */
+  .instrument-value { font-family: var(--font-sans); font-variant-numeric: tabular-nums slashed-zero; }
   .ruled-row + .ruled-row { border-top: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent); }
   .status-lamp { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: var(--radius-lamp); background: currentColor; flex: none; }
 
   .readout {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums slashed-zero;
     letter-spacing: -0.05em;
     line-height: 1;

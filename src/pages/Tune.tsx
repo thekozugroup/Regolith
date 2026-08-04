@@ -363,7 +363,7 @@ export function Tune() {
             id={pressureAdvanceHintId}
             className="text-[11px] text-[var(--color-fg-muted)] pt-1"
           >
-            Current: <span className="font-mono tabular-nums">{currentPa.toFixed(4)}</span>{" "}
+            Current: <span className="tabular-nums">{currentPa.toFixed(4)}</span>{" "}
             · Typical PLA 0.03-0.05 · PETG 0.05-0.07 · TPU 0.10-0.20
           </div>
         </div>
