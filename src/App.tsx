@@ -14,6 +14,7 @@ import {
 } from "./components/ChromeErrorBoundary";
 import { useNotifications } from "./lib/useNotifications";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
+import { useLinkWake } from "./lib/useLinkWake";
 import { useExperienceMode } from "./lib/useExperienceMode";
 
 const Dashboard = lazy(() =>
@@ -80,6 +81,7 @@ function AppShell() {
   const location = useLocation();
   useNotifications();
   useKeyboardShortcuts();
+  useLinkWake();
   return (
     <>
       {/* Each persistent surface is contained separately. They render on

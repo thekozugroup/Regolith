@@ -444,6 +444,17 @@ export class Moonraker {
     };
   }
 
+  /**
+   * Whether this server has ever pushed without being asked.
+   *
+   * Anything that reads silence as a fault has to check this first: a server
+   * that only ever answers requests is quiet by design, and calling that
+   * "stale" would be a false alarm on a perfectly good link.
+   */
+  hasServerPush(): boolean {
+    return this.sawServerPush;
+  }
+
   /** ms since anything last arrived, or null before the first byte ever. */
   telemetryAge(now = Date.now()): number | null {
     return this.lastMessageAt === 0 ? null : now - this.lastMessageAt;

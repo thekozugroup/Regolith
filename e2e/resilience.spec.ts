@@ -15,8 +15,9 @@ import {
   assertOwnerTrust,
   installActiveMock,
   type ActiveMock,
+  type ActiveMockOptions,
 } from "./support/active-state-harness";
-import { SCENARIOS } from "./support/printer-scenarios";
+import { SCENARIOS, scenario } from "./support/printer-scenarios";
 
 /** Every key the app persists, with a payload designed to break its reader. */
 const CORRUPTED_KEYS: Record<string, string> = {
@@ -223,6 +224,109 @@ test.describe("Unhandled rejections", () => {
     expect(unhandled, "the error reporter was not installed").not.toBeNull();
     expect(unhandled, "unhandled rejections while walking the app").toEqual([]);
     expect(log.errors, "console errors while walking the app").toEqual([]);
+    mock.assertSealed();
+  });
+});
+
+test.describe("Sleep, wake and stale links", () => {
+  /**
+   * Time is Playwright's fake clock throughout: twenty silent seconds cost
+   * the suite nothing and cannot flake on a loaded machine.
+   */
+  async function open(page: Page, options: ActiveMockOptions) {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await page.clock.install();
+    const mock = await installActiveMock(page, options);
+    await page.goto("/");
+    await expect(
+      page.locator("main").getByRole("heading", { name: "Camera", exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    return mock;
+  }
+
+  /**
+   * A finished job on a printer that has fully cooled. The hot-heater
+   * watchdog is deliberately silent here, which is exactly the gap this
+   * alert covers: nothing is dangerous, the screen is merely WRONG.
+   */
+  function coldIdle(): ActiveMockOptions {
+    const base = scenario("cancelled");
+    return {
+      ...base,
+      state: {
+        ...base.state,
+        extruder: { temperature: 24.2, target: 0, power: 0 },
+        heater_bed: { temperature: 23.6, target: 0, power: 0 },
+      },
+    };
+  }
+
+  const staleLink = (page: Page) => page.locator('[data-alert-id="link-stale"]');
+
+  test("a feed that goes quiet stops looking live", async ({ page }) => {
+    const mock = await open(page, coldIdle());
+    // One real push: until the server has spoken unprompted, silence proves
+    // nothing and the alert must stay closed.
+    mock.push({ virtual_sdcard: { progress: 0.072 } });
+    await expect(staleLink(page)).toHaveCount(0);
+
+    await page.clock.fastForward(21_000);
+    await expect(staleLink(page)).toBeVisible();
+    await expect(staleLink(page)).toContainText("No printer data for");
+    // A frozen dashboard is not a thermal emergency; it must not borrow the
+    // runaway alert's voice.
+    await expect(page.locator('[data-alert-id="thermal"]')).toHaveCount(0);
+
+    // The feed coming back retires the warning without a reload.
+    mock.push({ virtual_sdcard: { progress: 0.072 } });
+    await expect(staleLink(page)).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("a hot machine gets the sharper warning, not both", async ({ page }) => {
+    const mock = await open(page, scenario("printing-midjob"));
+    mock.push({ virtual_sdcard: { progress: 0.4 } });
+    await page.clock.fastForward(21_000);
+    // Hot heaters flying blind is an emergency and says so; the general
+    // staleness note would only dilute it.
+    await expect(page.locator('[data-alert-id="stale-data"]')).toBeVisible();
+    await expect(staleLink(page)).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("a server that never pushes is never accused of going quiet", async ({
+    page,
+  }) => {
+    // The strict fixture answers the subscribe and says nothing more, which
+    // is exactly the shape of a server that is quiet BY DESIGN.
+    const mock = await open(page, coldIdle());
+    await page.clock.fastForward(60_000);
+    await expect(staleLink(page)).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("a tab coming back from sleep re-establishes the link", async ({ page }) => {
+    const mock = await open(page, scenario("printing-midjob"));
+    await expect(page.getByRole("region", { name: "Printer status" })).toContainText(
+      "Link Ready",
+    );
+
+    // The lid closes: the socket dies without the app being told anything
+    // useful, and the dashboard freezes on its last values.
+    mock.dropLink();
+    await expect(
+      page.getByRole("region", { name: "Printer status" }),
+    ).toContainText("Link Connecting");
+
+    // The lid opens. visibilitychange must drive a reconnect NOW rather than
+    // serving out a backoff that was scheduled before the machine slept.
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("online"));
+    });
+    await expect(
+      page.getByRole("region", { name: "Printer status" }),
+    ).toContainText("Link Ready");
     mock.assertSealed();
   });
 });

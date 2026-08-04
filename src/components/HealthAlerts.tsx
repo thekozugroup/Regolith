@@ -14,6 +14,7 @@ import { useTempHistory } from "@/lib/useTempHistory";
 import {
   WATCHDOG_TICK_MS,
   heatersHoldHeat,
+  isLinkStale,
   isTelemetryStale,
 } from "@/lib/telemetryWatchdog";
 import { cn } from "@/lib/utils";
@@ -39,7 +40,7 @@ import { cn } from "@/lib/utils";
  * running unmonitored — the precise scenario the thermal alert exists for.
  */
 export function HealthAlerts() {
-  const { state, connected, profile } = usePrinter();
+  const { state, connected, profile, mr } = usePrinter();
   // Rolling 1 Hz heater buffers, sampled off the render path. Empty until
   // real data has arrived, and frozen while the feed is quiet — so the slope
   // rules below stay silent rather than reading a flat line into a fault.
@@ -120,13 +121,39 @@ export function HealthAlerts() {
   // to be connected: a silently wedged link and a dropped link both leave the
   // heaters unmonitored, and the owner has to hear about it either way.
   const staleForMs = now - telemetry.at;
-  if (telemetry.hot && isTelemetryStale(now, telemetry.at)) {
+  const heatersFlyingBlind = telemetry.hot && isTelemetryStale(now, telemetry.at);
+  if (heatersFlyingBlind) {
     alerts.push({
       id: "stale-data",
       severity: "error",
       message: `No printer data for ${Math.floor(staleForMs / 1000)}s while heaters were hot — temperatures are no longer being monitored`,
       announcement:
         "Printer telemetry is stale while heaters are hot — temperatures are no longer being monitored.",
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  }
+
+  // General telemetry age. The rule above only speaks when the machine is
+  // HOT; a cold printer whose feed died leaves a dashboard that is simply
+  // WRONG, and a frozen progress bar is indistinguishable from a steady one
+  // by looking at it. `hasServerPush` is the guard against crying wolf: a
+  // server that has never pushed unprompted is quiet by design, not dead.
+  const linkAgeMs = mr.telemetryAge(now);
+  if (
+    isLinkStale({
+      connected,
+      hasServerPush: mr.hasServerPush(),
+      ageMs: linkAgeMs,
+      heatersFlyingBlind,
+    })
+  ) {
+    const seconds = Math.floor((linkAgeMs ?? 0) / 1000);
+    alerts.push({
+      id: "link-stale",
+      severity: "warn",
+      message: `No printer data for ${seconds}s — every reading on screen is that old. Reconnecting…`,
+      announcement:
+        "The printer feed has gone quiet. Readings on screen are stale and are not being updated.",
       icon: <AlertTriangle className="w-4 h-4" />,
     });
   }

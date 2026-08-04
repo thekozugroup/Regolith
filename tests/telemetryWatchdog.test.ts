@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   HOT_SURFACE_C,
+  STALE_LINK_MS,
   STALE_TELEMETRY_MS,
   heatersHoldHeat,
+  isLinkStale,
   isTelemetryStale,
 } from "../src/lib/telemetryWatchdog";
 
@@ -50,5 +52,49 @@ describe("isTelemetryStale", () => {
   test("the window is conservative — about ten seconds", () => {
     expect(STALE_TELEMETRY_MS).toBeGreaterThanOrEqual(5_000);
     expect(STALE_TELEMETRY_MS).toBeLessThanOrEqual(15_000);
+  });
+});
+
+describe("isLinkStale — general telemetry age", () => {
+  const fresh = {
+    connected: true,
+    hasServerPush: true,
+    ageMs: 0,
+    heatersFlyingBlind: false,
+  };
+
+  test("fires once the feed has been quiet past the window", () => {
+    expect(isLinkStale({ ...fresh, ageMs: STALE_LINK_MS - 1 })).toBe(false);
+    expect(isLinkStale({ ...fresh, ageMs: STALE_LINK_MS })).toBe(true);
+    expect(isLinkStale({ ...fresh, ageMs: 10 * STALE_LINK_MS })).toBe(true);
+  });
+
+  test("stays silent when the link is already known to be down", () => {
+    // A dropped socket has its own alert, and its own words. Two toasts
+    // saying the same thing is how an owner learns to dismiss both.
+    expect(isLinkStale({ ...fresh, ageMs: 60_000, connected: false })).toBe(false);
+  });
+
+  test("stays silent until the server has actually pushed something", () => {
+    // The false-alarm guard: a server that only answers what it is asked is
+    // quiet by design. Silence from it is not evidence of anything.
+    expect(isLinkStale({ ...fresh, ageMs: 60_000, hasServerPush: false })).toBe(
+      false,
+    );
+  });
+
+  test("yields to the hot-heater alert rather than doubling it", () => {
+    expect(
+      isLinkStale({ ...fresh, ageMs: 60_000, heatersFlyingBlind: true }),
+    ).toBe(false);
+  });
+
+  test("never fires before the first byte has ever arrived", () => {
+    // A page still loading has an age of null, not an age of forever.
+    expect(isLinkStale({ ...fresh, ageMs: null })).toBe(false);
+  });
+
+  test("sits above the hot-heater window so the sharper message wins", () => {
+    expect(STALE_LINK_MS).toBeGreaterThan(STALE_TELEMETRY_MS);
   });
 });
