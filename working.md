@@ -645,9 +645,9 @@ untracked, not staged.
   no process was killed to force it.
 - Frozen files (`printerActions.ts`, `moonraker.ts`, `safety.ts`,
   `deploy.sh`, `scripts/`) untouched — confirmed via clean `git diff`.
-- `git grep $PRINTER_PASSWORD` over tracked files at this HEAD: no matches —
-  password stays clean of tracked history at HEAD (see prior scrub entry
-  for the historical-commit caveat, still unresolved).
+- Grepped tracked files at this HEAD for the literal printer password: no
+  matches — password stays clean of tracked history at HEAD (see prior
+  scrub entry for the historical-commit caveat, still unresolved).
 - No console errors observed in the e2e run; no external font network
   requests (`fonts.googleapis`/`fonts.gstatic`) present in `src/` or
   `index.html` — Inter is fully self-hosted per the entry above.
