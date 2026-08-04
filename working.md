@@ -808,6 +808,58 @@ untracked, user-owned/tooling paths present (`scripts/`, `.a5c/`, `.claude/`,
   matches — credentials remain `$PRINTER_PASSWORD`-only in tracked content
   (historical-commit caveat from the prior scrub entry still stands).
 
+## Deployment — 2026-08-04, `8cd188e` live on the K1 Max
+
+Deployed the validated `8cd188e` tree to 192.168.50.179 via `./deploy.sh`
+only. The working tree at deploy time sat at `7f068a5`, which is `8cd188e`
+plus this file's validation record — a docs-only delta, so the built UI
+assets are exactly the `8cd188e` source. Credentials supplied solely through
+`$PRINTER_PASSWORD` (never a literal).
+
+- **Preflight**: `PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight`
+  exit 0 (klipper ready, print `cancelled`, activity Idle, no SD job).
+- **Double idle check immediately before deploy** (read-only Moonraker
+  samples at 19:20:12Z and 19:20:22Z, 10.3 s apart): extruder/bed targets
+  0.0/0.0, `print_stats` cancelled, `idle_timeout` Idle, `virtual_sdcard`
+  inactive, `motion_report.live_position` byte-identical
+  `[296.5, 153.0, 150.044]` — position static. Deploy proceeded immediately.
+- **Deploy**: exit 0 (captured in bash). Internal gates green
+  (`bun install/lint/test/build`); archive 273972 bytes, SHA-256
+  `3ae29775…88d6d`, remote size + hash verified after upload; staged file
+  list matched local `dist` exactly; persistent backup
+  `fluidd-before-20260804T192050Z.tgz` (SHA-256 `7699fc12…38da0b`, 34 files,
+  5 retained / 1 pruned); atomic swap; live HTML plus every referenced asset
+  verified over HTTP; `Deploy verified` epilogue printed, and post-state
+  confirms the exit-0 path (staging slot and upload tarball removed).
+- **Hashes**: live `/usr/data/fluidd/index.html` SHA-256
+  `a6047861e5978bd6d27b64676704a3645bd422626a2b43d3b25873ee3faa89ab` ==
+  local `dist/index.html` exactly; `fluidd.previous/index.html` == the
+  pre-deploy live anchor `2130c3f4…b582` (the verified `81f2084` build)
+  exactly.
+- **Rollback armed**: `fluidd.previous` holds the prior verified release
+  (anchor hash match exact). Rollback command:
+  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+- **On-device QA** (read-only Chromium through an in-process loopback relay
+  to the printer's own nginx — Chromium is LAN-blocked by macOS local
+  network privacy; the relay was opened and closed inside each
+  self-terminating verify script, no persistent tunnel): at **1280x800 and
+  800x480** — **zero console errors, zero page errors, zero failed
+  requests**; no horizontal overflow at either viewport.
+- **Live-tick proof**: hotend aria-label ticked 27.6 → 27.5 °C within 6 s
+  at 1280x800 — telemetry is live-updating.
+- **LINK connected**: `LINK READY` (green) in the status rail at both
+  viewports; header shows Connected; camera streams live.
+- **Tell-tale cluster spot-check** (the subject of `8cd188e`): all 8 cells
+  render (Thermal Runaway, Heater Fault, Firmware, Link Lost, Fan Fault,
+  MCU Hot, Mesh Active, Homed XYZ); `Mesh Active` lit, `Link Lost` present
+  but unlit as designed. The new structural channel verified live: under
+  emulated forced colors exactly the lit cell's `.instrument-label` carries
+  `text-decoration: underline` and all seven unlit labels stay bare; under
+  the normal palette no underline appears (severity color carries state) —
+  the lit/unlit law holds on-device on both sides.
+- Screenshots: `live-8cd188e-1280x800.png`, `live-8cd188e-800x480.png`
+  (session scratchpad).
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
