@@ -293,4 +293,61 @@ test.describe("Swiss grid — alignment and floors", () => {
     }
     mock.assertSealed();
   });
+
+  test("instrument tiles are flat: fills belong to the panel, separation is space", async ({ page }) => {
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: idleState });
+    for (const viewport of [
+      { width: 800, height: 480 },
+      { width: 1280, height: 900 },
+    ]) {
+      const label = `${viewport.width}x${viewport.height}`;
+      await page.setViewportSize(viewport);
+      await openDashboard(page);
+
+      // Owner: "remove the backgrounds on each element so it is cleaner".
+      // Every instrument tile sits directly on the panel surface — the
+      // computed background of each tile is fully transparent.
+      const tiles = await page
+        .locator(".thermal-instrument, .segment-gauge, .telltale-cell")
+        .evaluateAll((items) =>
+          items
+            .filter((tile) => tile.getClientRects().length > 0)
+            .map((tile) => ({
+              cls: tile.getAttribute("class") ?? "",
+              bg: getComputedStyle(tile).backgroundColor,
+            })),
+        );
+      expect(tiles.length, `${label}: tiles rendered`).toBeGreaterThan(0);
+      for (const tile of tiles) {
+        expect(tile.bg, `${label}: ${tile.cls} must carry no fill`).toBe("rgba(0, 0, 0, 0)");
+      }
+
+      // Stronger, mechanism-agnostic pin: inside the three instrument
+      // panels the owner named, NOTHING visible paints a background other
+      // than the panel's own surface. The only allowed exception is the
+      // functional .status-lamp chip (outline/fill IS its state — spec
+      // A.1.6 keeps gauge tracks and lamps, but those live in SVG fills,
+      // not CSS backgrounds).
+      for (const title of ["Thermals", "Telemetry", "Systems"]) {
+        const offenders = await page
+          .locator(`section.instrument-panel:has(h2:text-is("${title}"))`)
+          .evaluate((panel) => {
+            const own = getComputedStyle(panel).backgroundColor;
+            const found: string[] = [];
+            for (const el of Array.from(panel.querySelectorAll<HTMLElement>("*"))) {
+              if (el.getClientRects().length === 0) continue;
+              if (el.classList.contains("status-lamp")) continue;
+              const bg = getComputedStyle(el).backgroundColor;
+              if (bg !== "rgba(0, 0, 0, 0)" && bg !== own) {
+                found.push(`${el.tagName.toLowerCase()}.${el.className} → ${bg}`);
+              }
+            }
+            return found;
+          });
+        expect(offenders, `${label} ${title}: per-element fills must be gone`).toEqual([]);
+      }
+    }
+    mock.assertSealed();
+  });
 });

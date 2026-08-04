@@ -52,8 +52,8 @@
   --color-fg-muted: oklch(0.708 0 0);
   /* Solid dim tone for intentionally quiet text and decorative icons — the
      replacement for every alpha modifier once layered on fg-muted (see the
-     SOLID contract above). Provisional 0.64 L: WP-VERIFY measures >=4.5:1 on
-     surface, elevated, and the instrument well before this value is final. */
+     SOLID contract above). Provisional 0.64 L: measured >=4.5:1 on surface
+     and elevated (5.54:1 on surface, where flat instruments now sit). */
   --color-fg-subtle: oklch(0.64 0 0);
   /* Default accent. Single source of truth is DEFAULT_ACCENT in
      src/lib/useTheme.ts — these three literals must stay byte-identical to
@@ -122,19 +122,24 @@
   --space-icon: 6px; /* icon-to-label gap */
   --stack-tight: 8px; /* related rows */
   --stack: 12px; /* sibling blocks */
-  --grid-gap: 8px; /* default grid gap; documented exceptions: 1px hairline grids, 4px jog cluster */
+  --grid-gap: 8px; /* default grid gap; documented exception: 4px jog cluster (the 1px hairline grids died in the flatten pass) */
   --binnacle-row: 44px; /* S2 pod row module = the hit-target floor */
 
   /* --- Gauge instrument --- */
-  --color-gauge-track: oklch(0.26 0 0);
+  /* Track/minor-tick lightness is derived, not styled: the flatten moved
+     gauges from the deleted well composite (L 0.163) onto --color-surface
+     (L 0.185), so both tokens carry the SAME +0.022 L, preserving the exact
+     perceptual step the scale always had against its backdrop (track
+     0.26→0.282, minor tick 0.34→0.362). Measured post-change: track vs
+     surface 1.28:1 — still below the 1.274:1 it once measured vs --color-bg,
+     so an empty gauge still reads empty. */
+  --color-gauge-track: oklch(0.282 0 0);
   /* Major graduations are informational (the scale a value is read against),
-     so they owe WCAG 1.4.11 its 3:1 non-text floor: neutral-500, 3.918:1 vs
-     surface. Gauges now sit on the .instrument-well composite (bg 55% +
-     surface — darker than surface, so the ratio only improves; the exact
-     figure is measured in the WP-VERIFY pass). Minor ticks and the track
-     stay deliberately sub-threshold — decorative. */
+     so they owe WCAG 1.4.11 its 3:1 non-text floor: neutral-500, measured
+     3.94:1 on --color-surface where the flat gauges sit. Minor ticks and the
+     track stay deliberately sub-threshold — decorative. */
   --color-gauge-tick: oklch(0.556 0 0);
-  --color-gauge-tick-minor: oklch(0.34 0 0);
+  --color-gauge-tick-minor: oklch(0.362 0 0);
   --color-gauge-target: oklch(0.88 0.014 85);
   /* Segment strip (S2 §2.3). Lit segments ride currentColor from the tile's
      state color; unlit segments reuse the dial track (alias, no new
@@ -218,11 +223,13 @@
     backdrop-filter: blur(14px) saturate(1.05);
   }
 
+  /* No inset top highlight: the faux "raised fascia" bevel was the
+     complement of the instrument-well recession, and died with it (flatten
+     pass — instruments sit ON the panel, not behind it). */
   .instrument-panel {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-panel);
-    box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-fg) 4%, transparent);
     container-type: inline-size;
     --radius-inner: max(0px, calc(var(--radius-panel) - var(--card-pad)));
   }
@@ -401,27 +408,28 @@
     .dashboard-grid { flex: 1 1 auto; align-content: stretch; }
   }
 
-  /* Gauge pair: 174px = 148px dial floor + 12px padding ×2 + 1px border ×2,
+  /* Gauge pair: 148px = the dial floor exactly — the flat tile carries no
+     padding and no border (the well chrome that once added 26px is gone),
      so a track is only ever created when the dial inside it can render at or
      above the floor — two-up exactly when two-up fits, never one pixel
-     sooner. (The short-viewport override below trades instrument chrome for
-     a lower two-up threshold; the same floor arithmetic holds.) */
+     sooner. At the 800x480 panel's ~352px content box the two-up threshold
+     is 2x148 + the --card-pad gap ≈ 306px, comfortably met. */
   .thermal-grid {
     display: grid;
-    gap: var(--grid-gap);
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 174px), 1fr));
+    gap: var(--card-pad);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
   }
 
   /* Telemetry tiles: column count follows the Card (.instrument-panel is an
-     inline-size container), not the viewport. 1px gaps over the border color
-     draw the hairline grid whatever the column count. */
+     inline-size container), not the viewport. Flat tiles on the panel's own
+     surface — separation is SPACE, and the gap equals the card's padding so
+     tile-to-tile and tile-to-edge distance are one number (flatten pass;
+     the former 1px hairline table over the border color is deleted). */
   .telemetry-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1px;
-    background: var(--color-border);
+    gap: var(--card-pad);
   }
-  .telemetry-grid > * { background: var(--color-surface); }
   @container (min-width: 400px) {
     .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     /* odd tile count: let the last tile span so no dead half-cell remains */
@@ -434,23 +442,11 @@
     .telemetry-grid > :last-child:nth-child(3n + 2) { grid-column: span 2; }
   }
 
-  /* Instrument well — the SD1 pod recession (S2 §1.2). The complement of
-     .instrument-panel's raised inset highlight: live readouts (thermal
-     instruments, lamp grids, segment tiles) sit BEHIND the fascia plane.
-     Backdrop is a flat oklab mix (darker than surface, so every text ratio
-     measured against surface only improves); radius rides the concentric
-     cascade (--radius-inner), never a hand-authored literal (S3 law). Not a
-     gradient — the inset shadow is the same technique .instrument-panel
-     already uses. */
-  .instrument-well {
-    background: color-mix(in oklab, var(--color-bg) 55%, var(--color-surface));
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-inner);
-    box-shadow: inset 0 1px 2px color-mix(in oklab, black 35%, transparent);
-  }
-  @media (forced-colors: active) {
-    .instrument-well { box-shadow: none; }
-  }
+  /* The SD1 instrument-well recession is DELETED (flatten pass, owner:
+     "remove the backgrounds on each element so it is cleaner, instead
+     ensuring even spacing"). Live readouts sit flat on the panel surface;
+     grouping is carried by the card itself plus one spacing rhythm
+     (gap = --card-pad = the card's own padding). */
 
   /* The old .binnacle-strip sub-grid dissolved into the page grid (Swiss
      areas): Telemetry and TellTales are sibling zones whose header-baseline
@@ -549,7 +545,10 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     grid-auto-rows: 1fr;
-    gap: 1px;
+    /* One spacing rhythm inside a card: the gap equals the card's padding
+       (flatten pass — the vestigial 1px hairline-era gap made eight flat
+       cells read as one slab). */
+    gap: var(--card-pad);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -557,9 +556,10 @@
   .telltale-cell-host { display: contents; }
   .telltale-cell {
     min-height: var(--binnacle-row);
-    /* Even on all four sides (owner button-chrome rule — latched cells ARE
-       buttons); the 44px row module still governs height via min-height. */
-    padding: 8px;
+    /* No cell padding: the grid gap does the separating (padding on top of
+       it double-spaces). The 44px row module still governs height via
+       min-height — the target never shrinks with the padding. */
+    padding: 0;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -669,12 +669,12 @@
   /* Dial ⇄ bar renderer switch. Each thermal instrument is its own inline-size
      container; the query measures its content box, so a matching container
      guarantees the dial renders at or above the 148px hard floor. CSS-only —
-     no JS resize listeners. Padding lives here (not a utility class on the
-     component) so the short-viewport override below can retune the two-up
-     arithmetic in one place. */
+     no JS resize listeners. No padding: the flat tile has no border to hold
+     content off, and .thermal-grid's gap (= --card-pad) owns the spacing,
+     so the container width IS the dial's available width. */
   .thermal-instrument {
     container-type: inline-size;
-    padding: 0.75rem;
+    padding: 0;
     /* The owner's "digital dashboard squares": each thermal instrument is a
        square module. aspect-ratio is a PREFERENCE — when the tile is too
        narrow for its content (the 148px floor arithmetic, the 800x480
@@ -696,22 +696,11 @@
     .dial-ticks-minor { display: initial; }
   }
 
-  /* Short landscape panels — most importantly the K1 Max's own 800x480
-     touchscreen (the same <600px height boundary the chrome variants key
-     on). Nothing else in the cascade reads viewport HEIGHT, so a 480px-tall
-     panel used to stack two 280px-cap dials and push the Bed dial entirely
-     below the fold (the bottom nav's top edge). Trading instrument chrome —
-     8px padding instead of 12px, 4px gap instead of 8px — lowers the two-up
-     threshold to 166px = 148px dial floor + 8px padding ×2 + 1px border ×2,
-     so the ~352px Thermals content box carries two ~156px dials side by
-     side: at or above the hard floor, and above the fold. */
-  @media (max-height: 599.98px) {
-    .thermal-grid {
-      gap: 0.25rem;
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 166px), 1fr));
-    }
-    .thermal-instrument { padding: 0.5rem; }
-  }
+  /* The former short-viewport thermal override (166px threshold, tighter
+     padding/gap) is deleted: with the well chrome gone the flat two-up
+     threshold (2x148 + gap ≈ 306px) already fits the 800x480 panel's
+     Thermals content box by ~46px, so the special case has nothing left to
+     trade away. One arithmetic, every viewport. */
 }
 
 @media (max-width: 47.99rem) {

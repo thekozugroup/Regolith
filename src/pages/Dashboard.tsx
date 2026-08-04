@@ -368,7 +368,7 @@ function MetricTile({
 }) {
   return (
     <div
-      className={cn("flex min-h-11 items-center justify-between gap-3 px-3 py-2", warn && "text-[var(--color-warning)]")}
+      className={cn("flex min-h-11 items-center justify-between gap-3", warn && "text-[var(--color-warning)]")}
     >
       <span className="instrument-label text-[11px]">
         {label}

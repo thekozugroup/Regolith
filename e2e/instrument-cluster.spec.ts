@@ -630,14 +630,27 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     expect(Math.max(...widths) - Math.min(...widths), "cell widths must be uniform").toBeLessThanOrEqual(1);
     expect(Math.max(...heights) - Math.min(...heights), "cell heights must be uniform").toBeLessThanOrEqual(1);
 
-    // Engine lights, not wells: the glyph is the lamp. No lamp square, no
-    // cell backdrop, no well recession around the grid.
+    // Engine lights on a FLAT panel: the glyph is the lamp. No lamp square,
+    // no cell backdrop — and stronger than the old "not inside a well" check
+    // (vacuous now that no wells exist anywhere): NOTHING visible inside the
+    // Systems panel may paint a background other than the panel's own
+    // surface. This pins the flatten itself, not just one mechanism.
     await expect(page.locator(".telltale-grid .telltale-lamp")).toHaveCount(0);
-    expect(await page.locator(".telltale-grid").evaluate((grid) => grid.closest(".instrument-well") != null)).toBe(false);
-    const backdrops = await page.locator(".telltale-cell").evaluateAll((items) =>
-      items.map((cell) => getComputedStyle(cell).backgroundColor),
-    );
-    for (const backdrop of backdrops) expect(backdrop).toBe("rgba(0, 0, 0, 0)");
+    const paintedInsidePanel = await page
+      .locator('section.instrument-panel:has(h2:text-is("Systems"))')
+      .evaluate((panel) => {
+        const own = getComputedStyle(panel).backgroundColor;
+        const offenders: string[] = [];
+        for (const el of Array.from(panel.querySelectorAll<HTMLElement>("*"))) {
+          if (el.getClientRects().length === 0) continue; // hidden
+          const bg = getComputedStyle(el).backgroundColor;
+          if (bg !== "rgba(0, 0, 0, 0)" && bg !== own) {
+            offenders.push(`${el.tagName.toLowerCase()}.${el.className} → ${bg}`);
+          }
+        }
+        return offenders;
+      });
+    expect(paintedInsidePanel, "flat cluster: no per-element fills").toEqual([]);
 
     // Nothing lit ⇒ nothing announced.
     await expect(

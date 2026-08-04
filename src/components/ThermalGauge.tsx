@@ -48,7 +48,7 @@ export function ThermalGauge({
       role="img"
       aria-label={`${label} temperature ${hasActual ? `${value.toFixed(1)} degrees Celsius` : "unavailable"}`}
       aria-description={`${setpoint > 0 ? `Target ${setpoint.toFixed(0)} degrees Celsius. ` : "No target. "}${status}.`}
-      className="thermal-instrument instrument-well min-w-0"
+      className="thermal-instrument min-w-0"
       style={{ "--gauge-stroke": stateColor } as CSSProperties}
     >
       <div className="flex items-center justify-between gap-2">

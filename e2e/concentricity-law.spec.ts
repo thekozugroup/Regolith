@@ -247,10 +247,13 @@ async function sweepState(
 const grandTotal = { subject: 0, sweeps: 0 };
 
 /** The 800x480 panel subset keeps its own ledger and floor — its pair counts
- *  must not dilute the calibrated full-sweep floor above. Calibrated
- *  2026-08-04: 64 pairs measured across the two panel sweeps (36 idle +
- *  28 active-print); floor ~80%, same rationale as PAIR_FLOOR. */
-const PANEL_PAIR_FLOOR = 50;
+ *  must not dilute the calibrated full-sweep floor above. Recalibrated
+ *  2026-08-04 (flatten pass): 46 pairs measured across the two panel sweeps
+ *  after the instrument wells were deleted — a flat tile with no fill and no
+ *  border draws no corner, so its pairs lawfully left the sweep's domain
+ *  (the 2026-08-04 pre-flatten calibration was 64). Floor ~80%, same
+ *  rationale as PAIR_FLOOR. */
+const PANEL_PAIR_FLOOR = 36;
 const panelTotal = { subject: 0, sweeps: 0 };
 
 test.describe("Concentricity law — full-glass sweep", () => {
