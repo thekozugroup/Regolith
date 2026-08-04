@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PrinterState } from "../src/lib/moonraker";
 import {
   createPrinterActionRunner,
+  getActionConfirmation,
   getConsoleCommandRisk,
   guardPrinterAction,
   kampEnabledFromStorage,
@@ -340,5 +341,116 @@ describe("expert console classification", () => {
       setup: [],
     });
     expect(check.allowed).toBe(false);
+  });
+});
+
+describe("chamber light", () => {
+  const LED = "output_pin LED";
+  const WITH_LED = [...K1_MAX_OBJECTS, LED];
+
+  test("switches the pin the profile declared, both ways", async () => {
+    const on = client(readyState(), WITH_LED);
+    expect(
+      await createPrinterActionRunner(on)({ type: "set-light", on: true, object: LED }),
+    ).toEqual({ executed: true });
+    expect(on.calls).toEqual(["gcode:SET_PIN PIN=LED VALUE=1"]);
+
+    const off = client(readyState(), WITH_LED);
+    await createPrinterActionRunner(off)({ type: "set-light", on: false, object: LED });
+    expect(off.calls).toEqual(["gcode:SET_PIN PIN=LED VALUE=0"]);
+  });
+
+  // Printers without a chamber lamp are the reason this is object-gated:
+  // sending SET_PIN for a pin klipper has never heard of is an error toast
+  // for a feature that machine does not have.
+  test("sends nothing at all when the printer has no light pin", async () => {
+    const fake = client(readyState(), K1_MAX_OBJECTS);
+    const result = await createPrinterActionRunner(fake)({
+      type: "set-light",
+      on: true,
+      object: LED,
+    });
+    expect(result).toEqual({ executed: false });
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("an unreadable object list is silence, not a throw", async () => {
+    const fake = client(readyState(), WITH_LED);
+    fake.listObjects = async () => {
+      throw new Error("RPC timeout: printer.objects.list");
+    };
+    const result = await createPrinterActionRunner(fake)({
+      type: "set-light",
+      on: true,
+      object: LED,
+    });
+    expect(result).toEqual({ executed: false });
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("never builds a command out of an object it does not understand", async () => {
+    for (const object of ["", "LED", "output_pin ", "output_pin LED; M112", "gcode_macro LED"]) {
+      const fake = client(readyState(), [...WITH_LED, object]);
+      await expect(
+        createPrinterActionRunner(fake)({ type: "set-light", on: true, object }),
+      ).rejects.toBeInstanceOf(PrinterActionError);
+      expect(fake.calls).toEqual([]);
+    }
+  });
+
+  test("locks duplicate toggles, and holds its own lock — never the print lock", async () => {
+    const fake = client(readyState(), WITH_LED);
+    let release = () => {};
+    fake.runGcode = (script) => {
+      fake.calls.push(`gcode:${script}`);
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const run = createPrinterActionRunner(fake);
+    const first = run({ type: "set-light", on: true, object: LED });
+    await expect(
+      run({ type: "set-light", on: false, object: LED }),
+    ).rejects.toMatchObject({ code: "duplicate" });
+    // A held lamp toggle must not be able to hold a print hostage.
+    await run(
+      { type: "start-print", filename: "part.gcode", setup: [] },
+      { confirm: () => true },
+    );
+    release();
+    await first;
+    expect(fake.calls).toContain("start:part.gcode");
+  });
+
+  // A lamp is neither motion nor heat. Lighting the chamber to look at a
+  // running print is the main reason the control exists.
+  test("stays available while a print runs, and refuses when klipper is not ready", () => {
+    expect(
+      guardPrinterAction(
+        readyState({ print_stats: { state: "printing", filename: "part.gcode" } }),
+        true,
+        { type: "set-light", on: true, object: LED },
+      ).allowed,
+    ).toBe(true);
+    expect(
+      guardPrinterAction(
+        readyState({ webhooks: { state: "shutdown", state_message: "Shutdown" } }),
+        true,
+        { type: "set-light", on: true, object: LED },
+      ).allowed,
+    ).toBe(false);
+    expect(
+      guardPrinterAction(readyState(), false, {
+        type: "set-light",
+        on: true,
+        object: LED,
+      }).allowed,
+    ).toBe(false);
+  });
+
+  test("light control asks for no confirmation dialog", () => {
+    expect(
+      getActionConfirmation({ type: "set-light", on: true, object: LED }),
+    ).toBeNull();
   });
 });

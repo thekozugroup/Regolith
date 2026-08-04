@@ -41,6 +41,35 @@ const PRINT_SETUP_STEPS: Record<
   },
 };
 
+/**
+ * Chamber light.
+ *
+ * The printer exposes the lamp as a klipper `output_pin`, so the write is the
+ * same `SET_PIN` family KAMP already uses. The klipper OBJECT is what the
+ * profile declares (`output_pin LED`); the PIN name inside the command is the
+ * part after the prefix.
+ *
+ * THE APP DOES NOT OWN AN OFF TIMER, AND MUST NEVER GROW ONE.
+ * The owner's on-printer watchdog (`scripts/light-watchdog.py`, user-owned,
+ * run every minute from cron) already turns the lamp off after 10 minutes of
+ * inactivity — print finished, idle_timeout, or no toolhead movement — and it
+ * only ever writes VALUE=0. A second timer in the browser would race the
+ * watchdog for the same pin and produce a lamp that flickers off under one
+ * clock and on under another. Regolith implements exactly two things: the
+ * manual toggle, and a single auto-ON at print start (see lib/lightControl).
+ */
+const LIGHT_OBJECT_PREFIX = "output_pin ";
+
+/**
+ * `output_pin LED` → `LED`. Anything that is not a plain output pin returns
+ * null and no command is ever built from it.
+ */
+export function lightPinName(object: string): string | null {
+  if (!object.startsWith(LIGHT_OBJECT_PREFIX)) return null;
+  const pin = object.slice(LIGHT_OBJECT_PREFIX.length).trim();
+  return /^[A-Za-z0-9_]+$/.test(pin) ? pin : null;
+}
+
 export type PrinterAction =
   | { type: "start-print"; filename: string; setup: PrintSetupOption[] }
   | { type: "pause-print" }
@@ -60,7 +89,9 @@ export type PrinterAction =
   | { type: "set-pressure-advance"; value: number; save: boolean }
   | { type: "jog"; axis: Axis; delta: number }
   | { type: "home"; axis: "all" | "z" }
-  | { type: "disable-motors" };
+  | { type: "disable-motors" }
+  /** `object` is the klipper object the profile declared, e.g. `output_pin LED`. */
+  | { type: "set-light"; on: boolean; object: string };
 
 export type ActionRisk = "routine" | "caution" | "critical";
 
@@ -329,6 +360,17 @@ export function guardPrinterAction(
       return safety.isBusy
         ? { allowed: false, reason: `${safety.busyReason ?? "Printer is busy"}. Motors must stay engaged.` }
         : { allowed: true };
+    case "set-light":
+      // A lamp is not motion and not heat: it is deliberately allowed WHILE
+      // printing — lighting the chamber mid-job is the whole point. The only
+      // gates are a well-formed pin and a klipper that can accept SET_PIN.
+      if (!lightPinName(action.object)) {
+        return { allowed: false, reason: "This printer has no light pin configured." };
+      }
+      if (!safety.klipperReady) {
+        return { allowed: false, reason: "Klipper is not ready. Light control is unavailable." };
+      }
+      return { allowed: true };
   }
 }
 
@@ -587,6 +629,24 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
           case "disable-motors":
             await client.runGcode("M84");
             break;
+          case "set-light": {
+            // Object-list gated exactly like KAMP: printers without the pin
+            // get NOTHING on the wire. Skipping resolves as `executed: false`
+            // so the caller rolls its optimistic state back instead of
+            // claiming a lamp it never switched.
+            const pin = lightPinName(action.object);
+            if (!pin) return { executed: false };
+            let objects: string[];
+            try {
+              objects = await client.listObjects();
+            } catch {
+              // Cannot confirm this printer has the pin, so send nothing.
+              return { executed: false };
+            }
+            if (!objects.includes(action.object)) return { executed: false };
+            await client.runGcode(`SET_PIN PIN=${pin} VALUE=${action.on ? 1 : 0}`);
+            break;
+          }
         }
       } catch (error) {
         if (error instanceof PrinterActionError) throw error;
