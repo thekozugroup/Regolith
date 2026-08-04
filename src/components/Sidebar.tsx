@@ -16,6 +16,7 @@ import {
 import { BrandLogo } from "./BrandLogo";
 import { ModalSurface } from "./ModalSurface";
 import { cn } from "@/lib/utils";
+import { readStoredFlag, writeStoredFlag } from "@/lib/safeStorage";
 import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 
@@ -50,11 +51,7 @@ const SIDEBAR_EXPANDED_W = "14rem"; /* = the old fixed w-56 */
 const SIDEBAR_RAIL_W = "4rem"; /* 64px: 44px targets with room to breathe */
 
 function readCollapsedPreference(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return readStoredFlag(COLLAPSE_KEY, false);
 }
 
 export function Sidebar() {
@@ -88,11 +85,9 @@ export function Sidebar() {
   const toggleCollapsed = () => {
     setCollapsed((value) => {
       const next = !value;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      } catch {
-        /* preference is a nicety; never break navigation over storage */
-      }
+      // A preference is a nicety; storage refusing the write never breaks
+      // navigation, so the return value is deliberately ignored.
+      writeStoredFlag(COLLAPSE_KEY, next);
       return next;
     });
   };

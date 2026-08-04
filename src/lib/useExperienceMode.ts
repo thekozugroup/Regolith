@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readStored, writeStored } from "./safeStorage";
 
 export type ExperienceMode = "basic" | "expert";
 
@@ -10,11 +11,11 @@ export function normalizeExperienceMode(value: string | null): ExperienceMode {
 }
 
 function readExperienceMode(): ExperienceMode {
-  return normalizeExperienceMode(localStorage.getItem(STORAGE_KEY));
+  return normalizeExperienceMode(readStored(STORAGE_KEY));
 }
 
 export function setExperienceMode(mode: ExperienceMode): void {
-  localStorage.setItem(STORAGE_KEY, mode);
+  writeStored(STORAGE_KEY, mode);
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 

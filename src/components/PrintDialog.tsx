@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
+import { readStored, writeStoredFlag } from "@/lib/safeStorage";
 
 interface PrintDialogProps {
   file: MoonrakerFile;
@@ -57,12 +58,12 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   // Default ON (basic QoL for kamp-capable profiles); only a persisted,
   // explicit opt-out disables it — see kampEnabledFromStorage.
   const [kamp, setKamp] = useState(() =>
-    kampEnabledFromStorage(localStorage.getItem(KAMP_STORAGE_KEY)),
+    kampEnabledFromStorage(readStored(KAMP_STORAGE_KEY)),
   );
   // Persist the choice the moment it is TOGGLED, not only when a print
   // starts — closing the dialog after flipping the switch must still stick.
   const updateKamp = (value: boolean) => {
-    localStorage.setItem(KAMP_STORAGE_KEY, value ? "1" : "0");
+    writeStoredFlag(KAMP_STORAGE_KEY, value);
     setKamp(value);
   };
   const [acknowledged, setAcknowledged] = useState(false);

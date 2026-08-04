@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import { cn } from "@/lib/utils";
 import { usePrinterSelector } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
+import { readStored, removeStored, writeStored } from "@/lib/safeStorage";
 
 const STORAGE_KEY = "forge.printer.image";
 
@@ -32,7 +33,7 @@ export const PrinterCard = memo(function PrinterCard() {
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
   const [image, setImage] = useState<string | null>(() =>
-    localStorage.getItem(STORAGE_KEY),
+    readStored(STORAGE_KEY),
   );
   const [meta, setMeta] = useState<Partial<PrinterMeta>>({});
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,14 +73,16 @@ export const PrinterCard = memo(function PrinterCard() {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = String(reader.result);
-      localStorage.setItem(STORAGE_KEY, dataUrl);
+      // A large data URL can blow the quota. The picture is decoration, so a
+      // refused write still shows the image for this session.
+      writeStored(STORAGE_KEY, dataUrl);
       setImage(dataUrl);
     };
     reader.readAsDataURL(file);
   };
 
   const clearImage = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    removeStored(STORAGE_KEY);
     setImage(null);
   };
 

@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { readStored, removeStored, writeStored } from "../safeStorage";
 
 export type AiFeature = "explain" | "postmortem";
 
@@ -31,22 +32,18 @@ const MODEL_KEY = "forge.ai.model";
 const KILL_KEY = "forge.ai.disabled";
 const CHANGE_EVENT = "forge:ai-settings-changed";
 
-/** localStorage can throw (private mode, disabled storage). Never let it. */
+/**
+ * Storage is total here (see lib/safeStorage): a read that cannot happen
+ * answers `null`, which for every flag in this file means OFF. Failing
+ * closed is the only acceptable direction for a consent switch.
+ */
 function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return readStored(key);
 }
 
 function write(key: string, value: string | null): void {
-  try {
-    if (value == null || value === "") localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* storage unavailable — the feature simply stays off */
-  }
+  if (value == null || value === "") removeStored(key);
+  else writeStored(key, value);
   try {
     window.dispatchEvent(new Event(CHANGE_EVENT));
   } catch {

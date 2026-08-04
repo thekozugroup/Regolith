@@ -10,6 +10,12 @@
  * from `getActiveProfile()` rather than hardcoding K1 Max specifics.
  */
 import { K1_MAX } from "./k1max";
+import {
+  readStored,
+  readStoredJson,
+  writeStored,
+  writeStoredJson,
+} from "../lib/safeStorage";
 import type { PrinterProfile } from "./types";
 
 export type { PrinterProfile } from "./types";
@@ -30,19 +36,15 @@ const CUSTOM_KEY = "regolith.profile.custom";
 const CHANGE_EVENT = "regolith:profile-change";
 
 function loadCustom(): PrinterProfile[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidProfile);
-  } catch {
-    return [];
-  }
+  // Element-wise validation, deliberately: one corrupt entry in an imported
+  // backup must cost the owner that one profile, not every custom profile
+  // they ever added.
+  const parsed = readStoredJson<unknown[]>(CUSTOM_KEY, Array.isArray, []);
+  return parsed.filter(isValidProfile);
 }
 
 function saveCustom(list: PrinterProfile[]): void {
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+  writeStoredJson(CUSTOM_KEY, list);
 }
 
 /** Minimal runtime validation — enough to refuse obvious garbage uploads. */
@@ -70,7 +72,13 @@ export function getProfile(id: string): PrinterProfile | undefined {
 }
 
 export function getActiveProfileId(): string {
-  return localStorage.getItem(ACTIVE_KEY) ?? K1_MAX.id;
+  // Only an id that still resolves to a real profile counts. A pointer to a
+  // profile that was deleted, renamed, or never existed used to be handed
+  // straight to `getProfile`, which answered `undefined` — every field the UI
+  // reads off the profile then read off nothing.
+  const stored = readStored(ACTIVE_KEY);
+  if (stored && listProfiles().some((p) => p.id === stored)) return stored;
+  return K1_MAX.id;
 }
 
 export function getActiveProfile(): PrinterProfile {
@@ -79,7 +87,7 @@ export function getActiveProfile(): PrinterProfile {
 
 export function setActiveProfile(id: string): void {
   if (!getProfile(id)) throw new Error(`Unknown profile: ${id}`);
-  localStorage.setItem(ACTIVE_KEY, id);
+  writeStored(ACTIVE_KEY, id);
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
 
@@ -97,7 +105,7 @@ export function removeCustomProfile(id: string): void {
   }
   saveCustom(loadCustom().filter((p) => p.id !== id));
   if (getActiveProfileId() === id) {
-    localStorage.setItem(ACTIVE_KEY, K1_MAX.id);
+    writeStored(ACTIVE_KEY, K1_MAX.id);
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }

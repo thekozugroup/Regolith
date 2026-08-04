@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readStored, writeStored } from "./safeStorage";
 
 const NAME_KEY = "forge.device.name";
 const ACCENT_KEY = "forge.theme.accent";
@@ -114,18 +115,26 @@ function applyAccent(hex: string): void {
   root.style.setProperty("--color-accent-hover", tokens.hover);
 }
 
-function loadStoredAccent(): string {
-  const raw = localStorage.getItem(ACCENT_KEY);
+/**
+ * The persisted accent, or the designed default.
+ *
+ * Exported for tests: this runs in main.tsx BEFORE React mounts, so a throw
+ * or an unhandled shape here is a blank page with no boundary above it. Every
+ * input — absent, empty, a channel-triplet string, a JSON blob, a 200KB
+ * string — has to come out as a usable hex.
+ */
+export function loadStoredAccent(): string {
+  const raw = readStored(ACCENT_KEY);
   if (!raw) return DEFAULT_ACCENT;
   // Migrate legacy preset-name values
-  if (raw in ACCENT_PRESETS) return ACCENT_PRESETS[raw as AccentPreset];
+  if (Object.hasOwn(ACCENT_PRESETS, raw)) {
+    return ACCENT_PRESETS[raw as AccentPreset];
+  }
   return isValidHex(raw) ? normalizeHex(raw) : DEFAULT_ACCENT;
 }
 
 export function useDeviceName() {
-  const [name, setName] = useState(() => {
-    return localStorage.getItem(NAME_KEY) ?? "Forge";
-  });
+  const [name, setName] = useState(() => readStoredDeviceName());
   useEffect(() => {
     const handler = (e: Event) => {
       const next = (e as CustomEvent<string>).detail;
@@ -137,7 +146,7 @@ export function useDeviceName() {
 
   const update = (next: string) => {
     const trimmed = next.trim() || "Forge";
-    localStorage.setItem(NAME_KEY, trimmed);
+    writeStored(NAME_KEY, trimmed);
     setName(trimmed);
     window.dispatchEvent(
       new CustomEvent("forge:device-name-changed", { detail: trimmed }),
@@ -154,6 +163,11 @@ export function useDeviceName() {
  */
 export function applyStoredAccent(): void {
   applyAccent(loadStoredAccent());
+}
+
+/** A blank or whitespace-only stored name reads as unset, not as an empty title. */
+export function readStoredDeviceName(): string {
+  return readStored(NAME_KEY)?.trim() || "Forge";
 }
 
 export function useAccent() {
@@ -173,7 +187,7 @@ export function useAccent() {
   const setAccent = (next: string) => {
     if (!isValidHex(next)) return;
     const hex = normalizeHex(next);
-    localStorage.setItem(ACCENT_KEY, hex);
+    writeStored(ACCENT_KEY, hex);
     setAccentState(hex);
     window.dispatchEvent(
       new CustomEvent("forge:accent-changed", { detail: hex }),

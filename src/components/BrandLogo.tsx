@@ -37,14 +37,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type BrandConfig =
-  | { type: "lucide"; name: string }
-  | { type: "image"; src: string }
-  | { type: "none" };
-
-const STORAGE_KEY = "forge.brand.icon";
-const DEFAULT_BRAND: BrandConfig = { type: "lucide", name: "hammer" };
+import {
+  DEFAULT_BRAND,
+  isBrandConfig,
+  loadBrand,
+  saveBrand,
+  type BrandConfig,
+} from "@/lib/brand";
 
 // Curated Lucide subset — recognizable, geometric, work well at 18px.
 const ICON_LIBRARY: Record<string, LucideIcon> = {
@@ -81,16 +80,6 @@ const ICON_LIBRARY: Record<string, LucideIcon> = {
   triangle: Triangle,
 };
 
-function loadBrand(): BrandConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_BRAND;
-    return JSON.parse(raw) as BrandConfig;
-  } catch {
-    return DEFAULT_BRAND;
-  }
-}
-
 interface Props {
   className?: string;
   size?: number;
@@ -112,7 +101,7 @@ export function BrandLogo({
 
   // Persist + broadcast so other instances sync
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(brand));
+    saveBrand(brand);
     window.dispatchEvent(
       new CustomEvent("forge:brand-changed", { detail: brand }),
     );
@@ -122,6 +111,10 @@ export function BrandLogo({
   useEffect(() => {
     const handler = (e: Event) => {
       const next = (e as CustomEvent<BrandConfig>).detail;
+      // The event carries a payload from anywhere on the page, so it gets the
+      // same guard the stored value gets — a malformed detail must not become
+      // render state for a component the whole shell depends on.
+      if (!isBrandConfig(next)) return;
       if (JSON.stringify(next) !== JSON.stringify(brand)) {
         setBrand(next);
       }

@@ -3,6 +3,12 @@ import { Card } from "./Card";
 import { Button } from "./Button";
 import { ActionConfirmDialog } from "./ActionConfirmDialog";
 import { Download, Upload, Trash2, Database } from "lucide-react";
+import {
+  readStored,
+  removeStored,
+  storedKeys,
+  writeStored,
+} from "@/lib/safeStorage";
 
 /**
  * Settings export / import / wipe.
@@ -33,19 +39,13 @@ export function BackupSettings() {
 
   const exportData = () => {
     const data: Record<string, unknown> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k || !k.startsWith(FORGE_PREFIX)) continue;
+    for (const k of storedKeys(FORGE_PREFIX)) {
+      const raw = readStored(k);
+      if (raw == null) continue;
       try {
-        const raw = localStorage.getItem(k);
-        if (raw == null) continue;
-        try {
-          data[k] = JSON.parse(raw);
-        } catch {
-          data[k] = raw;
-        }
+        data[k] = JSON.parse(raw);
       } catch {
-        /* skip */
+        data[k] = raw;
       }
     }
     const payload: ExportPayload = {
@@ -76,11 +76,11 @@ export function BackupSettings() {
         let count = 0;
         for (const [k, v] of Object.entries(payload.data)) {
           if (!k.startsWith(FORGE_PREFIX)) continue;
-          localStorage.setItem(
+          const written = writeStored(
             k,
             typeof v === "string" ? v : JSON.stringify(v),
           );
-          count++;
+          if (written) count++;
         }
         setStatus(`Imported ${count} entries — reloading…`);
         setTimeout(() => location.reload(), 1200);
@@ -97,12 +97,8 @@ export function BackupSettings() {
 
   const wipe = () => {
     setConfirmingWipe(false);
-    const toRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(FORGE_PREFIX)) toRemove.push(k);
-    }
-    toRemove.forEach((k) => localStorage.removeItem(k));
+    const toRemove = storedKeys(FORGE_PREFIX);
+    toRemove.forEach(removeStored);
     setStatus(`Cleared ${toRemove.length} entries — reloading…`);
     setTimeout(() => location.reload(), 1200);
   };
