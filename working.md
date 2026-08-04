@@ -1079,6 +1079,67 @@ Flagged for owner confirmation before the panel is changed — this supersedes
 a written panel-spec decision, so it is recorded here rather than applied to
 the panel silently.
 
+## Chamber light control — 2026-08-04, `d497700`..`d065693`
+
+Owner's direction: "wire up light control and look to assume light on during
+print (can be manually turned off), and auto turn off light after 10 minutes
+after print is complete or inactivity (if manually turned on)."
+
+**What the app now does — and only this.**
+
+- **Manual toggle.** The readiness light chip is the switch. `set-light` is a
+  typed printer action that sends `SET_PIN PIN=LED VALUE=1|0`, gated on the
+  klipper object the profile declares (`output_pin LED` on the K1 Max) exactly
+  the way the KAMP pre-print step is gated. A printer without the pin gets
+  nothing on the wire and the chip claims nothing.
+- **Auto-ON at print start.** `print_stats.state` crossing into a job fires the
+  lamp on once. Not on every telemetry tick, not on resume from pause, and not
+  on the first observation after a page load — opening a tab onto a running
+  print is not a print starting, and re-asserting there would undo a lamp the
+  owner had already switched off. A manual toggle during a job is recorded and
+  outranks auto-ON for the rest of that job; it dies with the job, so the next
+  print still lights up.
+
+**What the app deliberately does NOT do: the OFF timer.**
+`scripts/light-watchdog.py` (user-owned, on the printer, cron every minute)
+already implements the owner's auto-off exactly as specified — printing,
+paused, `idle_timeout = Printing`, and toolhead movement all count as
+activity; after 600s of none, and only if the lamp is on, it sends
+`SET_PIN PIN=LED VALUE=0`. It only ever turns the lamp off. A browser-side
+off-timer would be a second clock racing the watchdog for the same pin, so
+there is none, and both `src/lib/printerActions.ts` and
+`src/lib/lightControl.ts` carry a comment saying why nobody should add one.
+
+**HONEST LIMITATION — auto-ON is browser-side only.** `useLightAutoOn` is
+mounted in the app shell, so the print-start lamp fires only while a Regolith
+tab is open somewhere. A print started from the printer's own panel, from
+Fluidd, or overnight with no browser running will NOT light the chamber. This
+is stated in the readiness disclosure copy in those terms — a convenience, not
+a printer-side guarantee — rather than implied to be automatic. Making it hold
+headless means extending the owner's watchdog to also switch the lamp ON when
+the printer is active; that is their file and their call, and nothing here
+touches it.
+
+**Truth rules kept.** The chip never renders a confident OFF: before the pin
+reports it shows a dash and `aria-pressed="mixed"`. A tap claims the new state
+only for the round trip — dropped the moment the pin agrees, rolled back if
+the command is refused or the printer has no such pin, and self-healed after
+6s if the pin never reports at all.
+
+**Structural note.** The chip could not become a control while it lived inside
+the card-body button, because a button cannot nest inside a button. The grid
+moved to `.readiness-shell`; `button.readiness-module` now spans every cell
+(`place-self: stretch`) and still takes the tap everywhere except the chip,
+with the readouts set `pointer-events: none`. The Z6 "one interactive surface"
+reading is preserved for the disclosure — there are two controls now because
+there are two actions. `e2e/swiss-grid.spec.ts` asserted the chip was NOT a
+control; that assertion encoded the old "not wired up" state and was replaced
+with the non-nesting law it was really protecting.
+
+Gates at `d065693`: lint, `bun test` (295), `bun run test:e2e` (174), build —
+all green. The print-start regression test (no `PRINT_START`,
+`SET_GCODE_VARIABLE`, or `use_kamp`; `ADAPTIVE_BED_MESH` present) still passes.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
