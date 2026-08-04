@@ -57,7 +57,6 @@ export function ThermalGauge({
           <h3 className="instrument-label truncate">{label}</h3>
         </div>
         <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium" style={{ color: stateColor }}>
-          <span aria-hidden="true" className="status-lamp" />
           {status}
         </span>
       </div>

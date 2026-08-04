@@ -135,7 +135,7 @@ export function Timelapses() {
                 type="button"
                 aria-pressed={selected?.path === f.path}
                 className={cn(
-                  "flex min-h-11 w-full items-center gap-3 border-l-2 border-transparent px-[var(--card-pad)] py-2 text-left transition-colors",
+                  "press-flat flex min-h-11 w-full items-center gap-3 border-l-2 border-transparent px-[var(--card-pad)] py-2 text-left transition-colors",
                   selected?.path === f.path
                     ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",

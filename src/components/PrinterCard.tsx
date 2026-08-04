@@ -156,8 +156,7 @@ export const PrinterCard = memo(function PrinterCard() {
           />
         </span>
         <span className="readiness-ready flex items-center gap-2">
-          <StatusDot state={t.printerState} />
-          <span className="instrument-label text-[11px] text-[var(--color-fg)]">
+          <span className={cn("instrument-label text-[11px]", statusInk(t.printerState))}>
             {t.printerState ?? "—"}
           </span>
         </span>
@@ -217,8 +216,7 @@ export const PrinterCard = memo(function PrinterCard() {
 
           <div className="flex flex-col gap-[var(--stack)] p-4">
             <div className="flex items-center gap-2">
-              <StatusDot state={t.printerState} />
-              <span className="text-[12px] text-[var(--color-fg-muted)]">
+              <span className={cn("text-[12px]", statusInk(t.printerState))}>
                 {statusLine}
               </span>
             </div>
@@ -242,7 +240,7 @@ export const PrinterCard = memo(function PrinterCard() {
                   {AXES.map((axis) =>
                     t.homedStr == null ? (
                       <span key={axis} className="telltale-axis-unknown">
-                        –
+                        —
                       </span>
                     ) : t.homedStr.toLowerCase().includes(axis.toLowerCase()) ? (
                       <span key={axis}>{axis}</span>
@@ -348,21 +346,14 @@ function Stat({ label, value }: { label: string; value: string | undefined }) {
   );
 }
 
-function StatusDot({ state }: { state: string | undefined }) {
-  const ok = state === "ready";
-  // aria-hidden like every other lamp in the app: the sibling text carries
-  // the state, so AT must not be handed a bare unnamed color-only element.
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "status-lamp",
-        ok
-          ? "text-[var(--color-success)]"
-          : state
-            ? "text-[var(--color-error)]"
-            : "text-[var(--color-fg-muted)]",
-      )}
-    />
-  );
+/**
+ * Engine-light rule: the klipper state is carried by the WORD, tinted.
+ * The 6x6 `.status-lamp` square that used to sit beside it was aria-hidden
+ * decoration that duplicated the word, and it was the one element
+ * forced-colors flattened to zero contrast (working.md's known-minor).
+ * Deleting it loses no channel and closes that defect.
+ */
+function statusInk(state: string | undefined): string {
+  if (state === "ready") return "text-[var(--color-success)]";
+  return state ? "text-[var(--color-error)]" : "text-[var(--color-fg-muted)]";
 }

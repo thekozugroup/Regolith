@@ -178,7 +178,7 @@ export function Files() {
                 type="button"
                 aria-pressed={selected?.path === f.path}
                 className={cn(
-                  "w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[var(--card-pad)] text-left transition-colors",
+                  "press-flat w-full min-h-11 border-l-2 border-transparent flex items-center gap-3 py-2 px-[var(--card-pad)] text-left transition-colors",
                   selected?.path === f.path
                     ? "border-l-[var(--color-accent)] bg-(--color-accent)/8"
                     : "hover:bg-[var(--color-elevated)]",

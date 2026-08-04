@@ -193,6 +193,18 @@ test.describe("Mission bar — pinned bottom cockpit strip", () => {
       await stripRatio(page),
       "no active print file — the strip must not render",
     ).toBeNull();
+    // …and neither do the complications. The pair used to sit here reading
+    // "Progress —" / "Remaining —" on every route of an idle machine: two
+    // permanently-dead readouts in the owner's eyeline. A standby printer has
+    // no progress, so the honest render is nothing at all — the state word
+    // already says why. (Shared law with the touch panel, spec §3.)
+    const idleText = await readPanelText(missionBar(page));
+    expect(idleText, "an idle bar must carry no dead Progress slot").not.toContain(
+      "Progress",
+    );
+    expect(idleText, "an idle bar must carry no dead Remaining slot").not.toContain(
+      "Remaining",
+    );
     await assertMissionBarPlacement(page, "mission bar while idle");
     mock.assertSealed();
   });

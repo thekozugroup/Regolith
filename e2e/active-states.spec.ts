@@ -130,12 +130,26 @@ test.describe("Regolith — live printer states", () => {
         // --- The rail readouts the owner glances at -------------------------
         const railText = await readPanelText(statusRail(page));
         expect(railText, `${label}: status rail job`).toContain(target.rail.job);
-        expect(railText, `${label}: status rail progress`).toContain(
-          `Progress ${target.rail.progress}`,
-        );
-        expect(railText, `${label}: status rail remaining`).toContain(
-          `Remaining ${target.rail.remaining}`,
-        );
+        // IDLE SHOWS NO DEAD COMPLICATIONS: the Progress/Remaining pair only
+        // exists while a job is in flight. An em-dash slot is right for an
+        // unknown-but-applicable value (a running job with no trustworthy
+        // estimate still owes a "Remaining" label); it is wrong for a
+        // quantity that does not exist, so a standby machine renders neither.
+        if (target.words.print === "printing" || target.words.print === "paused") {
+          expect(railText, `${label}: status rail progress`).toContain(
+            `Progress ${target.rail.progress}`,
+          );
+          expect(railText, `${label}: status rail remaining`).toContain(
+            `Remaining ${target.rail.remaining}`,
+          );
+        } else {
+          expect(railText, `${label}: idle rail must carry no dead complications`).not.toContain(
+            "Progress",
+          );
+          expect(railText, `${label}: idle rail must carry no dead complications`).not.toContain(
+            "Remaining",
+          );
+        }
         expect(railText, `${label}: link health`).toContain("Link Ready");
 
         await assertOwnerTrust(page, label);
@@ -293,8 +307,16 @@ test.describe("Regolith — live printer states", () => {
 
     const rail = await readPanelText(statusRail(page));
     expect(rail).toContain("cancelled");
-    expect(rail, "a cancelled job is not making progress").toContain("Progress —");
-    expect(rail, "a cancelled job has no remaining time").toContain("Remaining —");
+    // The pair is DELETED, not dashed: a cancelled job has no progress to
+    // report, and a permanently-dead readout on the bottom bar of every
+    // route is exactly the dead complication the panel's law forbids. The
+    // state word "cancelled" is what answers the question.
+    expect(rail, "a cancelled job must not carry a dead Progress slot").not.toContain(
+      "Progress",
+    );
+    expect(rail, "a cancelled job must not carry a dead Remaining slot").not.toContain(
+      "Remaining",
+    );
 
     const job = await readPanelText(missionCard(page));
     expect(job).toContain("cancelled");
@@ -645,13 +667,15 @@ test.describe("Regolith — live printer states", () => {
       page.locator('.gauge-dial path[stroke="var(--color-gauge-track)"]'),
       "the dial track must survive forced colors",
     ).toHaveCount(2);
-    // De-glow (owner-directed): the dial value arcs and the lit status lamps
-    // are the owner's at-a-glance heat/state signal and must stay rendered
-    // in high-contrast mode — as plain geometry, with no filter anywhere.
-    // (A previous rule set `display: none` on the old glow class and blanked
-    // all of them; the class is gone, the never-hide-geometry lesson stays.)
+    // De-glow (owner-directed): the dial value arcs are the owner's
+    // at-a-glance heat signal and must stay rendered in high-contrast mode —
+    // as plain geometry, with no filter anywhere. (A previous rule set
+    // `display: none` on the old glow class and blanked all of them; the
+    // class is gone, the never-hide-geometry lesson stays. The status lamps
+    // that used to be swept alongside them are deleted — see the
+    // engine-light test below.)
     const litGeometry = await page
-      .locator('.gauge-dial path[stroke="currentColor"], .status-lamp')
+      .locator('.gauge-dial path[stroke="currentColor"]')
       .evaluateAll((items) =>
         items.map((item) => {
           const style = getComputedStyle(item);
@@ -666,32 +690,32 @@ test.describe("Regolith — live printer states", () => {
       );
     expect(
       litGeometry.length,
-      "a printing machine must light something up under forced colors",
+      "a printing machine must draw its value arcs under forced colors",
     ).toBeGreaterThan(0);
     expect(
       litGeometry.filter((part) => !part.shown || !part.sized),
-      "every arc and lamp must stay rendered under forced colors",
+      "every value arc must stay rendered under forced colors",
     ).toEqual([]);
     expect(
       litGeometry.filter((part) => !part.unfiltered),
-      "no filter may ride the arcs or lamps",
+      "no filter may ride the arcs",
     ).toEqual([]);
     await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
     mock.assertSealed();
   });
 
-  test("dials and lamps carry no filter in any state", async ({ page }) => {
+  test("dials and tell-tales carry no filter in any state", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await openDashboard(page);
 
     // De-glow (owner-directed, flatten pass): the phosphor glow is deleted.
-    // Glow was never a state channel — arc length/color and the lamp word
+    // Glow was never a state channel — arc length/color and the state word
     // carry every bit it rode along with — so nothing may reintroduce a
     // filter on instrument geometry, in any print state.
     for (const id of ["printing-midjob", "print-error", "at-temperature"]) {
       await loadScenario(page, mock, id);
       const filtered = await page
-        .locator(".gauge-dial path, .status-lamp, .telltale-icon")
+        .locator(".gauge-dial path, .telltale-icon")
         .evaluateAll((items) =>
           items
             .map((item) => ({
@@ -742,42 +766,42 @@ test.describe("Regolith — live printer states", () => {
     mock.assertSealed();
   });
 
-  test("status lamps stay visible under forced colors", async ({ page }) => {
+  test("no lamp chrome survives; the state WORDS carry state under forced colors", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     await page.emulateMedia({ forcedColors: "active" });
     const mock = await openDashboard(page);
     await loadScenario(page, mock, "printing-midjob");
 
-    // A lamp is NOTHING BUT its background, and forced colors strips author
-    // backgrounds — measured lamp-vs-backdrop contrast used to be 0, i.e.
-    // the lamps were invisible in high-contrast mode. The fix paints them in
-    // the CanvasText system color, which forced colors honors and which has
-    // maximum contrast against the forced Canvas backdrop by definition.
-    const lamps = await page.locator(".status-lamp").evaluateAll((items) => {
-      const probe = document.createElement("span");
-      probe.style.color = "CanvasText";
-      document.body.appendChild(probe);
-      const canvasText = getComputedStyle(probe).color;
-      probe.remove();
-      return items.map((item) => {
-        const style = getComputedStyle(item);
-        const box = item.getBoundingClientRect();
-        return {
-          background: style.backgroundColor,
-          canvasText,
-          sized: box.width > 0 && box.height > 0,
-        };
-      });
-    });
-    expect(lamps.length, "the cockpit must render status lamps").toBeGreaterThan(0);
-    expect(
-      lamps.filter((lamp) => !lamp.sized),
-      "every lamp must keep its geometry under forced colors",
-    ).toEqual([]);
-    expect(
-      lamps.filter((lamp) => lamp.background !== lamp.canvasText),
-      "every lamp must paint the forced-colors ink (CanvasText), not a stripped author color",
-    ).toEqual([]);
+    // ENGINE-LIGHT RULE (panel spec §9, now shared by both surfaces): the
+    // 6x6 `.status-lamp` pip is deleted everywhere. It was aria-hidden
+    // decoration that always duplicated the word beside it, and it was the
+    // one element forced colors could not render — a lamp is NOTHING BUT
+    // its background, author backgrounds are stripped, and measured
+    // lamp-vs-backdrop contrast was 0. Deleting it closes that defect at the
+    // source instead of patching a CanvasText repaint on top of it.
+    await expect(page.locator(".status-lamp")).toHaveCount(0);
+    const lampRule = await page.evaluate(() =>
+      Array.from(document.styleSheets).some((sheet) => {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          return false;
+        }
+        return Array.from(rules).some((rule) => rule.cssText.includes(".status-lamp"));
+      }),
+    );
+    expect(lampRule, "the .status-lamp rule must be gone from the stylesheet too").toBe(
+      false,
+    );
+
+    // What replaced it has to actually be there: every state the lamps used
+    // to sit beside is still legible as TEXT in high contrast.
+    await expect(statusRail(page).getByText("printing", { exact: true })).toBeVisible();
+    await expect(statusRail(page).getByText("Link Ready", { exact: true })).toBeVisible();
+    await expect(hotendGauge(page).getByText("Stable", { exact: true })).toBeVisible();
     mock.assertSealed();
   });
 
@@ -830,13 +854,12 @@ test.describe("Regolith — live printer states", () => {
     const mock = await openDashboard(page);
     await loadScenario(page, mock, "printing-midjob");
 
-    // The value arc and the "active" lamps are the only things distinguishing
-    // a hot printer from a cold one at a glance. Pin them here in the mode
-    // the owner normally runs (the forced-colors test above pins the same
-    // parts under high contrast). Selected directly — the glow class that
-    // once marked them is deleted.
+    // The value arc is the thing distinguishing a hot printer from a cold
+    // one at a glance. Pin it here in the mode the owner normally runs (the
+    // forced-colors test above pins the same parts under high contrast).
+    // Selected directly — the glow class that once marked them is deleted.
     const litParts = await page
-      .locator('.gauge-dial path[stroke="currentColor"], .status-lamp')
+      .locator('.gauge-dial path[stroke="currentColor"]')
       .evaluateAll((items) =>
         items.map((item) => {
           const style = getComputedStyle(item);
@@ -848,7 +871,7 @@ test.describe("Regolith — live printer states", () => {
           };
         }),
       );
-    expect(litParts.length, "a printing machine must light something up").toBeGreaterThan(0);
+    expect(litParts.length, "a printing machine must draw its value arcs").toBeGreaterThan(0);
     expect(
       litParts.filter((part) => !part.shown || !part.sized),
       "every lit indicator on a hot printer must actually render",

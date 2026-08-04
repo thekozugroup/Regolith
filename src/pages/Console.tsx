@@ -19,7 +19,20 @@ import { cn } from "@/lib/utils";
 
 export function ConsolePage() {
   const { state, connected } = usePrinter();
-  const lines = useGcodeLog(200);
+  const allLines = useGcodeLog(200);
+  // TRUTHFULNESS: the header control used to be labelled "Clear", titled
+  // "Refresh", drawn as a bin, and wired to `location.reload()` — four
+  // claims, none of them the action. It now does exactly what its label,
+  // tooltip and icon say: it clears the console view. The rolling klipper
+  // buffer belongs to the transport and is not ours to destroy, so the clear
+  // is a view mark — anything already on screen is dropped, anything that
+  // arrives afterwards still shows. Nothing reloads, so scroll position,
+  // expert-mode arming and an unsent command in the input all survive.
+  const [clearedAt, setClearedAt] = useState(0);
+  const lines = useMemo(
+    () => allLines.filter((line) => line.ts > clearedAt),
+    [allLines, clearedAt],
+  );
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
@@ -120,10 +133,11 @@ export function ConsolePage() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => location.reload()}
-            title="Refresh"
+            onClick={() => setClearedAt(Date.now())}
+            title="Clear the console view"
+            disabled={lines.length === 0}
           >
-            <Trash2 className="w-3 h-3" /> Clear
+            <Trash2 aria-hidden="true" className="w-3 h-3" /> Clear
           </Button>
         }
       >
@@ -193,19 +207,15 @@ export function ConsolePage() {
             onClick={() => setAutoScroll((s) => !s)}
             aria-pressed={autoScroll}
             className={cn(
-              "flex min-h-11 min-w-11 items-center gap-1 rounded-inner p-2 hover:text-[var(--color-fg)]",
+              "press-flat flex min-h-11 min-w-11 items-center gap-1 rounded-inner p-2 hover:text-[var(--color-fg)]",
               autoScroll && "text-[var(--color-accent)]",
             )}
           >
-            <span
-              className={cn(
-                "status-lamp",
-                autoScroll
-                  ? "text-[var(--color-accent)]"
-                  : "text-[var(--color-fg-subtle)]",
-              )}
-            />
-            Autoscroll
+            {/* Engine-light rule: no lamp chrome. The lamp encoded on/off in
+                colour alone, so replacing it with the word costs nothing and
+                gains a non-colour channel — the state is now legible without
+                seeing a hue, and without relying on aria-pressed. */}
+            Autoscroll {autoScroll ? "on" : "off"}
           </button>
         </div>
 

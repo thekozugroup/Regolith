@@ -32,7 +32,10 @@ export function Control() {
   const [error, setError] = useState<string | null>(null);
   const safety = getSafetyState(state);
   const homed = state.toolhead?.homed_axes ?? "";
-  const pos = state.toolhead?.position ?? [0, 0, 0, 0];
+  // TRUTHFULNESS: no `?? [0, 0, 0, 0]`. That default made every `— unknown`
+  // guard below unreachable and printed a confident 0.00 for a toolhead the
+  // app has never heard from. Absent telemetry stays absent.
+  const pos = state.toolhead?.position;
   // In-app confirm, never window.confirm: the native dialog blocks the main
   // thread and freezes the health watchdog for as long as it sits open.
   const { confirm, confirmDialog } = useActionConfirm();
@@ -111,22 +114,31 @@ export function Control() {
               <div key={axis}>
                 <div className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)] font-semibold flex items-center gap-1">
                   {axis}
+                  {/* A11y: `title` on a non-interactive <span> reaches no
+                      screen reader, so the ● / ○ shape-plus-colour channel
+                      was the ONLY channel. The glyph is now decorative and
+                      the state is carried by real text. */}
                   {homed.toLowerCase().includes(axis.toLowerCase()) ? (
-                    <span className="text-[var(--color-accent)]" title="homed">
-                      ●
+                    <span className="text-[var(--color-accent)]">
+                      <span aria-hidden="true">●</span>
+                      <span className="sr-only">homed</span>
                     </span>
                   ) : (
-                    <span className="text-[var(--color-error)]" title="not homed">
-                      ○
+                    <span className="text-[var(--color-error)]">
+                      <span aria-hidden="true">○</span>
+                      <span className="sr-only">not homed</span>
                     </span>
                   )}
                   {isExpert && <span className="ml-auto text-[11px] tabular-nums text-[var(--color-fg-muted)]">
-                    {safety.bounds.min[i].toFixed(0)}–
+                    {/* ASCII hyphen, not U+2013. The glyph budget shared with
+                        the touch panel is ASCII + ° + — only; an EN dash
+                        renders as tofu once this copy is mirrored. */}
+                    {safety.bounds.min[i].toFixed(0)}-
                     {safety.bounds.max[i].toFixed(0)}
                   </span>}
                 </div>
                 <div className="text-[14px] font-semibold tabular-nums mt-0.5">
-                  {pos[i]?.toFixed(2) ?? "—"}
+                  {pos?.[i]?.toFixed(2) ?? "—"}
                 </div>
               </div>
             ))}
@@ -221,7 +233,7 @@ export function Control() {
                 aria-label={`Jog ${d} millimeters`}
                 aria-pressed={dist === d}
                 className={cn(
-                  "min-h-11 min-w-11 rounded-inner p-2.5 text-[12px] font-medium tabular-nums transition-colors",
+                  "press-flat min-h-11 min-w-11 rounded-inner p-2.5 text-[12px] font-medium tabular-nums transition-colors",
                   dist === d
                     ? "border border-[var(--color-border-strong)] bg-[var(--color-bg)] text-[var(--color-accent)]"
                     : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -318,17 +330,25 @@ function BedView({
   state: ReturnType<typeof usePrinter>["state"];
   safety: ReturnType<typeof getSafetyState>;
 }) {
-  const pos = state.toolhead?.position ?? [0, 0, 0, 0];
+  // Same rule as the Toolhead card: never fabricate a position. With no
+  // toolhead and no motion_report the readouts below render `—` and the
+  // marker is suppressed (it is already gated on `homed`).
+  const pos = state.toolhead?.position;
   const livePos = state.motion_report?.live_position ?? pos;
   const [minX, minY] = [safety.bounds.min[0], safety.bounds.min[1]];
   const [maxX, maxY] = [safety.bounds.max[0], safety.bounds.max[1]];
   const sizeX = maxX - minX;
   const sizeY = maxY - minY;
-  const x = ((livePos[0] - minX) / sizeX) * 100;
+  const x = ((livePos?.[0] ?? NaN) - minX) / sizeX * 100;
   // Y: bed-front is up in our view (= bottom of viewport)
-  const y = ((maxY - livePos[1]) / sizeY) * 100;
-  const z = livePos[2];
+  const y = ((maxY - (livePos?.[1] ?? NaN)) / sizeY) * 100;
+  const z = livePos?.[2];
   const homed = safety.fullyHomed;
+  // The marker is a positional CLAIM: it is drawn only when the axes are
+  // homed AND the coordinates resolve to finite percentages. An unknown
+  // position (or a degenerate bed size) parks it rather than pinning the
+  // toolhead to the origin.
+  const markerPlaceable = homed && Number.isFinite(x) && Number.isFinite(y);
   const printing =
     state.print_stats?.state === "printing" ||
     state.print_stats?.state === "paused";
@@ -349,7 +369,7 @@ function BedView({
           <div className="absolute w-full h-px bg-[var(--color-elevated)]/50" />
         </div>
         {/* Toolhead marker */}
-        {homed && (
+        {markerPlaceable && (
           <div
             className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 border-2 transition-[left,top] duration-150 ease-out"
             style={{
@@ -364,9 +384,9 @@ function BedView({
             }}
           />
         )}
-        {!homed && (
+        {!markerPlaceable && (
           <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)]">
-            Not homed
+            {homed ? "Position unknown" : "Not homed"}
           </div>
         )}
       </div>
@@ -377,7 +397,7 @@ function BedView({
             X
           </div>
           <div className="text-[14px] font-semibold tabular-nums">
-            {livePos[0]?.toFixed(2) ?? "—"}
+            {livePos?.[0]?.toFixed(2) ?? "—"}
           </div>
         </div>
         <div>
@@ -385,7 +405,7 @@ function BedView({
             Y
           </div>
           <div className="text-[14px] font-semibold tabular-nums">
-            {livePos[1]?.toFixed(2) ?? "—"}
+            {livePos?.[1]?.toFixed(2) ?? "—"}
           </div>
         </div>
         <div>

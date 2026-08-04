@@ -279,7 +279,7 @@ export function HealthAlerts() {
             onClick={() =>
               setDismissed((d) => new Set([...d, a.id]))
             }
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
+            className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
             aria-label="Dismiss alert"
           >
             ×

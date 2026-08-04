@@ -226,6 +226,26 @@
 }
 
 @layer components {
+  /* THE PRESS VERB — one mechanism, every touch target in the app.
+     The panel's law is "no silent touch surfaces"; the flatten pass forbids
+     the panel's old mechanism (a background swap re-boxes a fill-free
+     surface). This is the reconciliation of the two: geometry (the 1px sink
+     that Button has always had) plus a 2px inset accent rule along the
+     bottom edge — a rule, not a box: no corners, encloses nothing.
+     Before this class, `active:translate-y-px` in buttonStyles.ts was the
+     ONLY :active rule in the codebase, so 19 hand-rolled <button>s gave no
+     press feedback at all — on the K1's own touch panel, where press is the
+     only confirmation a target was hit, that is the worst place to be silent.
+     Safe by construction: nothing here touches the box model, so the 44px
+     floors hold; `transform` survives forced colors even though box-shadow
+     does not, so the press keeps a channel; and :active is a state, not an
+     animation, so reduced-motion (which only zeroes durations) leaves it
+     instant and visible. Focus stays the global outline law's job alone. */
+  .press-flat:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: translateY(1px);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
   .app-chrome {
     background: color-mix(in oklab, var(--color-bg) 89%, transparent);
     -webkit-backdrop-filter: blur(14px) saturate(1.05);
@@ -295,7 +315,16 @@
      vs 999 advance widths must be equal). Mono is reserved for machine text. */
   .instrument-value { font-family: var(--font-sans); font-variant-numeric: tabular-nums slashed-zero; }
   .ruled-row + .ruled-row { border-top: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent); }
-  .status-lamp { display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: var(--radius-lamp); background: currentColor; flex: none; }
+  /* `.status-lamp` (the 6x6 `background: currentColor` pip) is DELETED — the
+     engine-light direction the tell-tales already follow, now applied to the
+     last nine sites that still drew lamp chrome. Every one of them was an
+     aria-hidden square sitting beside the same state word it duplicated, so
+     no channel is lost; the word now carries the severity ink directly.
+     This also closes the accepted known-minor in working.md: a lamp is
+     NOTHING BUT its background, forced-colors strips author backgrounds, and
+     measured lamp-vs-backdrop contrast was 0. There is no lamp to be
+     invisible any more. `--radius-lamp` and `.telltale-lamp` stay — that one
+     is a readiness light chip where outline-vs-fill IS the state. */
 
   .readout {
     font-family: var(--font-sans);
@@ -304,15 +333,6 @@
     line-height: 1;
     color: var(--color-fg);
   }
-  @media (forced-colors: active) {
-    /* A lamp is NOTHING BUT its background, and forced colors strips author
-       backgrounds — measured lamp-vs-backdrop contrast was 0 (invisible).
-       System colors are honored, so paint the lamp in CanvasText: maximum
-       contrast against the forced Canvas backdrop by definition. The border
-       keeps it visible even on engines that still drop the background. */
-    .status-lamp { background: CanvasText; border: 1px solid CanvasText; }
-  }
-
   /* MISSION BAR — full-bleed cockpit status strip pinned to the bottom of
      the viewport. Fixed height (not min-height): the padding clearance the
      app shell reserves is derived from the same --mission-h token, so a bar
@@ -677,7 +697,8 @@
   }
   @media (forced-colors: active) {
     /* Cluster glyphs collapse their ink to CanvasText (the same explicit
-       pattern as .status-lamp — emulated forced-colors flips the media
+       pattern the retired .status-lamp needed — emulated forced-colors
+       flips the media
        query without rewriting author colors, so the rule must say it); the
        lit stroke-weight channel is geometry, which forced colors preserves.
        The readiness light chip still speaks the square grammar: the outline

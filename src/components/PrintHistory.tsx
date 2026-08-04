@@ -105,7 +105,14 @@ export function PrintHistory() {
         <ul className="divide-y divide-[var(--color-border)] bleed">
           {jobs.map((j) => {
             const success = j.status === "completed";
-            const date = j.end_time ?? j.start_time;
+            // "Invalid Date" is not a timestamp, it is a stack trace wearing
+            // a date's clothes. An unusable epoch renders as the app's
+            // standard unknown placeholder instead.
+            const epoch = j.end_time ?? j.start_time;
+            const when =
+              typeof epoch === "number" && Number.isFinite(epoch) && epoch > 0
+                ? new Date(epoch * 1000).toLocaleString()
+                : "—";
             return (
               <li
                 key={j.job_id}
@@ -131,7 +138,7 @@ export function PrintHistory() {
                     {j.filename}
                   </div>
                   <div className="text-[11px] text-[var(--color-fg-muted)] tabular-nums">
-                    {new Date(date * 1000).toLocaleString()} ·{" "}
+                    {when} ·{" "}
                     {formatDuration(j.print_duration)}
                     {j.filament_used
                       ? ` · ${(j.filament_used / 1000).toFixed(2)} m`

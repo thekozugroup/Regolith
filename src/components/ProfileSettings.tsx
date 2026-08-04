@@ -85,7 +85,7 @@ export function ProfileSettings() {
               >
                 <button
                   type="button"
-                  className="flex min-h-11 flex-1 items-center gap-2 text-left"
+                  className="press-flat flex min-h-11 flex-1 items-center gap-2 text-left"
                   onClick={() => setActiveProfile(p.id)}
                   aria-pressed={active}
                 >

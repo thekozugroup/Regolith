@@ -36,7 +36,12 @@ export function getSafetyState(state: PrinterState): SafetyState {
   let busyReason: string | null = null;
   if (printState === "printing" || printState === "paused") {
     isBusy = true;
-    busyReason = `Print ${printState}`;
+    // `Print ${printState}` composed the raw klipper word onto a label and
+    // produced "Print printing" — which the Files page renders as its
+    // primary CTA. busyReason is read as a sentence opener everywhere it is
+    // used ("… — start blocked.", "…. Homing is blocked."), so it has to be
+    // plain English on its own.
+    busyReason = printState === "paused" ? "Paused" : "Printing now";
   } else if (idleState === "Printing") {
     isBusy = true;
     busyReason = "Macro / calibration in progress";

@@ -242,4 +242,67 @@ test.describe("Button law — even chrome and strict concentricity", () => {
     }
     mock.assertSealed();
   });
+
+  test("no silent touch surfaces: every button states its press", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 480 });
+    await useExperience(page, "expert");
+    const mock = await installActiveMock(page, { state: idleState });
+
+    // THE PRESS LAW (the touch panel's rule, adopted app-wide by the flatten
+    // pass). Before this, `active:translate-y-px` inside buttonStyles.ts was
+    // the ONLY :active rule in the codebase — every hand-rolled <button>
+    // relied on a hover state that a finger never produces. On the K1's own
+    // 800x480 panel, press is the only confirmation the target was hit, so
+    // silence there is worse than anywhere else.
+    //
+    // The check is mechanism-level rather than screenshot-level: a control
+    // qualifies if it carries either press channel — the `ui-btn` sink
+    // (Button) or the shared `press-flat` verb (everything else). That keeps
+    // the law enforceable without pinning a particular pixel offset.
+    for (const path of ["/", "/control", "/tune", "/print", "/console", "/settings"]) {
+      await page.goto(path);
+      await expect(page.locator("main > *").first()).toBeVisible();
+
+      const silent = await page
+        .locator("button:visible")
+        .evaluateAll((items) =>
+          items
+            .filter(
+              (item) =>
+                !item.classList.contains("ui-btn") &&
+                !item.classList.contains("press-flat") &&
+                !item.classList.contains("telltale-cell") &&
+                !item.classList.contains("readiness-module"),
+            )
+            .map(
+              (item) =>
+                `${item.getAttribute("aria-label") || item.textContent?.trim() || "button"} [${item.className}]`,
+            ),
+        );
+      expect(silent, `${path}: every touch target must state its press`).toEqual([]);
+    }
+
+    // …and the verb must actually resolve to something. A class name with no
+    // rule behind it would satisfy the sweep above and change nothing on the
+    // glass, so pin the rule itself.
+    const verb = await page.evaluate(() =>
+      Array.from(document.styleSheets).flatMap((sheet) => {
+        let rules: CSSRuleList;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          return [];
+        }
+        return Array.from(rules)
+          .map((rule) => rule.cssText)
+          .filter((text) => text.includes(".press-flat") && text.includes(":active"));
+      }),
+    );
+    expect(verb.length, "the press-flat :active rule must exist in the stylesheet").toBeGreaterThan(0);
+    expect(verb.join(" "), "press is geometry — the 1px sink").toContain("translateY(1px)");
+    expect(verb.join(" "), "…plus the 2px accent rule along the bottom edge").toMatch(
+      /box-shadow:\s*inset 0(px)? -2px 0(px)? var\(--color-accent\)/,
+    );
+    mock.assertSealed();
+  });
 });

@@ -135,7 +135,7 @@ export function ThemeSettings() {
                   key={key}
                   onClick={() => setAccent(hex)}
                   className={cn(
-                    "flex min-h-11 min-w-11 items-center justify-center rounded-inner border-2 transition-[border-color,transform]",
+                    "press-flat flex min-h-11 min-w-11 items-center justify-center rounded-inner border-2 transition-[border-color,transform]",
                     active
                       ? "border-[var(--color-fg)] scale-105"
                       : "border-transparent hover:border-[var(--color-border-strong)]",

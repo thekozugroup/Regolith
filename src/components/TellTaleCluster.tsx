@@ -246,7 +246,7 @@ function LampCell({
               // the em-dash temperature readouts before the first push.
               homed == null ? (
                 <span key={axis} className="telltale-axis-unknown">
-                  –
+                  —
                 </span>
               ) : homed ? (
                 <span key={axis}>{axis}</span>

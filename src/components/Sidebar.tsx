@@ -206,7 +206,7 @@ export function Sidebar() {
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={toggleCollapsed}
             className={cn(
-              "min-h-11 w-full flex items-center rounded-inner text-[13px] font-medium text-[var(--color-fg-muted)] transition-colors",
+              "press-flat min-h-11 w-full flex items-center rounded-inner text-[13px] font-medium text-[var(--color-fg-muted)] transition-colors",
               collapsed ? "justify-center px-0" : "gap-3 px-3",
               "hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]",
             )}
@@ -242,7 +242,7 @@ export function Sidebar() {
                 type="button"
                 aria-label="Close more navigation"
                 onClick={() => setMoreOpen(false)}
-                className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]"
+                className="press-flat min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)]"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -280,7 +280,7 @@ export function Sidebar() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
+                "press-flat min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
                 isActive ? "text-[var(--color-accent)]" : "text-[var(--color-fg-muted)]",
               )
             }
@@ -295,7 +295,7 @@ export function Sidebar() {
           aria-label="More navigation"
           onClick={() => setMoreOpen((value) => !value)}
           className={cn(
-            "min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
+            "press-flat min-h-16 flex flex-col items-center justify-center gap-1 rounded-inner text-[11px] font-medium",
             moreOpen || mobileMore.some((item) => item.to === location.pathname)
               ? "text-[var(--color-accent)]"
               : "text-[var(--color-fg-muted)]",

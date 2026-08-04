@@ -179,7 +179,13 @@ export function Tune() {
   // thread and freezes the health watchdog for as long as it sits open.
   const { confirm, confirmDialog } = useActionConfirm();
 
-  const currentPa = state.extruder?.pressure_advance ?? 0.04;
+  // TRUTHFULNESS: never substitute a plausible default for an unknown machine
+  // value. The old `?? 0.04` did not merely mislabel the readout — Apply sent
+  // that invented number to the hardware. With no `extruder` telemetry the
+  // value is UNKNOWN: the readout says so, and the slider plus both Apply
+  // buttons stay disabled, so there is nothing to send.
+  const currentPa = state.extruder?.pressure_advance ?? null;
+  const paKnown = currentPa != null;
   const displayedPa = pa ?? currentPa;
 
   const runAction = async (action: TuneAction) => {
@@ -216,6 +222,9 @@ export function Tune() {
 
   const applyPa = async (save: boolean) => {
     if (actionBusyRef.current) return;
+    // Belt-and-braces against the fabricated-value class of bug: even if a
+    // future edit re-enables the controls, an unknown value is never sent.
+    if (displayedPa == null) return;
     actionBusyRef.current = true;
     setRunning({
       id: "pressure_advance",
@@ -322,25 +331,41 @@ export function Tune() {
               min="0"
               max="0.2"
               step="0.005"
-              value={displayedPa}
+              // A range input must carry a number. When the machine value is
+              // unknown the control is disabled, so this position is inert —
+              // and aria-valuetext says "unknown" rather than announcing a
+              // number the printer never reported.
+              value={displayedPa ?? 0}
               onChange={(e) => setPa(parseFloat(e.target.value))}
               aria-describedby={pressureAdvanceHintId}
-              aria-valuetext={`${displayedPa.toFixed(4)} seconds`}
+              aria-valuetext={
+                displayedPa != null ? `${displayedPa.toFixed(4)} seconds` : "Unknown"
+              }
               className="min-h-11 flex-1 accent-[var(--color-accent)]"
-              disabled={!connected || isPrinting || !safety.klipperReady || !!running}
+              disabled={
+                !paKnown || !connected || isPrinting || !safety.klipperReady || !!running
+              }
             />
             <output
               htmlFor={pressureAdvanceId}
               className="w-24 text-right text-[14px] font-semibold tabular-nums"
               aria-live="polite"
+              data-pa-known={paKnown ? "true" : "false"}
             >
-              {displayedPa.toFixed(4)} s
+              {displayedPa != null ? `${displayedPa.toFixed(4)} s` : "—"}
             </output>
           </div>
           <div className="flex gap-2 pt-1">
             <Button
               size="sm"
-              disabled={!connected || isPrinting || !safety.klipperReady || !!running || pa === null}
+              disabled={
+                !paKnown ||
+                !connected ||
+                isPrinting ||
+                !safety.klipperReady ||
+                !!running ||
+                pa === null
+              }
               onClick={() => applyPa(false)}
             >
               Apply
@@ -348,7 +373,14 @@ export function Tune() {
             <Button
               size="sm"
               variant="primary"
-              disabled={!connected || isPrinting || !safety.klipperReady || !!running || pa === null}
+              disabled={
+                !paKnown ||
+                !connected ||
+                isPrinting ||
+                !safety.klipperReady ||
+                !!running ||
+                pa === null
+              }
               onClick={() => applyPa(true)}
             >
               Apply & Save
@@ -363,7 +395,14 @@ export function Tune() {
             id={pressureAdvanceHintId}
             className="text-[11px] text-[var(--color-fg-muted)] pt-1"
           >
-            Current: <span className="tabular-nums">{currentPa.toFixed(4)}</span>{" "}
+            {paKnown ? (
+              <>
+                Current:{" "}
+                <span className="tabular-nums">{currentPa.toFixed(4)}</span>
+              </>
+            ) : (
+              <>Current: unknown — waiting for extruder telemetry.</>
+            )}{" "}
             · Typical PLA 0.03-0.05 · PETG 0.05-0.07 · TPU 0.10-0.20
           </div>
         </div>
@@ -452,7 +491,7 @@ function ConfirmModal({
             type="button"
             onClick={onCancel}
             aria-label="Close calibration confirmation"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]"
+            className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-elevated)] hover:text-[var(--color-fg)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -479,7 +518,6 @@ function ConfirmModal({
             </pre>
           </details>
           <div className="text-[11px] text-[var(--color-fg-muted)] flex items-center gap-1.5">
-            <span aria-hidden="true" className="status-lamp text-[var(--color-fg-muted)]" />
             Estimated duration: {action.duration}
           </div>
         </div>

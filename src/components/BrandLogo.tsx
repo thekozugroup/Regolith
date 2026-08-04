@@ -196,7 +196,7 @@ export function BrandLogo({
           setOpen((o) => !o);
         }}
         className={cn(
-          "inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
+          "press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
           configurable && "hover:bg-[var(--color-accent-soft)] cursor-pointer",
           !configurable && "cursor-default",
         )}
@@ -239,7 +239,7 @@ export function BrandLogo({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close brand icon picker"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
+              className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
             >
               <X className="w-4 h-4" />
             </button>
@@ -260,7 +260,7 @@ export function BrandLogo({
                       setOpen(false);
                     }}
                     className={cn(
-                      "flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
+                      "press-flat flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
                       active
                         ? "bg-[var(--color-accent)] text-[var(--color-accent-fg)]"
                         : "hover:bg-[var(--color-accent-soft)] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]",
@@ -279,7 +279,7 @@ export function BrandLogo({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] hover:bg-[var(--color-accent-faint)]"
+              className="press-flat flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] hover:bg-[var(--color-accent-faint)]"
             >
               <Upload className="w-3 h-3 text-[var(--color-accent)]" />
               <span>Upload image…</span>
@@ -296,7 +296,7 @@ export function BrandLogo({
                 setOpen(false);
               }}
               className={cn(
-                "flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
+                "press-flat flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
                 brand.type === "none" && "text-[var(--color-accent)]",
               )}
             >
@@ -314,7 +314,7 @@ export function BrandLogo({
                 setBrand(DEFAULT_BRAND);
                 setOpen(false);
               }}
-              className="flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
+              className="press-flat flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
             >
               <span>Reset to default</span>
             </button>

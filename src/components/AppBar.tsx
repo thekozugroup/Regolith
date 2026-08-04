@@ -49,7 +49,7 @@ export function AppBar() {
                 "text-[var(--color-error)] bg-(--color-error)/10 border-(--color-error)/30"
             )}
           >
-            <span aria-hidden="true" className="status-lamp" />{printState}
+            {printState}
           </span>
         )}
       </div>
@@ -70,11 +70,18 @@ export function AppBar() {
           title={connected ? "Moonraker connected" : "Moonraker offline"}
         >
           {connected ? (
-            <Wifi className="w-3.5 h-3.5" strokeWidth={2} />
+            <Wifi aria-hidden="true" className="w-3.5 h-3.5" strokeWidth={2} />
           ) : (
-            <WifiOff className="w-3.5 h-3.5" strokeWidth={2} />
+            <WifiOff aria-hidden="true" className="w-3.5 h-3.5" strokeWidth={2} />
           )}
-          <span className="hidden sm:inline">{connected ? "Connected" : "Offline"}</span>
+          {/* A11y: below sm the word used to be `hidden`, leaving an icon and
+              a `title` on a non-interactive <div> — neither of which reaches
+              assistive tech. On the 390px phone and the K1's own 800x480
+              panel that meant link state was simply unavailable. `sr-only`
+              keeps the compact visual and restores the text channel. */}
+          <span className="sr-only sm:not-sr-only">
+            {connected ? "Connected" : "Offline"}
+          </span>
         </div>
       </div>
     </header>

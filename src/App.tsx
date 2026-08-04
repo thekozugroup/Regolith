@@ -47,7 +47,6 @@ function RouteLoading() {
       className="flex min-h-[40dvh] items-center justify-center p-6 text-[13px] text-[var(--color-fg-muted)]"
     >
       <span className="inline-flex items-center gap-2">
-        <span aria-hidden="true" className="status-lamp text-[var(--color-accent)]" />
         Loading view…
       </span>
     </div>

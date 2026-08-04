@@ -935,6 +935,150 @@ than letting the code silently contradict them.
   forced colors (weight, label underline) — the glow was never a channel, so
   the counts are unchanged and still e2e-pinned.
 
+## State honesty — 2026-08-04 (P0 truthfulness slice from the flatten audit)
+
+One disease, ten symptoms: **the UI asserting something about the machine that
+is not true.** On a printer-control app that is the highest-severity class
+there is, so this slice landed ahead of the remaining polish work. Every fix
+is pinned by `e2e/state-honesty.spec.ts` (13 tests, all against the strict
+harness that fails the run on any write or any request leaving the fixture).
+
+**The one that could change machine behaviour, fixed first.** `Tune.tsx`'s
+`state.extruder?.pressure_advance ?? 0.04` did not merely *display* an
+invented number — **Apply wrote it to the printer.** A user opening Tune
+before the first extruder push, dragging the slider and pressing Apply was
+sending a fabricated baseline to hardware. The fallback is gone: unknown
+stays `null`, the readout renders `—` with `data-pa-known="false"`, the
+slider and both Apply buttons are disabled, `aria-valuetext` says "Unknown",
+the hint reads "Current: unknown — waiting for extruder telemetry", and
+`applyPa` returns early on a null value as a second, independent guard.
+
+**The rule this establishes, stated once so it is not re-litigated:** a
+plausible default is not a safe default. Where a value describes the machine,
+UNKNOWN must render as unknown and must disable anything that would transmit
+it. `??` on telemetry is a defect unless the fallback is itself the truth.
+
+The other nine, each a case of the same rule:
+
+- `Dashboard.tsx` — `(speedFactor ?? 1) * 100` and `(flowFactor ?? 1) * 100`
+  lit a confident **100%** segment strip off no `gcode_move` at all, in
+  **basic** mode. Now `null` flows to `SegmentGauge`'s existing unknown
+  state, the way `hotendPower` already did on the very next line.
+- `Control.tsx` — `state.toolhead?.position ?? [0, 0, 0, 0]` made all six
+  `?? "—"` guards **unreachable**; X/Y/Z read `0.00` with zero toolhead data.
+  Default dropped, guards now fire. The bed-view marker additionally requires
+  finite coordinates before it is drawn, and renders "Position unknown"
+  rather than pinning the toolhead to the origin — a homed machine whose
+  position has not arrived is exactly the state where 0,0 is a lie.
+- `Console.tsx` — one control carried **four contradictory claims**: labelled
+  "Clear", titled "Refresh", drawn as `Trash2`, wired to `location.reload()`.
+  It now clears the console view and nothing else: no reload, so an unsent
+  command, the armed expert mode and scroll position all survive. The
+  transport's rolling buffer is not ours to destroy, so the clear is a view
+  mark on `line.ts`; the button disables itself when there is nothing to
+  clear rather than pretending there is.
+- `safety.ts` — `busyReason = \`Print ${printState}\`` composed the raw
+  klipper word onto a label and rendered the Files page's **primary CTA as
+  "Print printing"**. Mapped to "Printing now" / "Paused". This is the one
+  string changed in `safety.ts` this pass; the guard logic is untouched.
+- `BedMeshHeatmap.tsx` — `probed_matrix: [[]]` passes a length check, so
+  `Math.min(...[])` (Infinity) and `sum/0` (NaN) reached the glass as the
+  literal strings. A new `hasProbePoints` requires one finite sample before
+  a mesh is claimed at all, statistics filter to finite values, and every
+  formatter falls back to `—`.
+- `PrintHistory.tsx` — `new Date((end_time ?? start_time) * 1000)` printed
+  **"Invalid Date"**, which is a stack trace wearing a date's clothes.
+  Guarded to `—`.
+- **A11y, three sites where state existed only in pixels.** The bed mesh had
+  no non-visual representation at all (colour fills plus numerals in
+  `mix-blend-luminosity`, a channel whose contrast is unmeasurable by
+  construction): it now carries an `sr-only` table with the true min, max,
+  peak-to-peak range and every probed height by row and column, and the heat
+  map itself is `aria-hidden` — the table *is* the accessible truth, not a
+  paraphrase of it. `Control.tsx`'s per-axis `●`/`○` and `AppBar.tsx`'s
+  connection state both relied on `title` on a **non-interactive** element,
+  which reaches no assistive tech; both now carry real `sr-only` text, and
+  the app bar's link word is `sr-only sm:not-sr-only` instead of `hidden`, so
+  the 390px phone and the K1's own 800x480 panel stop losing it entirely.
+- `BedMeshHeatmap.tsx` — the stat labelled **"Variance"** computed
+  `max − min`, which is the range. Renamed "Range (p-p)"; the wrong word was
+  itself a small untruth.
+
+**Corrected while verifying, recorded so the correction is visible:** the
+audit's `Control.tsx` division finding stays downgraded — `safety.bounds`
+resolves from the `k1max` profile literal, so `sizeX`/`sizeY` are non-zero
+constants today. The real defect on that line was the fabricated position,
+and the marker's new finite check covers the degenerate-profile case anyway.
+
+## Panel consistency — 2026-08-04 (press verb, engine light, glyph budget)
+
+Three cross-surface items from the same audit, landed with the state-honesty
+slice because they share its files.
+
+- **The press verb is now app-wide (P1-6 / spec §A.2c).** `active:translate-y-px`
+  inside `buttonStyles.ts` was the **only** `:active` rule in the codebase, so
+  25 hand-rolled `<button>`s had hover feedback and nothing else — and hover is
+  a state a finger never produces. On the K1's own panel, press is the only
+  confirmation a target was hit, so that was the worst possible place to be
+  silent. A single `.press-flat` component class now carries the verb the
+  flatten pass defined (the 1px geometric sink plus a 2px inset accent rule
+  along the bottom edge — a rule, not a box: no corners, encloses nothing) and
+  every raw button opts in. Safe by construction: nothing touches the box
+  model, so the 44px floors hold; `transform` survives forced colors even
+  though `box-shadow` does not, so the press keeps a channel there; `:active`
+  is a state rather than an animation, so reduced-motion leaves it instant.
+  Pinned by a new **press law** in `button-law.spec.ts` that sweeps six routes
+  for a button with neither `ui-btn` nor `press-flat`, and separately asserts
+  the CSS rule itself exists — a class name with no rule behind it would
+  satisfy the sweep and change nothing on the glass.
+- **`.status-lamp` is DELETED (D-4).** The engine-light direction removed lamp
+  chrome from the panel kit; the web still drew the 6x6 pip in nine places.
+  Every one was `aria-hidden` decoration sitting beside the word it
+  duplicated, so the word simply took over the severity ink. **This closes the
+  known-minor carried since `8cd188e`** (a lamp is nothing but its background,
+  forced colors strips author backgrounds, measured lamp-vs-backdrop contrast
+  was 0) — closed at the source rather than by patching a CanvasText repaint
+  onto it. Two sites gained a channel rather than losing one: the camera badge
+  now tints its own status word, and the console's autoscroll toggle reads
+  "Autoscroll on"/"Autoscroll off" where the lamp had encoded on/off in colour
+  alone. `--radius-lamp` and `.telltale-lamp` **stay** — that one is the
+  readiness light chip, where outline-versus-fill *is* the state. The
+  forced-colors lamp contract test is replaced, not deleted: it now pins that
+  no lamp survives, that no `.status-lamp` rule survives in the stylesheet,
+  and that the state WORDS are still legible in high contrast.
+- **Idle shows no dead complications (D-3).** See the MissionBar note in the
+  state-honesty section; recorded here too because it is the panel's law
+  (spec §3) that the web was contradicting outright.
+- **Glyph budget (B.4.4).** The two EN dashes (U+2013) at `TellTaleCluster` and
+  `PrinterCard` are now the em dash the rest of the app uses for unknowns, and
+  `Control.tsx`'s axis-bounds range separator is a plain ASCII hyphen. The
+  shared budget is ASCII + `°` + `—` only; U+2013 is outside the converted
+  glyph set and would have rendered as tofu the moment this copy was mirrored
+  to the panel (the same failure that bit milestone 5 on the jog pad).
+
+## Cross-surface law: dial colour encodes STATE, not identity (D-8)
+
+The audit found the largest semantic divergence between the two surfaces:
+the web colours a thermal dial by **state** (heating / stable / above target
+/ standby), the panel spec colours it by **instrument identity** (hotend
+red, bed yellow, chamber cyan). Same dial, same data, incompatible
+encodings — an amber arc means "heating" on one surface and "this is the
+bed" on the other, and someone using both will misread one of them.
+
+**Canonical rule for BOTH surfaces: colour by STATE.** The reasoning, not
+just the verdict: identity is already carried losslessly by the always-visible
+label under every dial, so identity-colour spends the only remaining channel
+on information the user already has. State is not carried anywhere else on
+the instrument, so state-colour adds a channel instead of duplicating one.
+It also keeps the dial consistent with every other coloured element in the
+app (segment strips, tell-tales, the mission bar), all of which are already
+state-coded. The web already implements this and is unchanged by the rule;
+**the panel is the surface that must follow.**
+
+Flagged for owner confirmation before the panel is changed — this supersedes
+a written panel-spec decision, so it is recorded here rather than applied to
+the panel silently.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two

@@ -140,7 +140,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             onClick={onClose}
             disabled={busy}
             aria-label="Close print confirmation"
-            className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] disabled:opacity-40"
+            className="press-flat min-w-11 min-h-11 inline-flex items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-elevated)] disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>
@@ -258,7 +258,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             aria-checked={acknowledged}
             onClick={() => setAcknowledged((value) => !value)}
             className={cn(
-              "w-full min-h-11 flex items-start gap-3 rounded-inner border p-3 text-left transition-colors",
+              "press-flat w-full min-h-11 flex items-start gap-3 rounded-inner border p-3 text-left transition-colors",
               acknowledged
                 ? "border-[var(--color-success)] bg-(--color-success)/8"
                 : "border-[var(--color-border-strong)] bg-[var(--color-bg)]",
@@ -353,7 +353,7 @@ function Toggle({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "w-full min-h-11 flex items-center gap-3 p-3 rounded-inner border text-left transition-colors",
+        "press-flat w-full min-h-11 flex items-center gap-3 p-3 rounded-inner border text-left transition-colors",
         checked
           ? "border-[var(--color-accent-edge)] bg-[var(--color-accent-faint)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",

@@ -101,7 +101,6 @@ export function MissionBar() {
             className="flex shrink-0 items-center gap-1.5"
             style={{ color: PRINT_STATE_COLOR[printState] ?? "var(--color-fg-muted)" }}
           >
-            <span aria-hidden="true" className="status-lamp" />
             <span className="instrument-label text-[11px]" style={{ color: "inherit" }}>{printState}</span>
           </span>
 
@@ -119,27 +118,38 @@ export function MissionBar() {
           </span>
 
           <span className="flex shrink-0 items-center gap-1.5" style={{ color: link.color }}>
-            <span aria-hidden="true" className="status-lamp" />
             <span className="instrument-label text-[11px]" style={{ color: "inherit" }}>Link {link.word}</span>
           </span>
         </div>
 
-        {/* Row B — the mission numbers. On sm+ this is the right half. */}
-        <div className="flex shrink-0 items-baseline gap-x-4">
-          <span className="flex items-baseline gap-1.5">
-            <span className="instrument-label text-[11px]">Progress</span>
-            <span className="instrument-value text-[13px] font-semibold">
-              {isActive ? `${(progress * 100).toFixed(1)}%` : "—"}
+        {/* Row B — the mission numbers. On sm+ this is the right half.
+         *
+         * IDLE SHOWS NO DEAD COMPLICATIONS (the panel's law, now shared by
+         * both surfaces). The pair used to render "Progress —" / "Remaining —"
+         * on every route of an idle machine: two permanently-dead readouts
+         * occupying the bottom bar of the whole app. An em-dash slot is the
+         * right answer when a value is unknown but APPLICABLE — a running job
+         * whose estimate cannot be trusted still owes the owner a "Remaining"
+         * label. It is the wrong answer when the quantity does not exist at
+         * all: a standby machine has no progress, so the honest render is
+         * nothing. The state word to the left already says why. */}
+        {isActive && (
+          <div className="flex shrink-0 items-baseline gap-x-4">
+            <span className="flex items-baseline gap-1.5">
+              <span className="instrument-label text-[11px]">Progress</span>
+              <span className="instrument-value text-[13px] font-semibold">
+                {`${(progress * 100).toFixed(1)}%`}
+              </span>
             </span>
-          </span>
 
-          <span className="flex items-baseline gap-1.5">
-            <span className="instrument-label text-[11px]">Remaining</span>
-            <span className="instrument-value text-[13px] font-semibold">
-              {isActive ? formatClock(remaining) : "—"}
+            <span className="flex items-baseline gap-1.5">
+              <span className="instrument-label text-[11px]">Remaining</span>
+              <span className="instrument-value text-[13px] font-semibold">
+                {formatClock(remaining)}
+              </span>
             </span>
-          </span>
-        </div>
+          </div>
+        )}
       </div>
     </section>
   );

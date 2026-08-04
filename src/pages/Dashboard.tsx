@@ -285,8 +285,12 @@ const TelemetryPanel = memo(function TelemetryPanel({
     {/* Strict !==1 latched a permanent false warning off M220/M221 float
         noise (0.9999999 renders as "100%" yet warned forever). The epsilon
         in factorDeviates matches the display resolution instead. */}
-    <SegmentGauge label="Speed Factor" display={`${((speedFactor ?? 1) * 100).toFixed(0)}%`} value={(speedFactor ?? 1) * 100} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
-    <SegmentGauge label="Flow Factor" display={`${((flowFactor ?? 1) * 100).toFixed(0)}%`} value={(flowFactor ?? 1) * 100} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
+    {/* TRUTHFULNESS: an absent gcode_move is UNKNOWN, not "nominal 100%".
+        The old `?? 1` lit a full-confidence 100% strip off no telemetry at
+        all — and did it in BASIC mode. null flows through to SegmentGauge's
+        own em-dash unknown state, the same way hotendPower already does. */}
+    <SegmentGauge label="Speed Factor" display={speedFactor != null ? `${(speedFactor * 100).toFixed(0)}%` : "—"} value={speedFactor != null ? speedFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
+    <SegmentGauge label="Flow Factor" display={flowFactor != null ? `${(flowFactor * 100).toFixed(0)}%` : "—"} value={flowFactor != null ? flowFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
     <MetricTile label="Z-Offset" value={formatZOffset(zHome)} />
     <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
     {isExpert && <>
