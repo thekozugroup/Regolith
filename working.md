@@ -652,6 +652,58 @@ untracked, not staged.
   requests (`fonts.googleapis`/`fonts.gstatic`) present in `src/` or
   `index.html` — Inter is fully self-hosted per the entry above.
 
+## Live deployment — 2026-08-04, `d96968f`
+
+Deployed `main` HEAD `d96968f2fe14347a04e4a824690d0b2bd4caef6e` (tracked tree
+clean, even with `origin/main`) to the K1 Max at `192.168.50.179` via
+`deploy.sh` only. Gate had reported SAFE TO DEPLOY: YES; standing owner
+authorization. No config, service, or watchdog contact; no print started.
+
+- **Preflight**: `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD
+  ./deploy.sh --preflight` — exit 0; "Printer is conclusively idle
+  (cancelled, Idle)".
+- **Rollback anchor**: pre-deploy live `index.html` SHA-256
+  `3e7eb1ba97154f69c77de4c2874824a8a88bea49710f5f2eaa32b43ca331b317`;
+  `fluidd.previous` present; backups through
+  `fluidd-before-20260804T125648Z.tgz`.
+- **Double idle check** (Moonraker, two samples 10 s apart, immediately
+  pre-deploy): klipper `ready`, print `cancelled`, activity `Idle`, SD
+  inactive both samples; hotend/bed targets 0/0 both samples; live position
+  byte-identical (`[296.5, 153, 150.0436…]`). PASS — no abort.
+- **Deploy**: `./deploy.sh` exit 0. Local gates (bun install/lint/test/build)
+  passed inside the script. Archive 273153 bytes, SHA-256
+  `9980f3f342d5b6062a659cbf35426c83b0d5032b12c28a1fd623b2814dddb6ce`; remote
+  size+hash matched; staged file list matched dist; atomic swap OK; live HTML
+  and every referenced asset verified over HTTP. No auto-rollback occurred.
+  Persistent backup `fluidd-before-20260804T142354Z.tgz` (161085 bytes,
+  SHA-256 `ad9808a3…9248f32`, 32 files, retained=5, pruned=1).
+- **On-device verify** (headless Chromium against the live device through a
+  loopback TCP forward — macOS local-network permission blocks Chromium from
+  LAN IPs; node/curl unaffected — at 1280x800 and 800x480):
+  - Computed body font-family `Inter, "Inter Fallback", system-ui, …`; numeric
+    instruments render Inter with `font-variant-numeric: tabular-nums
+    slashed-zero`. No time-of-day/ETA clocks are on screen while idle
+    (no active job), so tabular proof is from the numeric instruments.
+  - Readiness silhouette present, SVG rendered, visible at both sizes.
+  - Swiss grid intact (6–7 grid containers), no horizontal overflow at
+    either viewport.
+  - **Zero console errors** at both viewports (initial run showed webcam
+    ERR_CONNECTION_REFUSED — an artifact of the loopback forward missing
+    port 8080; forwarding it cleared all errors; camera streams LIVE).
+  - Live-tick proof: WebSocket `/websocket` open, **75 frames received in
+    the 15 s window** between temp samples 14:29:43Z (hotend 25.8 °C, bed
+    24.0 °C) and 14:29:58Z (identical at 0.1° display resolution; raw
+    Moonraker samples earlier drifted 25.79→25.83 °C). UI is live-updating.
+  - **LINK READY** shown in the status rail at both viewports; header shows
+    Connected.
+  - Screenshots: `k1max-live-1280x800.png`, `k1max-live-800x480.png`
+    (session scratchpad).
+- **Rollback armed**: post-deploy `fluidd.previous/index.html` SHA-256 equals
+  the pre-deploy anchor exactly (`3e7eb1ba…331b317`); new live index SHA-256
+  `942e0b611a148a6f240e13fbf37edb154c01bd87fd089570d976c14e8d28e0ec`; 5
+  backups retained. Rollback command:
+  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
