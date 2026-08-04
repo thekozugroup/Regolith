@@ -265,6 +265,59 @@ describe("computeJobTiming — signals that disagree", () => {
   });
 });
 
+describe("computeJobTiming — calibration never leaks past the crossfade", () => {
+  // Regression: at virtual_sdcard.progress == 1.0 with print_stats still
+  // "printing" (end gcode, park, cooldown), measuredRemaining returns null
+  // because total <= elapsed — and the old measured==null branch resurrected
+  // the raw calibrated value at full confidence. measuredWeight(1) === 1
+  // means calibration must contribute NOTHING there; the honest answer is
+  // the placeholder, exactly as pre-WP-ETA.
+  const options: JobTimingOptions = {
+    slicerEstimate: 3_600,
+    calibration: { factor: 1.2, samples: 6 },
+  };
+
+  it("returns null at progress 1.0, never the spent calibrated total", () => {
+    const timing = computeJobTiming(3_600, 1, options);
+    expect(timing.remaining).toBeNull();
+    expect(timing.calibrated).toBe(false);
+  });
+
+  it("does not jump at the very end: measured just below 1.0, null at 1.0", () => {
+    const before = computeJobTiming(3_600, 0.999, options);
+    expect(before.remaining).not.toBeNull();
+    expect(before.calibrated).toBe(false);
+    expect(before.remaining!).toBeLessThan(10); // seconds, not the ~12m leak
+    const at = computeJobTiming(3_600, 1, options);
+    expect(at.remaining).toBeNull();
+  });
+
+  it("stays null past 1.0 regardless of elapsed", () => {
+    for (const elapsed of [1_000, 3_600, 4_000, 100_000]) {
+      const timing = computeJobTiming(elapsed, 1, options);
+      expect(timing.remaining).toBeNull();
+      expect(timing.calibrated).toBe(false);
+    }
+    // Inputs above 1 clamp to 1 and behave identically.
+    expect(computeJobTiming(3_600, 1.5, options).remaining).toBeNull();
+  });
+
+  it("refuses the calibrated answer whenever the crossfade is complete, even below the elapsed floor", () => {
+    // progress past BLEND_COMPLETE_PROGRESS but elapsed under the 60s floor:
+    // measured is null, weight is already 1 — calibration is spent here too.
+    const timing = computeJobTiming(30, BLEND_COMPLETE_PROGRESS, options);
+    expect(timing.remaining).toBeNull();
+    expect(timing.calibrated).toBe(false);
+  });
+
+  it("still fills the early gap below the crossfade exactly as before", () => {
+    const timing = computeJobTiming(45, 0.004, options);
+    // 1.2 × 3600 − 45 = 4275s, the calibrated early-window estimate.
+    expect(timing.remaining).toBeCloseTo(1.2 * 3_600 - 45, 6);
+    expect(timing.calibrated).toBe(true);
+  });
+});
+
 describe("computeJobTiming — pathological inputs stay safe", () => {
   it("never emits a non-finite or non-positive remaining, calibrated or not", () => {
     const elapsedValues = [Number.NaN, -3_600, 0, 60, 3_600, MAX_TRUSTED_TOTAL, null, undefined];

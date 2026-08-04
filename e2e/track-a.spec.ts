@@ -14,7 +14,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { installActiveMock } from "./support/active-state-harness";
+import { installActiveMock, useExperience } from "./support/active-state-harness";
 import { scenario } from "./support/printer-scenarios";
 
 /** Mid-job fixture rewound to 45 s in — below both jobProgress trust floors. */
@@ -110,8 +110,20 @@ test.describe("Calibrated remaining time", () => {
     expect(accent).not.toBe("");
     expect(color).not.toBe(accent);
 
-    // And its provenance travels with it, in text, for screen readers too.
+    // And its provenance travels with it as ALWAYS-VISIBLE text — never a
+    // hover-only title: no tooltip exists on the K1's touch panel or a
+    // phone. Visible text reaches screen readers too.
     await expect(value).toContainText("completed prints");
+    const provenance = value.locator("[data-provenance]");
+    await expect(provenance).toContainText("completed prints");
+    const provenanceBox = await provenance.boundingBox();
+    expect(provenanceBox, "provenance box").not.toBeNull();
+    expect(provenanceBox!.height, "provenance must be rendered, not sr-only").toBeGreaterThan(8);
+    expect(provenanceBox!.width, "provenance must be rendered, not sr-only").toBeGreaterThan(40);
+    const provenanceSize = await provenance.evaluate((el) =>
+      parseFloat(getComputedStyle(el).fontSize),
+    );
+    expect(provenanceSize).toBeGreaterThanOrEqual(11);
 
     // 11px floor still holds on the estimate.
     const size = await value.evaluate((el) =>
@@ -173,6 +185,10 @@ test.describe("Assistant defaults", () => {
   test("the settings panel is opt-in: features are unreachable until configured", async ({
     page,
   }) => {
+    // The panel itself is an Expert surface (the API-key/endpoint fields are
+    // the app's only egress affordance); Basic-mode absence is pinned in
+    // e2e/regolith.spec.ts.
+    await useExperience(page, "expert");
     const mock = await open(page, { path: "/settings" });
     const card = page
       .locator("section, article, div")

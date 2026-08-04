@@ -692,11 +692,15 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     await expect(lamp(page, "mesh-active")).toHaveAttribute("data-lit", "false");
 
     // MCU HOT — momentary, escalating warning → error at the 80°C critical.
+    // The escalation must never be color-alone: critical adds the CRIT text
+    // affix (with the measurement); warning carries no affix.
     mock.push({ "temperature_sensor mcu_temp": { temperature: 72 } });
     await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-lit", "true");
     await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-severity", "warning");
+    await expect(lamp(page, "mcu-hot").locator(".telltale-detail")).toHaveCount(0);
     mock.push({ "temperature_sensor mcu_temp": { temperature: 85 } });
     await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-severity", "error");
+    await expect(lamp(page, "mcu-hot").locator(".telltale-detail")).toHaveText(/CRIT/);
     mock.push({ "temperature_sensor mcu_temp": { temperature: 44.2 } });
     await expect(lamp(page, "mcu-hot")).toHaveAttribute("data-lit", "false");
 
@@ -747,6 +751,85 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
 
     await expect(litLamps(page)).toHaveCount(0);
     await assertNoBrokenReadouts(page, "tell-tale matrix end state");
+    mock.assertSealed();
+  });
+
+  test("unlit lamp outline clears the 3:1 non-text floor against its cell", async ({ page }) => {
+    // Regression: the unlit outline is the shape channel that encodes lamp
+    // state, so it is a meaningful non-text element under WCAG 1.4.11 —
+    // --color-border-strong measured 1.921:1 on the cell well and may not
+    // carry it. Painted-pixel probe: both colors resolved through a canvas
+    // so color-mix/oklch serialization differences cannot skew the math.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: coldIdleUnhomed });
+    await openSystems(page);
+    // Past the bulb test: all lamps dark, i.e. outlined-unlit.
+    await expect(litLamps(page)).toHaveCount(0);
+
+    const ratio = await lamp(page, "homed")
+      .locator(".telltale-lamp")
+      .evaluate((el) => {
+        const paint = (color: string): [number, number, number] => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const ctx = canvas.getContext("2d")!;
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+          return [r!, g!, b!];
+        };
+        const toLinear = (byte: number) => {
+          const c = byte / 255;
+          return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        };
+        const luminance = ([r, g, b]: [number, number, number]) =>
+          0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+        const border = luminance(paint(getComputedStyle(el).borderTopColor));
+        const cell = el.closest(".telltale-cell")!;
+        const backdrop = luminance(paint(getComputedStyle(cell).backgroundColor));
+        const [hi, lo] = border > backdrop ? [border, backdrop] : [backdrop, border];
+        return (hi + 0.05) / (lo + 0.05);
+      });
+    expect(ratio, "unlit lamp outline vs cell backdrop").toBeGreaterThanOrEqual(3);
+
+    // And unlit must still not read as lit: the well stays transparent.
+    const background = await lamp(page, "homed")
+      .locator(".telltale-lamp")
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(background).toBe("rgba(0, 0, 0, 0)");
+
+    mock.assertSealed();
+  });
+
+  test("HOMED renders unknown telemetry as dashes, never as a not-homed claim", async ({ page }) => {
+    // Before the first toolhead push there is no homing telemetry at all.
+    // The struck-through axis letters are a positive "not homed" assertion,
+    // so they may appear only once a real reading says so (same rule as the
+    // em-dash temperature readouts).
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const withoutToolhead: MockPrinterState = { ...coldIdleUnhomed };
+    delete withoutToolhead.toolhead;
+    const mock = await installActiveMock(page, { state: withoutToolhead });
+    await openSystems(page);
+    await expect(litLamps(page)).toHaveCount(0); // bulb test released
+
+    // Unknown: unlit, three neutral dashes, zero struck-through letters.
+    await expect(lamp(page, "homed")).toHaveAttribute("data-lit", "false");
+    await expect(lamp(page, "homed").locator(".telltale-axis-unknown")).toHaveCount(3);
+    await expect(lamp(page, "homed").locator(".telltale-axis-unhomed")).toHaveCount(0);
+
+    // First real telemetry that says unhomed — now, and only now, the
+    // known-unhomed strike-through treatment appears.
+    mock.push({ toolhead: { homed_axes: "" } });
+    await expect(lamp(page, "homed").locator(".telltale-axis-unhomed")).toHaveCount(3);
+    await expect(lamp(page, "homed").locator(".telltale-axis-unknown")).toHaveCount(0);
+
+    // And a real homed reading lights the lamp as ever.
+    mock.push({ toolhead: { homed_axes: "xyz" } });
+    await expect(lamp(page, "homed")).toHaveAttribute("data-lit", "true");
+
     mock.assertSealed();
   });
 

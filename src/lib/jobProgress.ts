@@ -227,7 +227,14 @@ export function computeJobTiming(
   if (measured == null) {
     // No trustworthy trend yet. Calibration fills the gap if it can; if it
     // cannot, the honest placeholder stands exactly as it always has.
-    return { elapsed, progress, remaining: calibrated, calibrated: calibrated != null };
+    //
+    // Calibration may only fill the EARLY gap. Once the crossfade is complete
+    // (measuredWeight == 1 — e.g. virtual_sdcard.progress has hit 1.0 during
+    // end gcode while print_stats still says "printing"), the file's own
+    // contract says calibration contributes NOTHING, so a null measured
+    // answer must stay null rather than resurrect the spent calibrated total.
+    const usable = measuredWeight(progress) < 1 ? calibrated : null;
+    return { elapsed, progress, remaining: usable, calibrated: usable != null };
   }
   if (calibrated == null) {
     return { elapsed, progress, remaining: measured, calibrated: false };

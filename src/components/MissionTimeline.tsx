@@ -438,7 +438,7 @@ export function MissionTimeline() {
               estimate={isPrintingFile && remaining != null && calibrated}
               hint={
                 isPrintingFile && remaining != null && calibrated && calibration
-                  ? `Estimated from your last ${calibration.samples} completed prints. This job has not printed enough of its file to measure yet.`
+                  ? `Estimated from your last ${calibration.samples} completed prints`
                   : undefined
               }
             />
@@ -579,7 +579,11 @@ function TuningStatus({
  * A labelled readout. `accent` marks a MEASURED live value; `estimate` marks
  * a derived one and deliberately renders weaker — same 15px so the 11px floor
  * is never in question, but muted and unaccented so no glance mistakes it for
- * telemetry. `hint` states the provenance to screen readers and on hover.
+ * telemetry. `hint` states the provenance as ALWAYS-VISIBLE text under the
+ * value — never `title`-only: a hover tooltip does not exist on the K1's
+ * touch panel or any phone, and provenance is exactly what a touch user must
+ * be able to see. Visible text also reaches screen readers, so no sr-only
+ * duplicate is needed.
  */
 function Stat({
   label,
@@ -595,7 +599,7 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div title={hint}>
+    <div>
       <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)] font-semibold">
         {label}
       </div>
@@ -608,7 +612,14 @@ function Stat({
         )}
       >
         {value}
-        {hint && <span className="sr-only"> — {hint}</span>}
+        {hint && (
+          <span
+            data-provenance
+            className="mt-0.5 block max-w-[24ch] text-[11px] font-normal leading-snug text-[var(--color-fg-muted)]"
+          >
+            {hint}
+          </span>
+        )}
       </div>
     </div>
   );

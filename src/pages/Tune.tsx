@@ -3,12 +3,10 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ModalSurface } from "@/components/ModalSurface";
 import { BedMeshHeatmap } from "@/components/BedMeshHeatmap";
+import { useActionConfirm } from "@/components/useActionConfirm";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
-import {
-  runPrinterAction,
-  type ActionConfirmation,
-} from "@/lib/printerActions";
+import { runPrinterAction } from "@/lib/printerActions";
 import {
   Sliders,
   Activity,
@@ -177,6 +175,9 @@ export function Tune() {
   const pressureAdvanceHintId = useId();
   const safety = getSafetyState(state);
   const isPrinting = safety.isBusy;
+  // In-app confirm, never window.confirm: the native dialog blocks the main
+  // thread and freezes the health watchdog for as long as it sits open.
+  const { confirm, confirmDialog } = useActionConfirm();
 
   const currentPa = state.extruder?.pressure_advance ?? 0.04;
   const displayedPa = pa ?? currentPa;
@@ -225,10 +226,7 @@ export function Tune() {
     try {
       const result = await runPrinterAction(
         { type: "set-pressure-advance", value: displayedPa, save },
-        {
-          confirm: (details: ActionConfirmation) =>
-            window.confirm(`${details.title}\n\n${details.message}`),
-        },
+        { confirm },
       );
       if (result.executed) setPa(null);
     } catch (error) {
@@ -383,6 +381,7 @@ export function Tune() {
           onCancel={() => setPending(null)}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

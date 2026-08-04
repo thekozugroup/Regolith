@@ -6,9 +6,9 @@ import {
   getConsoleCommandRisk,
   guardPrinterAction,
   runPrinterAction,
-  type ActionConfirmation,
   type PrinterAction,
 } from "@/lib/printerActions";
+import { useActionConfirm } from "@/components/useActionConfirm";
 import { useGcodeLog } from "@/lib/useGcodeLog";
 import { AlertTriangle, LockKeyhole, Send, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
@@ -28,6 +28,9 @@ export function ConsolePage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // In-app confirm, never window.confirm: the native dialog blocks the main
+  // thread and freezes the health watchdog for as long as it sits open.
+  const { confirm, confirmDialog } = useActionConfirm();
   const commandRisk = useMemo(() => {
     if (!input.trim()) return null;
     try {
@@ -63,10 +66,7 @@ export function ConsolePage() {
     setSending(true);
     setError(null);
     try {
-      const result = await runPrinterAction(action, {
-        confirm: (details: ActionConfirmation) =>
-          window.confirm(`${details.title}\n\n${details.message}`),
-      });
+      const result = await runPrinterAction(action, { confirm });
       if (result.executed) {
         moonraker.recordCommand(cmd);
         setHistory((historyItems) => [cmd, ...historyItems].slice(0, 50));
@@ -276,6 +276,7 @@ export function ConsolePage() {
           </div>
         )}
       </Card>
+      {confirmDialog}
     </div>
   );
 }

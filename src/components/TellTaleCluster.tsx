@@ -217,7 +217,7 @@ function LampCell({
   lamp: LampReading;
   cell: CellState;
   testing: boolean;
-  axes?: { axis: string; homed: boolean }[];
+  axes?: { axis: string; homed: boolean | null }[];
   onAcknowledge: () => void;
 }) {
   const lit = testing || cell.phase !== "off";
@@ -239,7 +239,14 @@ function LampCell({
           <span aria-hidden="true" className="instrument-label">
             Homed{" "}
             {axes.map(({ axis, homed }) =>
-              homed ? (
+              // Unknown (no toolhead telemetry yet) renders neutral dashes —
+              // never the struck-through NOT-homed assertion. Same rule as
+              // the em-dash temperature readouts before the first push.
+              homed == null ? (
+                <span key={axis} className="telltale-axis-unknown">
+                  –
+                </span>
+              ) : homed ? (
                 <span key={axis}>{axis}</span>
               ) : (
                 <span key={axis} className="telltale-axis-unhomed">
@@ -249,12 +256,14 @@ function LampCell({
             )}
           </span>
           <span className="sr-only">
-            {`Homed axes: ${
-              axes
-                .filter(({ homed }) => homed)
-                .map(({ axis }) => axis)
-                .join(" ") || "none"
-            }`}
+            {axes.some(({ homed }) => homed == null)
+              ? "Homed axes: unknown — awaiting telemetry."
+              : `Homed axes: ${
+                  axes
+                    .filter(({ homed }) => homed)
+                    .map(({ axis }) => axis)
+                    .join(" ") || "none"
+                }`}
           </span>
         </>
       ) : (

@@ -142,6 +142,75 @@ test.describe("Collapsible sidebar — icon rail", () => {
     expect(audit.writes).toEqual([]);
   });
 
+  test("above the 2200px shell cap the freed rail width goes to margins by design", async ({ page }) => {
+    // Accepted trade, measured in the SD1 fit pass (2026-08-03): the
+    // dashboard shell is deliberately capped at 2200px for readability
+    // (Dashboard.tsx `max-w-[min(100%,2200px)]`). Above ~2424px viewport
+    // (cap + expanded rail) the shell is already at its cap, so collapsing
+    // the rail widens the centring margins — the dials must NOT be expected
+    // to grow there, and the cap must not silently move. This pins the
+    // decision so future spacing work re-litigates it deliberately.
+    await page.setViewportSize({ width: 2560, height: 1440 });
+    const audit = await installLocalMock(page);
+    await page.goto("/");
+    await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
+
+    const shellWidth = () =>
+      page.locator(".dashboard-shell").evaluate((el) => el.getBoundingClientRect().width);
+    expect(await shellWidth()).toBeCloseTo(2200, 0);
+    const expandedDial = await page
+      .locator(".gauge-dial")
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width);
+
+    const toggle = page.getByRole("button", { name: "Collapse sidebar" });
+    await toggle.click();
+    await expect.poll(() => asideWidth(page)).toBeCloseTo(RAIL_W, 0);
+
+    // The shell stays at its readability cap; the dial width is unchanged.
+    expect(await shellWidth()).toBeCloseTo(2200, 0);
+    const collapsedDial = await page
+      .locator(".gauge-dial")
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(Math.abs(collapsedDial - expandedDial)).toBeLessThanOrEqual(1);
+    await assertNoTouchTargetOrOverflowRegressions(page);
+
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
+  test("brand icon popover keeps the derived-radius law at its 8px pad", async ({ page }) => {
+    // Regression: the popover is a .modal-panel padded p-2 (8px), not the
+    // modal default 16px. The pad token is overridden on the element so the
+    // cascade derives --radius-inner from the REAL pad; corner children must
+    // sit concentric (outer = pad + inner, ±1px border tolerance).
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const audit = await installLocalMock(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Change brand icon" }).click();
+
+    const popover = page.getByRole("dialog", { name: "Choose brand icon" });
+    await expect(popover).toBeVisible();
+    const law = await popover.evaluate((el) => {
+      const outer = parseFloat(getComputedStyle(el).borderBottomLeftRadius);
+      const child = [...el.querySelectorAll<HTMLElement>("button")].at(-1)!;
+      const inner = parseFloat(getComputedStyle(child).borderBottomLeftRadius);
+      const host = el.getBoundingClientRect();
+      const box = child.getBoundingClientRect();
+      const inset = Math.min(box.left - host.left, host.bottom - box.bottom);
+      return { outer, inner, inset };
+    });
+    // Padding-box concentricity: outer − (pad + border) − inner = −1 ± 1.
+    expect(Math.abs(law.outer - (law.inset + law.inner))).toBeLessThanOrEqual(1.5);
+    // And the pad the cascade derives from is the markup's real 8px pad.
+    expect(law.inset).toBeGreaterThanOrEqual(8);
+    expect(law.inset).toBeLessThanOrEqual(10);
+
+    expect(audit.escaped).toEqual([]);
+    expect(audit.writes).toEqual([]);
+  });
+
   test("the collapse preference persists across reload, in both directions", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });

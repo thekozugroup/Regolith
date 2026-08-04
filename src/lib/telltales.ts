@@ -161,13 +161,14 @@ export function readLamps({
 
   // 6 · MCU HOT — profile thresholds through the shared verdict; the lamp
   // escalates warning → error at critical. Momentary (cools visibly).
+  // The escalation must never ride on the amber→red token alone (no
+  // color-only state): critical adds a text channel — the CRIT affix plus
+  // the measured temperature — the same technique as the ACK affix.
   const mcuSensor = profile.sensors.find((sensor) => /mcu/i.test(sensor.klipper));
-  const mcuVerdict = mcuSensor
-    ? sensorVerdict(
-        mcuSensor,
-        state[mcuSensor.klipper as `temperature_sensor ${string}`]?.temperature,
-      )
-    : null;
+  const mcuTemp = mcuSensor
+    ? state[mcuSensor.klipper as `temperature_sensor ${string}`]?.temperature
+    : undefined;
+  const mcuVerdict = mcuSensor ? sensorVerdict(mcuSensor, mcuTemp) : null;
   if (mcuSensor) {
     lamps.push({
       id: "mcu-hot",
@@ -175,6 +176,12 @@ export function readLamps({
       severity: mcuVerdict === "critical" ? "error" : "warning",
       latching: false,
       condition: mcuVerdict != null,
+      detail:
+        mcuVerdict === "critical"
+          ? typeof mcuTemp === "number" && Number.isFinite(mcuTemp)
+            ? `CRIT ${Math.round(mcuTemp)}°C`
+            : "CRIT"
+          : undefined,
     });
   }
 
@@ -188,7 +195,9 @@ export function readLamps({
   });
 
   // 8 · HOMED XYZ — lit green only when all three axes are homed; the label
-  // renders the axes literally so text carries partial homing.
+  // renders the axes literally so text carries partial homing. Absent
+  // toolhead telemetry stays UNKNOWN (dashes via homedAxes), never a
+  // positive "not homed" claim.
   const homed = state.toolhead?.homed_axes ?? "";
   lamps.push({
     id: "homed",
@@ -201,11 +210,22 @@ export function readLamps({
   return lamps;
 }
 
-/** The axes channel for the HOMED label — text, never color alone. */
-export function homedAxes(state: PrinterState): { axis: string; homed: boolean }[] {
-  const homed = state.toolhead?.homed_axes ?? "";
+/**
+ * The axes channel for the HOMED label — text, never color alone.
+ *
+ * `homed` is three-valued: `true` (telemetry says homed), `false` (telemetry
+ * says NOT homed), `null` (no toolhead telemetry at all — before the first
+ * push, or a dead feed). Unknown must never collapse into the struck-through
+ * "not homed" assertion: the same rule that renders unavailable temperatures
+ * as an em dash instead of 0.0°C.
+ */
+export function homedAxes(
+  state: PrinterState,
+): { axis: string; homed: boolean | null }[] {
+  const toolhead = state.toolhead;
+  const homed = toolhead?.homed_axes ?? "";
   return ["x", "y", "z"].map((axis) => ({
     axis: axis.toUpperCase(),
-    homed: homed.includes(axis),
+    homed: toolhead === undefined ? null : homed.includes(axis),
   }));
 }

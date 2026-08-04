@@ -13,12 +13,12 @@ import { BackupSettings } from "@/components/BackupSettings";
 import { ProfileSettings } from "@/components/ProfileSettings";
 import { ExperienceSettings } from "@/components/ExperienceSettings";
 import { AiSettings } from "@/components/AiSettings";
+import { useActionConfirm } from "@/components/useActionConfirm";
 import { usePrinter } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
 import {
   guardPrinterAction,
   runPrinterAction,
-  type ActionConfirmation,
   type PrinterAction,
 } from "@/lib/printerActions";
 import { formatBytes, formatDuration } from "@/lib/utils";
@@ -44,6 +44,10 @@ export function SettingsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  // In-app confirm, never window.confirm: the native dialog blocks the main
+  // thread and freezes the health watchdog for as long as it sits open —
+  // exactly what must not happen around an emergency-stop decision.
+  const { confirm, confirmDialog } = useActionConfirm();
 
   useEffect(() => {
     if (!isExpert) return;
@@ -104,10 +108,7 @@ export function SettingsPage() {
     setActionError(null);
     setActionStatus(null);
     try {
-      const result = await runPrinterAction(action, {
-        confirm: (details: ActionConfirmation) =>
-          window.confirm(`${details.title}\n\n${details.message}`),
-      });
+      const result = await runPrinterAction(action, { confirm });
       if (result.executed) setActionStatus(success);
     } catch (error) {
       setActionError(
@@ -126,13 +127,17 @@ export function SettingsPage() {
       ? (info.memUsed / info.memTotal) * 100
       : 0;
   return (
+    <>
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-3">
       <ExperienceSettings />
       <ThemeSettings />
       {isExpert && <ProfileSettings />}
       {isExpert && <BackupSettings />}
-      {/* Opt-in, off by default, and the only outbound path in the app. */}
-      <AiSettings />
+      {/* Opt-in, off by default, and the only outbound path in the app —
+          which is exactly why the affordance (API key + endpoint fields)
+          belongs behind Expert, like its neighbours above. Basic stays the
+          safe default surface. */}
+      {isExpert && <AiSettings />}
 
       <Card title="System" icon={<Cog />} className="lg:col-span-2">
         <div className="space-y-[var(--stack)]">
@@ -263,6 +268,8 @@ export function SettingsPage() {
         </div>
       </Card>}
     </div>
+    {confirmDialog}
+    </>
   );
 }
 

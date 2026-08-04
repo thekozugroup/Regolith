@@ -277,8 +277,14 @@ for (const viewport of [
     await expect(page.getByRole("heading", { name: "Expert tool hidden" })).toBeVisible();
 
     await page.goto("/settings");
+    // The AI gateway panel (API key + outbound endpoint — the app's only
+    // egress path) is an Expert surface: absent in Basic, like its
+    // Profile/Backup neighbours.
+    await expect(page.getByRole("heading", { name: "Experience", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Assistant" })).toHaveCount(0);
     await page.getByRole("button", { name: /Expert Adds calibration/ }).click();
     await expect(page.getByRole("button", { name: /Expert Adds calibration/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("heading", { name: "Assistant" })).toBeVisible();
 
     await page.goto("/");
     await expect(page.getByText("Live", { exact: true })).toBeVisible();

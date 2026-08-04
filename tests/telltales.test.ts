@@ -154,6 +154,16 @@ describe("lamp table — K1 Max v1 set", () => {
     expect(critical.severity).toBe("error");
   });
 
+  test("MCU HOT critical carries a text channel, never the color token alone", () => {
+    // No color-only state: the amber→red escalation must be readable in
+    // text. Warning has no affix; critical appends CRIT + the measurement.
+    const warm = byId(lamps({ "temperature_sensor mcu_temp": { temperature: 72 } }), "mcu-hot");
+    expect(warm.detail).toBeUndefined();
+    const critical = byId(lamps({ "temperature_sensor mcu_temp": { temperature: 85 } }), "mcu-hot");
+    expect(critical.detail).toBe("CRIT 85°C");
+    expect(critical.detail).toMatch(/CRIT/);
+  });
+
   test("MESH ACTIVE needs a loaded profile name — empty string is no mesh", () => {
     expect(byId(lamps({ bed_mesh: { profile_name: "" } }), "mesh-active").condition).toBe(false);
     expect(byId(lamps({ bed_mesh: { profile_name: "adaptive" } }), "mesh-active").condition).toBe(true);
@@ -177,6 +187,33 @@ describe("lamp table — K1 Max v1 set", () => {
     expect(homedAxes(partial)).toEqual([
       { axis: "X", homed: true },
       { axis: "Y", homed: true },
+      { axis: "Z", homed: false },
+    ]);
+  });
+
+  test("HOMED keeps unknown telemetry distinct from a known-unhomed claim", () => {
+    // No toolhead object at all — before the first push, or a dead feed.
+    // Every axis is UNKNOWN (null), never `false`: false renders as the
+    // struck-through "not homed" assertion, which would be a lie here.
+    const unknown: PrinterState = { ...IDLE };
+    delete (unknown as Record<string, unknown>).toolhead;
+    expect(homedAxes(unknown)).toEqual([
+      { axis: "X", homed: null },
+      { axis: "Y", homed: null },
+      { axis: "Z", homed: null },
+    ]);
+    // The lamp itself stays unlit either way — unknown is not homed-green.
+    expect(
+      byId(readLamps({ state: unknown, profile: K1_MAX, connected: true, runawayConfirmed: false }), "homed").condition,
+    ).toBe(false);
+    // A present toolhead with an empty string is a REAL unhomed reading.
+    const knownUnhomed: PrinterState = {
+      ...IDLE,
+      toolhead: { ...IDLE.toolhead!, homed_axes: "" },
+    };
+    expect(homedAxes(knownUnhomed)).toEqual([
+      { axis: "X", homed: false },
+      { axis: "Y", homed: false },
       { axis: "Z", homed: false },
     ]);
   });

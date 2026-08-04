@@ -1,13 +1,10 @@
 import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { useActionConfirm } from "@/components/useActionConfirm";
 import { usePrinter } from "@/lib/usePrinter";
 import { canJog, getSafetyState, type Axis } from "@/lib/safety";
-import {
-  runPrinterAction,
-  type ActionConfirmation,
-  type PrinterAction,
-} from "@/lib/printerActions";
+import { runPrinterAction, type PrinterAction } from "@/lib/printerActions";
 import {
   Move,
   Home,
@@ -36,14 +33,14 @@ export function Control() {
   const safety = getSafetyState(state);
   const homed = state.toolhead?.homed_axes ?? "";
   const pos = state.toolhead?.position ?? [0, 0, 0, 0];
+  // In-app confirm, never window.confirm: the native dialog blocks the main
+  // thread and freezes the health watchdog for as long as it sits open.
+  const { confirm, confirmDialog } = useActionConfirm();
 
   const dispatch = async (action: PrinterAction) => {
     setError(null);
     try {
-      await runPrinterAction(action, {
-        confirm: (details: ActionConfirmation) =>
-          window.confirm(`${details.title}\n\n${details.message}`),
-      });
+      await runPrinterAction(action, { confirm });
     } catch (actionError) {
       setError(
         actionError instanceof Error ? actionError.message : "Printer action failed.",
@@ -68,6 +65,7 @@ export function Control() {
     canJog(state, safety, axis, sign * dist).allowed;
 
   return (
+    <>
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       {/* Status banner */}
       {(safety.isBusy || !safety.klipperReady || !safety.fullyHomed) && (
@@ -308,6 +306,8 @@ export function Control() {
         </div>
       </Card>}
     </div>
+    {confirmDialog}
+    </>
   );
 }
 

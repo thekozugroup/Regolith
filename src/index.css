@@ -432,8 +432,13 @@
     flex: none;
     border-radius: var(--radius-lamp);
     /* UNLIT = outlined, LIT = filled: the shape channel that keeps lamp
-       state readable without color (and under forced colors). */
-    border: 1px solid var(--color-border-strong);
+       state readable without color (and under forced colors). The unlit
+       outline is a MEANINGFUL non-text element, so it uses
+       --color-gauge-tick — the token that owes WCAG 1.4.11 its 3:1
+       non-text floor (measured 4.07:1 on the cell well; --color-border-strong
+       measured 1.92:1 and may not carry state). Outline only, background
+       stays transparent, so unlit can never read as lit. */
+    border: 1px solid var(--color-gauge-tick);
     background: transparent;
   }
   .telltale-lamp[data-lit="true"] {
@@ -457,6 +462,12 @@
   .telltale-axis-unhomed {
     color: var(--color-fg-subtle);
     text-decoration: line-through;
+  }
+  /* UNKNOWN homing (no toolhead telemetry yet): neutral dashes, no
+     strike-through — unknown must never render as a "not homed" claim,
+     the same rule as the em-dash temperature readouts. */
+  .telltale-axis-unknown {
+    color: var(--color-fg-subtle);
   }
   @media (forced-colors: active) {
     /* Filled-vs-outlined must survive forced colors. Author backgrounds are

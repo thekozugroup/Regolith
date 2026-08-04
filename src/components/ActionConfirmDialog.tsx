@@ -11,6 +11,10 @@ import type { ActionConfirmation } from "@/lib/printerActions";
  * native confirm sat open, live telemetry froze, the alert stack froze, and
  * the cockpit could neither render a thermal alarm nor update the very state
  * the owner was being asked to confirm against.
+ *
+ * Pages should not wire this by hand — use the `useActionConfirm` hook
+ * (./useActionConfirm.tsx), which yields the promise-shaped `confirm`
+ * callback `runPrinterAction` expects plus the rendered dialog element.
  */
 export function ActionConfirmDialog({
   details,

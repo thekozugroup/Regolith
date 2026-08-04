@@ -34,7 +34,13 @@ const NAV = [
  * RAIL, never fully hidden — every route stays one tap away. The width lives
  * in `--sidebar-w` on the root element so the app bar and the content column
  * (App.tsx `main`) reflow with it: the dashboard grid is width-driven
- * (container queries), so the freed glass goes straight to the instruments.
+ * (container queries), so the freed glass goes straight to the instruments —
+ * up to the dashboard shell's deliberate 2200px readability cap
+ * (Dashboard.tsx `max-w-[min(100%,2200px)]`). Above ~2424px viewport width
+ * (cap + expanded rail) the shell is already at its cap, so collapsing the
+ * rail widens the centring margins instead of the dials. That is the
+ * accepted trade (measured 2026-08-03, SD1 fit pass): the cap is a
+ * readability decision and outranks squeezing more width from the rail.
  * The preference persists; the `desk` height-gate that keeps the K1's
  * 800x480 panel on touch chrome is untouched (the rail only exists inside
  * the desk variant).
