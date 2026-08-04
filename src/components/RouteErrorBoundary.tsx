@@ -44,15 +44,19 @@ export class RouteErrorBoundary extends Component<Props, State> {
             ? "Regolith changed while this tab was open. Reload once to use the current interface."
             : "The interface hit an unexpected problem. Reload to restore this view."}
         </p>
-        <Button
-          type="button"
-          variant="primary"
-          onClick={() => window.location.reload()}
-          className="mt-5 gap-2"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Reload Regolith
-        </Button>
+        {/* Stack spacing rides a wrapper: the control itself keeps even
+            margins on all four sides (owner button-chrome rule). */}
+        <div className="mt-5">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => window.location.reload()}
+            className="gap-2"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reload Regolith
+          </Button>
+        </div>
         <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--color-fg-muted)]">
           <ShieldCheck className="h-3.5 w-3.5 text-[var(--color-success)]" />
           Reloading the UI does not change printer state.

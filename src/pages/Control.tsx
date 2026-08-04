@@ -221,7 +221,7 @@ export function Control() {
                 aria-label={`Jog ${d} millimeters`}
                 aria-pressed={dist === d}
                 className={cn(
-                  "min-h-11 min-w-11 rounded-inner px-2.5 text-[12px] font-medium tabular-nums transition-colors",
+                  "min-h-11 min-w-11 rounded-inner p-2.5 text-[12px] font-medium tabular-nums transition-colors",
                   dist === d
                     ? "border border-[var(--color-border-strong)] bg-[var(--color-bg)] text-[var(--color-accent)]"
                     : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",

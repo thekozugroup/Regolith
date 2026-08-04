@@ -186,7 +186,7 @@ export function ConsolePage() {
             onClick={() => setAutoScroll((s) => !s)}
             aria-pressed={autoScroll}
             className={cn(
-              "flex min-h-11 min-w-11 items-center gap-1 rounded-inner px-2 hover:text-[var(--color-fg)]",
+              "flex min-h-11 min-w-11 items-center gap-1 rounded-inner p-2 hover:text-[var(--color-fg)]",
               autoScroll && "text-[var(--color-accent)]",
             )}
           >

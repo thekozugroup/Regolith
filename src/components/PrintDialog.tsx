@@ -130,7 +130,9 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
       dismissLocked={busy}
       panelClassName="max-h-[calc(100dvh-2rem)]"
     >
-        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+        {/* p-4 = --modal-pad: the corner close button keeps the strict
+            concentric gap (radius-modal − pad = control radius). */}
+        <header className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
           <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
             Ready to print?
           </h2>
@@ -289,7 +291,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           )}
         </div>
 
-        <footer className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)]">
+        <footer className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 border-t border-[var(--color-border)]">
           <div className="grid grid-cols-2 gap-2 sm:flex">
             <Button size="md" variant="ghost" onClick={onClose}>
               Cancel

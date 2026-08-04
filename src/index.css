@@ -524,7 +524,9 @@
   .telltale-cell-host { display: contents; }
   .telltale-cell {
     min-height: var(--binnacle-row);
-    padding: 6px 8px;
+    /* Even on all four sides (owner button-chrome rule — latched cells ARE
+       buttons); the 44px row module still governs height via min-height. */
+    padding: 8px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;

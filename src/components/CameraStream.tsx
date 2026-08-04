@@ -125,7 +125,7 @@ export function CameraStream({
             <button
               type="button"
               onClick={retryNow}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-inner border border-white/20 bg-white/10 px-3 text-[12px] font-medium text-white hover:bg-white/15"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-inner border border-white/20 bg-white/10 p-3 text-[12px] font-medium text-white hover:bg-white/15"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Try camera again

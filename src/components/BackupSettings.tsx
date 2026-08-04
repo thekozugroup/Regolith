@@ -105,7 +105,9 @@ export function BackupSettings() {
 
   return (
     <Card title="Backup & Restore" icon={<Database />} className="lg:col-span-2">
-      <div className="space-y-3">
+      {/* flex gap, not space-y: stack spacing must come from the container,
+          never as a margin ON a Button (owner even-chrome rule). */}
+      <div className="flex flex-col gap-3">
         <div className="text-[11px] text-[var(--color-fg-muted)] leading-relaxed">
           UI preferences (device name, theme, brand icon, custom images, panel
           state) live in browser storage. Export to move them to another device

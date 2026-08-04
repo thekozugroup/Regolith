@@ -219,7 +219,10 @@ export function Sidebar() {
           labelledBy={moreTitleId}
           onDismiss={() => setMoreOpen(false)}
           overlayClassName="items-end bg-black/55 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] desk:hidden"
-          panelClassName="app-chrome max-w-none p-2"
+          // The sheet is padded p-2, not the modal default 16px — override
+          // the pad token so the derived radius cascade reflects the REAL
+          // pad (radius = pad + inner; same fix as the brand popover).
+          panelClassName="app-chrome max-w-none p-2 [--modal-pad:0.5rem]"
         >
             <div className="flex items-center justify-between px-2 py-1">
               <h2 id={moreTitleId} className="text-[17px] font-semibold tracking-tight">

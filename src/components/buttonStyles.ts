@@ -14,10 +14,16 @@ const VARIANT_CLASSES = {
     "bg-(--color-error)/12 border border-(--color-error)/40 text-[var(--color-error)] hover:bg-(--color-error)/20 hover:border-(--color-error)/60",
 } as const;
 
+/**
+ * Owner rule: EVEN padding on all four sides — no lopsided px/py pairs.
+ * The 44px hit floor still comes from min-h (content + padding stays under
+ * it at every size), so evenness costs no row height. Enforced by the
+ * button-law e2e sweep over the `ui-btn` marker class.
+ */
 const SIZE_CLASSES = {
-  sm: "min-h-11 px-3 text-[12px]",
-  md: "min-h-11 px-4 text-[13px]",
-  lg: "min-h-12 px-5 text-[14px]",
+  sm: "min-h-11 p-3 text-[12px]",
+  md: "min-h-11 p-3 text-[13px]",
+  lg: "min-h-12 p-3.5 text-[14px]",
 } as const;
 
 /**
@@ -36,7 +42,9 @@ export function buttonClassName({
   className?: string;
 } = {}): string {
   return cn(
-    "inline-flex min-w-11 items-center justify-center gap-1.5 rounded-inner font-medium",
+    // `ui-btn` is a bare marker class (no styles): the button-law e2e uses
+    // it to sweep every Button placement for even chrome + concentricity.
+    "ui-btn inline-flex min-w-11 items-center justify-center gap-1.5 rounded-inner font-medium",
     // Motion rides the tokens: --dur-fast for immediate control feedback,
     // the standard easing curve — never a literal duration.
     "transition-[background,border-color,color,transform] duration-[var(--dur-fast)] ease-[var(--ease-standard)]",

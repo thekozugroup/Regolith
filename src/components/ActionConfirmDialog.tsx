@@ -56,7 +56,10 @@ export function ActionConfirmDialog({
         {details.message}
       </p>
 
-      <footer className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] px-4 py-3 sm:flex-row sm:justify-end">
+      {/* p-4 = --modal-pad: corner buttons sit exactly the derived gap from
+          the panel corner, so radius-modal − pad = their radius (strict
+          concentricity, verified by the button-law e2e). */}
+      <footer className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] p-4 sm:flex-row sm:justify-end">
         <div className="grid grid-cols-2 gap-2 sm:flex">
           {/* Focus lands on Cancel: every action routed here is destructive
               enough to have earned a confirmation, so Enter must not fire it. */}

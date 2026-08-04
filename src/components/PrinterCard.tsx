@@ -189,7 +189,9 @@ export const PrinterCard = memo(function PrinterCard() {
           overlayClassName="compact:items-end compact:p-0"
           panelClassName="max-w-md compact:max-w-none"
         >
-          <header className="flex min-h-11 items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+          {/* p-4 = --modal-pad: the corner close button keeps the strict
+              concentric gap (radius-modal − pad = control radius). */}
+          <header className="flex min-h-11 items-center justify-between gap-3 border-b border-[var(--color-border)] p-4">
             <div className="min-w-0">
               <h2
                 id={detailTitleId}

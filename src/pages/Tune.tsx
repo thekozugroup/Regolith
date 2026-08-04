@@ -442,7 +442,9 @@ function ConfirmModal({
       onDismiss={onCancel}
       panelClassName="max-w-md"
     >
-        <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+        {/* p-4 = --modal-pad: the corner close button keeps the strict
+            concentric gap (radius-modal − pad = control radius). */}
+        <header className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
           <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
             Confirm: {action.title}
           </h2>
@@ -481,7 +483,7 @@ function ConfirmModal({
             Estimated duration: {action.duration}
           </div>
         </div>
-        <footer className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)] bg-(--color-fg)/1">
+        <footer className="flex justify-end gap-2 p-4 border-t border-[var(--color-border)] bg-(--color-fg)/1">
           <Button size="md" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>

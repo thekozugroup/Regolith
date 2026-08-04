@@ -67,12 +67,13 @@ function ExpertOnly({ children }: { children: ReactNode }) {
       <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
         This view can move, heat, calibrate, or directly command the printer. Enable Expert mode when maintenance requires it.
       </p>
-      <Link
-        to="/settings"
-        className={buttonClassName({ variant: "primary", className: "mt-5" })}
-      >
-        Review experience settings
-      </Link>
+      {/* Stack spacing rides a wrapper: the control itself keeps even
+          margins on all four sides (owner button-chrome rule). */}
+      <div className="mt-5">
+        <Link to="/settings" className={buttonClassName({ variant: "primary" })}>
+          Review experience settings
+        </Link>
+      </div>
     </section>
   );
 }
