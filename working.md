@@ -572,6 +572,60 @@ Final state: printer untouched apart from the static asset swap and its backup �
 no G-code, motion, heating, print control, service restart, or configuration
 change; the owner's `scripts/` watchdog was not contacted.
 
+## Inter webfont — 2026-08-04, `71b6a90`
+
+Owner direction: "use inter for both webui and touch panel font" (the touch
+panel already ships it). The web UI now self-hosts Inter as `--font-sans`.
+
+- **File**: official InterVariable v4 (rsms.me `font-files/InterVariable.woff2`,
+  344 kB), subset in an isolated fontTools 4.x venv to Latin-1 plus every
+  non-ASCII codepoint the source actually renders (typographic punctuation,
+  math `− ≈ ≤ ≥ ± × °`, arrows, geometric lamp shapes, `✓ ⚠`) →
+  `public/fonts/InterVariable.woff2`, **105 kB** raw (woff2 is already
+  brotli-compressed; gzip does not shrink it). All GSUB features (`tnum`,
+  `calt`, `ss01`, `zero`, …) and both axes (`opsz` 14–32, `wght` 100–900)
+  retained; `─ ⏸ 🚩` are absent from full Inter too, so glyph fallback is
+  unchanged. Subset command: `pyftsubset InterVariable.woff2 --flavor=woff2
+  --unicodes="U+0000-00FF,U+2000-206F,U+2190-21FF,U+2212,U+2248,U+2264,
+  U+2265,U+23F8,U+2500,U+25A0-25FF,U+2600-26FF,U+2713,U+1F6A9"
+  --layout-features='*' --name-IDs='*' --name-languages='*'`.
+- **Zero-shift swap**: `font-display: swap` over an "Inter Fallback" face —
+  local Arial with `size-adjust: 105.15%`, `ascent-override: 92.13%`,
+  `descent-override: 22.94%`, `line-gap-override: 0%`, computed with
+  fontTools from string advances of the actual subset (wght 400 / opsz 14)
+  against this machine's Arial. `index.html` preloads the woff2; headless
+  check shows Inter `loaded` at `document.fonts.ready` with the fallback
+  face never fetched, and first paint (theme/accent, CSS-only) is not
+  blocked by the font.
+- **Mono decision**: `--font-mono` stays a system mono stack, reserved
+  strictly for machine text — Console log/input, G-code viewers, file
+  names/paths, hex colors, AI endpoint/key inputs, profile ids, version
+  strings — where slice-anywhere alignment and code-ness carry meaning.
+  All numeric telemetry (`.readout`, `.instrument-value`, MissionBar
+  clocks, dial numerals, position/temperature/mesh/stat values) is Inter
+  with `tabular-nums slashed-zero`. Rationale: Inter's `tnum` gives the
+  same tick-stable equal digit advances mono provided, matching the touch
+  panel's Inter numerals, while a visually distinct mono keeps honest
+  signal value for genuinely machine-generated text.
+- **Italic**: the roman variable file only. The two `italic` sites (empty
+  states in MissionTimeline/Console) render synthesized oblique — not
+  worth a second ~100 kB face for two muted placeholders.
+- **Measurements** (headless Chromium, `vite preview`, 800x480):
+  - Digit advances: `111` = `999` = `000` = `888` widths, byte-equal, in
+    real `.readout` and `.instrument-value` elements and in synthetic
+    dial-numeral/clock contexts — tabular confirmed under Inter.
+  - LCP median of 5: **60 ms** after vs **76 ms** baseline — no
+    regression (>5% threshold not approached).
+  - Floors re-measured with Inter live via the full e2e suite: **143/143
+    passed** — 11 px minimum text, 44 px targets, 148 px dial floor,
+    button-law even padding, MissionBar/StatusRail truncation, overflow,
+    concentricity, Swiss grid, tell-tales, accent guards, console hygiene
+    all held; **zero fixes required**.
+  - Note: the body-level `font-feature-settings: "calt" 1, "ss01" 1,
+    "zero" 1` now actually activates (system fonts ignored it): slashed
+    zeros and Inter's ss01 alternate digits are live everywhere — the
+    intended instrument look.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
