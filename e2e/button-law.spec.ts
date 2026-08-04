@@ -20,6 +20,11 @@ import {
  *     approximated. Verified on four representative placements:
  *     card body (fluid pad), modal header (p-4), control group (p-1), and
  *     a settings toggle in a card body.
+ *
+ * NOTE: the four placements are now a fast smoke check — the LAW itself is
+ * enforced exhaustively (every element, every rounded ancestor, every
+ * corner, every route/mode/state/overlay) by concentricity-law.spec.ts via
+ * the shared support/concentricity.ts probe.
  */
 
 const idleState: MockPrinterState = {
