@@ -21,7 +21,7 @@ grep -q 'deploy.sh"$' "$SETUP"
 grep -q 'ssh-keyscan -T 5 -t ecdsa' "$SETUP"
 grep -q 'does not match the saved printer identity' "$SETUP"
 
-if grep -Eqi '$PRINTER_PASSWORD|StrictHostKeyChecking=no|UserKnownHostsFile=/dev/null' "$SETUP"; then
+if grep -Eqi "${PRINTER_PASSWORD:-__printer_password_unset__}|StrictHostKeyChecking=no|UserKnownHostsFile=/dev/null" "$SETUP"; then
   printf 'setup contains a secret or insecure SSH bypass\n' >&2
   exit 1
 fi

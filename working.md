@@ -159,8 +159,10 @@ Live UI verification, headless Chromium against the deployed build on the real p
 Rollback command for this release:
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
+
+Password: set PRINTER_PASSWORD in your environment; do not commit it.
 
 ## Verification
 
@@ -412,7 +414,7 @@ Deployed static assets built at sha `8cffd40993a9c792fe484e732e6cdb67ef9a7cd4` (
 - **Rollback is armed:** `/usr/data/fluidd.previous/index.html` is exactly the pre-deploy `7dd3c0d` build (`de1175ff…de59`). Note the previous slot now holds the `7dd3c0d`-era build, not `68181d0` — `68181d0`'s build (`7abea8ff…1919`) was rotated out of the slot by this swap but survives in backup `fluidd-before-20260803T204754Z.tgz`.
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
 
 On-device verification (headless Chromium via SSH loopback tunnels — page through printer nginx :80, camera through printer :8080, since macOS local-network privacy still blocks Chromium from LAN addresses; every byte came from the printer and nothing on it was modified), at 1280x800 and 800x480:
@@ -539,7 +541,7 @@ timestamp `20260804T125648Z`.
   pre-deploy `8cffd40` live build (`ffd90361…6609`), re-verified after the swap.
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback
+PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
 
 On-device verification (SSH loopback tunnels — page through printer nginx :80,
@@ -587,7 +589,7 @@ change; the owner's `scripts/` watchdog was not contacted.
   correct fix is per-icon dynamic import plus a lazy picker, and risking a
   missing brand mark on boot is not worth ~4 kB gzip against a 176ms entry
   download. Revisit if the icon library grows.
-- The runtime printer password is absent from HEAD, tracked diff, and current deployment code, but remains in 9 historical commits. Rotate the printer password. Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
+- The literal printer password has now been scrubbed from all tracked files at HEAD, but it remains in historical commits (6 commits match `git log -S`) and the repository is PUBLIC. **Rotation of the printer password is URGENT and awaiting owner go.** Decide whether to coordinate a disruptive history scrub after all clones and deployments are accounted for; do not rewrite history ad hoc.
 - Firmware/update survival is best-effort only. `/usr/data` persisted this deployment, but the Fluidd updater explicitly owns `/usr/data/fluidd`.
 - Guided setup still requires a source checkout, Bun, and `sshpass` when SSH keys are unavailable. A signed/notarized macOS installer or prebuilt release would remove Terminal and package-manager friction, but needs a release/signing pipeline.
 - Several uploaded jobs reference a missing 300x300 thumbnail; as of the `68181d0` release the live 404 is `.thumbs/Filament_Swatch_PETG_19m37s-300x300.png`. Regolith falls back to a clear placeholder, but the browser still reports a read-only 404 and it is the only console error on the deployed dashboard. Avoid generating or writing printer thumbnails during release QA; fix this only in the slicer/upload pipeline or through a separately authorized printer-file workflow.
