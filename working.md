@@ -732,6 +732,57 @@ untracked, not staged.
 - No console errors observed in the e2e run (`console-hygiene.spec.ts`
   passed as part of the full suite).
 
+## Deployment — 2026-08-04, `81f2084` live on the K1 Max
+
+Deployed HEAD `81f2084b1f1a50d6eeb3d52763a2a93c7d9437cd` (identical to
+`origin/main`, tracked tree clean) to 192.168.50.179 via `./deploy.sh` only.
+Credentials supplied solely through `$PRINTER_PASSWORD` (never a literal).
+
+- **Preflight**: `PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight` exit 0
+  (klipper ready, print `cancelled`, activity Idle, no SD job).
+- **Double idle check immediately before deploy** (read-only Moonraker
+  samples at 18:07:40Z and 18:07:50Z, 10 s apart): extruder/bed targets
+  0.0/0.0, `print_stats` cancelled, `idle_timeout` Idle, `virtual_sdcard`
+  inactive, `motion_report.live_position` byte-identical
+  `[296.5, 153.0, 150.044]` — position static. Deploy proceeded immediately.
+- **Deploy**: internal gates green (`bun install/lint/test/build`); archive
+  size + SHA-256 verified after upload; staged file list matched local
+  `dist` exactly; persistent backup
+  `fluidd-before-20260804T180827Z.tgz` (SHA-256 `6ca01b9d…c70d00`,
+  34 files, 5 retained / 1 pruned); atomic swap; live HTML plus every
+  referenced asset verified over HTTP. Success epilogue printed
+  (`Deploy verified`), and post-state confirms the exit-0 path: staging
+  slot and upload tarball removed (only happens after verification).
+- **Hashes**: live `/usr/data/fluidd/index.html` SHA-256
+  `2130c3f472251c3835281eea7809864e732a55bada8b0e1f839ab33aab99b582` ==
+  local `dist/index.html` exactly; `fluidd.previous/index.html` ==
+  pre-deploy live anchor `942e0b61…8e0ec` exactly.
+- **On-device QA** (read-only browser over a loopback SSH forward, at
+  1280x800 and 800x480): **six distinct nested rounded pairs spot-measured
+  live** with the repo's own `CONCENTRICITY_PROBE`/classifier — readiness
+  module in instrument panel (1280: inner 4, outer 16.8, gap 13.8; 800:
+  inner 4, outer 14, gap 11), jog-distance control group in instrument
+  panel (inner 4, outer 14, gap 11), two modal buttons in the readiness
+  disclosure `modal-panel` (inner 4, outer 12, gap 9), more-sheet button in
+  `modal-panel` (inner 4, outer 12, gap 9) — **0 violations** in every probe
+  across Home/Files/Control/Settings plus opened disclosures; the law holds
+  on device within the ±1px tolerance.
+- **Zero console errors and zero page errors** at both viewports across all
+  probed routes (webcam port forwarded, so no spurious stream errors; the
+  known thumbnail 404 did not reproduce).
+- **Live-tick proof**: hotend aria-label ticked 27.8 → 27.7 °C within 3 s at
+  1280x800 — telemetry is live-updating.
+- **LINK connected**: `LINK READY` (green) in the status rail at both
+  viewports; header shows Connected; the "Link Lost" tell-tale lamp cell is
+  present but unlit (`data-lit="false"`), as designed.
+- Screenshots: `live-81f2084-1280x800.png`, `live-81f2084-800x480.png`
+  (session scratchpad).
+- One dropbear auth flake on a post-deploy read-only check; a single retry
+  succeeded (known memory-pressure flake — live assets unaffected).
+- **Rollback armed**: `fluidd.previous` holds the prior verified release
+  (anchor hash match exact). Rollback command:
+  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+
 ## Remaining issues
 
 - Heap grows about 0.1 MB/min under sustained telemetry after the first two
