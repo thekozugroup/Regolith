@@ -612,7 +612,19 @@
      no JS resize listeners. Padding lives here (not a utility class on the
      component) so the short-viewport override below can retune the two-up
      arithmetic in one place. */
-  .thermal-instrument { container-type: inline-size; padding: 0.75rem; }
+  .thermal-instrument {
+    container-type: inline-size;
+    padding: 0.75rem;
+    /* The owner's "digital dashboard squares": each thermal instrument is a
+       square module. aspect-ratio is a PREFERENCE — when the tile is too
+       narrow for its content (the 148px floor arithmetic, the 800x480
+       panel), content height wins and every measured floor stands. */
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Square slack centers on the instrument, never pools below it. */
+  .thermal-instrument > .dial-slot { margin-block: auto; }
   .dial-slot { display: none; }
   @container (min-width: 148px) {
     .dial-slot { display: block; }
