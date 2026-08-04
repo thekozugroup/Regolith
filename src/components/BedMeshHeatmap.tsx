@@ -47,7 +47,9 @@ export function BedMeshHeatmap() {
   };
 
   useEffect(() => {
-    load();
+    // `load` settles its own errors into state; `void` marks the floating
+    // call deliberate for @typescript-eslint/no-floating-promises.
+    void load();
   }, []);
 
   return (

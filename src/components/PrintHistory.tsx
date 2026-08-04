@@ -50,7 +50,7 @@ export function PrintHistory() {
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   return (

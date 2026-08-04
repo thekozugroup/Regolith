@@ -41,7 +41,7 @@ export function Timelapses() {
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   // In-app confirmation, never `window.confirm`: the native dialog blocks

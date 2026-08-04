@@ -95,8 +95,8 @@ export function SettingsPage() {
         );
       }
     };
-    load();
-    const id = setInterval(load, 5000);
+    void load();
+    const id = setInterval(() => void load(), 5000);
     return () => {
       controller.abort();
       clearInterval(id);

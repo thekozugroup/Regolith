@@ -48,9 +48,27 @@ export function useNotifications() {
   useEffect(() => {
     if (typeof Notification === "undefined") return;
     if (Notification.permission === "default") {
-      Notification.requestPermission().then((p) => {
-        permRef.current = p;
-      });
+      // Two hazards, both real: the promise rejects when the page is not a
+      // secure context or the user agent refuses the prompt, and older
+      // Safari implements the CALLBACK form, returning undefined — `.then`
+      // on which is a TypeError, not a rejection. Neither may leak out of a
+      // permission request for an optional convenience.
+      try {
+        const request = Notification.requestPermission();
+        if (request && typeof request.then === "function") {
+          request.then(
+            (granted) => {
+              permRef.current = granted;
+            },
+            () => {
+              // Denied, blocked, or unavailable. Notifications are a
+              // nicety — every alert that matters is on the glass already.
+            },
+          );
+        }
+      } catch {
+        /* requestPermission itself threw — same answer: no notifications. */
+      }
     } else {
       permRef.current = Notification.permission;
     }

@@ -70,22 +70,22 @@ export function useKeyboardShortcuts() {
         chord = null;
         switch (e.key.toLowerCase()) {
           case "d":
-            navigate("/");
+            void navigate("/");
             break;
           case "f":
-            navigate("/print");
+            void navigate("/print");
             break;
           case "c":
-            navigate("/control");
+            void navigate("/control");
             break;
           case "t":
-            navigate("/tune");
+            void navigate("/tune");
             break;
           case "k":
-            navigate("/console");
+            void navigate("/console");
             break;
           case "s":
-            navigate("/settings");
+            void navigate("/settings");
             break;
         }
         return;

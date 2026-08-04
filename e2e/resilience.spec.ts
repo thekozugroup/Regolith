@@ -150,10 +150,9 @@ test.describe("Chrome error containment", () => {
     page,
   }) => {
     const mock = await openDashboard(page);
-    // Fault injection through the app's own boundary test hook (dev/test
-    // builds only). MissionBar sits OUTSIDE <main>, above the route
-    // boundary; before ChromeErrorBoundary its first render throw took the
-    // whole document with it.
+    // Fault injection through CrashSeam, armed only by this hand-set key.
+    // MissionBar sits OUTSIDE <main>, above the route boundary; before
+    // ChromeErrorBoundary its first render throw took the whole document.
     await page.evaluate(() => {
       window.localStorage.setItem("forge.debug.crash", "mission-bar");
     });
@@ -182,6 +181,48 @@ test.describe("Chrome error containment", () => {
     // Chrome the owner needs in order to get OUT of the broken view.
     await expect(page.getByRole("region", { name: "Printer status" })).toBeVisible();
     await expect(page.getByRole("navigation").first()).toBeVisible();
+    mock.assertSealed();
+  });
+});
+
+test.describe("Unhandled rejections", () => {
+  test("walking every route leaves no unhandled rejection behind", async ({
+    page,
+  }) => {
+    const log = collectConsole(page);
+    const mock = await installActiveMock(page, SCENARIOS[0]);
+    await page.addInitScript(() => {
+      localStorage.setItem("forge.experience-mode", "expert");
+    });
+
+    for (const path of [
+      "/",
+      "/print",
+      "/control",
+      "/tune",
+      "/timelapses",
+      "/console",
+      "/settings",
+    ]) {
+      await page.goto(path);
+      await expect(
+        page.getByRole("status", { name: "Loading view…" }),
+        `${path} never settled`,
+      ).toHaveCount(0, { timeout: 15_000 });
+    }
+
+    // Read the app's own reporter rather than the console: the e2e build is
+    // production, where the reporter stays quiet, so the console alone would
+    // prove nothing about the artifact that actually ships.
+    const unhandled = await page.evaluate(() => {
+      const read = (window as unknown as Record<string, unknown>).__regolithErrors;
+      return typeof read === "function"
+        ? (read as () => { kind: string; message: string }[])()
+        : null;
+    });
+    expect(unhandled, "the error reporter was not installed").not.toBeNull();
+    expect(unhandled, "unhandled rejections while walking the app").toEqual([]);
+    expect(log.errors, "console errors while walking the app").toEqual([]);
     mock.assertSealed();
   });
 });

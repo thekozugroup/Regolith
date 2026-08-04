@@ -45,7 +45,7 @@ export function Files() {
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   // Fetch detailed metadata when a file is selected

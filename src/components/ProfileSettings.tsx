@@ -134,7 +134,7 @@ export function ProfileSettings() {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) onFile(f);
+              if (f) void onFile(f);
               e.target.value = "";
             }}
           />
