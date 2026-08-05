@@ -1528,3 +1528,153 @@ built bundle: zero AI chunks in `dist/assets`, zero `forge.ai` references.
 Gates at this commit, all run to completion: `bun run lint` exit 0;
 `bun run test` 336 pass / 0 fail (26 files); `bun run test:e2e` 212 passed
 (10.5m), exit 0; `bun run build` exit 0.
+
+## Dial segmentation — 2026-08-05, HEAD `37e878a`
+
+The dial value channel (`src/components/Dial.tsx`) moves from a continuous
+SVG arc to 24 discrete arc segments (10° each, 70/30 duty, butt caps) on the
+unchanged `TRACK_R`/viewBox geometry.
+
+**Why 24, not the telemetry strip's 20:** the strip's `SEGMENT_COUNT = 20`
+(`src/components/segmentScale.ts`) gives 5% resolution across a straight
+bar, where segment count is free to pick for readability alone. The dial is
+a 300°, not 360°, arc with major graduations every 30° (10 ticks). 24
+segments of 10° each means every 30° graduation lands exactly on a segment
+boundary — 20 segments (15° each) would not divide evenly into 30°
+graduations and would produce off-boundary ticks. 24 also keeps each
+segment's *apparent* size within a pixel of the strip's own segment size at
+the shared 148px floor, so the two instrument families read as one visual
+system rather than two different tick densities. `DIAL_SEGMENT_COUNT = 24`
+is a separate constant from `SEGMENT_COUNT`, deliberately — they answer
+different geometry questions and coupling them would be an accidental
+coincidence, not a rule.
+
+**Mapping is strictly discrete:** both the lit count and the target index
+route through the same exported `litSegments()` the strips use (called with
+`count = 24`), so `lit = round(clamp((value − min) / (max − min)) * 24)` —
+no fractional segment, no partial-lit terminal segment. The HTML readout
+(the numeric temperature) carries the actual precision; the dial face is
+honestly stepped, matching what a duty-cycle instrument actually is.
+
+**The target index stays UNSNAPPED**, at its true continuous angle — target
+temperature is a setpoint, not a discretized reading, and snapping it to a
+segment boundary would be false precision in the other direction (implying
+the printer only accepts 24 discrete target values, which it does not). The
+index keeps the strip's index grammar (2px wide, r 64→84) and stays a
+`<line>` so existing selectors survive.
+
+**Delta band renders per-segment**, in the same 22% ink used elsewhere, so
+it can never disagree with the segments it visually spans — `active-states.spec.ts`
+pins the exact arithmetic (hotend 48.3° of 300° → 4 lit segments, target
+220° → index 18, so exactly 14 segments carry the delta tint).
+
+e2e: `e2e/segmented-instruments.spec.ts` (new) pins the fixed 24-count
+across the responsive matrix, exact lit arithmetic, unknown-value-lights-nothing,
+unsnapped target-index angle, delta === |Δlit|, the panel-size segment
+floor, flat grammar (no filter/fill), forced-colors countability (lit vs
+unlit differ by geometry, not just color), and reduced-motion collapse.
+`e2e/active-states.spec.ts` repaired in place (no net test-count change) to
+select `.gauge-segment[data-lit="true"]` instead of the deleted continuous
+`path[stroke="currentColor"]`.
+
+## Range bars — 2026-08-05, HEAD `57cda2b`
+
+Per the segmented-dials spec's factor audit, of the 13 telemetry factors on
+`src/pages/Dashboard.tsx`, exactly 8 have a real, printer-published (or
+structurally known) range and get a `SegmentGauge` strip; the other 5 have
+no such range and stay numeric `MetricTile`s with **zero** `<svg>` — not a
+faded/ghost bar, not a synthesized default ceiling.
+
+| Factor | Bar? | Range source |
+|---|---|---|
+| Chamber | yes | printer's own `chamber.maxTemp`; **no bar at all** if the profile omits it (deleted the old `?? 80` invented ceiling) |
+| Part Fan | yes | fixed 0–100% duty |
+| Speed Factor | yes | 50–150% display clamp, index at nominal 100; values beyond the clamp draw a warning caret + `›`/`‹` affix rather than reading as a true 150% |
+| Flow Factor | yes | same 50–150% clamp/caret treatment as Speed Factor |
+| Live Velocity | yes | printer's own `toolhead.max_velocity`; absent → numeric tile, no bar |
+| Position Z | yes | homed axis limits, profile bounds as fallback; **homing-gated** — an unhomed Z is a raw stepper coordinate, so the bar disappears and a muted "unhomed" word explains why |
+| Hotend Power | yes | fixed 0–100% PWM duty |
+| Bed Power | yes | fixed 0–100% PWM duty |
+| Z-Offset | no | no published range — babystep is a signed correction, not a scale |
+| Filament | no | no published range for remaining/used length |
+| Pressure Advance | no | no published range (this is the same class as the prior fabricated-`0.04` incident — a bar here would invent a ceiling) |
+| Max Accel | no | printer publishes a live value, not a bounding range |
+| Homed | no | a state word (`XYZ` / `none`), not a scalar |
+
+Zero `<svg>` on all 5 bar-less factors is pinned directly by
+`e2e/segmented-instruments.spec.ts` ("the five bar-less factors carry zero
+svg in every state — the PA pin"), plus four no-bar-when-unknown fixtures
+(profile without chamber maxTemp, absent `max_velocity`, absent axis limits
+with a boundless profile, unhomed Z), a mixed-row top-edge law test (bar-less
+tiles sit strictly shorter than bar tiles but share the row's top edge), the
+over-range marking tests, and the 44px tile floor.
+
+## Final gate validation — 2026-08-05, HEAD `57cda2b`
+
+Independent final-gate pass ahead of a live K1 Max deploy, covering the
+three commits since the last deployed HEAD (`304afca`): AI assistant
+removal (`c746b35`), dial segmentation (`37e878a`), range bars (`57cda2b`).
+Quiet tree first — only the standing untracked set present (`scripts/`,
+`.a5c/`, `.claude/`, `CLAUDE.md`, build caches); `main` even with
+`origin/main` at `57cda2b`; no rebase, reset, or force-push used.
+
+- `bun run lint` — 0 problems, exit 0.
+- `bun run test` — `bun test tests` 337 pass / 0 fail (3,650 expect calls),
+  plus `tests/deploy.test.sh` 19/19 ok and `tests/setup.test.sh` passed.
+  Exit 0.
+- `bun run build` — `tsc -b && vite build` clean, exit 0; `dist/assets`
+  carries zero AI chunks and zero `forge.ai` references, confirming the
+  removal reached the built bundle.
+- `bun run test:e2e` — **231/231 passed (10.8m)**, run once to completion in
+  the foreground. Reconciled against the 214 floor: 214 − 2 (the sanctioned
+  "Assistant defaults" removal, recorded above) = 212, + 19 new tests from
+  `e2e/segmented-instruments.spec.ts` (9 dial tests + 10 range-bar tests,
+  added across the two feature commits) = 231. No unexplained drop.
+- `safety.ts`, `deploy.sh`, `src/lib/printerActions.ts`, `src/lib/moonraker.ts`
+  — zero diff against the deployed `304afca`: `git diff 304afca -- safety.ts
+  deploy.sh src/lib/printerActions.ts src/lib/moonraker.ts` empty.
+- `scripts/` remains untracked and unstaged (`light-watchdog.py`/`.sh`
+  unread, unedited, unchanged).
+- No literal printer password, owner LAN IP, or tailnet address in any
+  tracked file: `git grep` for a quoted password assignment, private-range
+  octets, and `.ts.net` all come back clean except the two synthetic
+  placeholder fixtures (`example-printer.example-tailnet.ts.net` in
+  `e2e/tailscale.spec.ts` / `tests/tailscale.test.ts`).
+- AI feature fully gone: no `src/lib/ai`, `AiGloss`, `AiPostMortem`,
+  `AiSettings`, or `forge.ai` references anywhere outside this file's own
+  removal record. ETA (`src/lib/jobProgress.ts`) and thermal-slope
+  (`src/lib/health.ts`) heuristics — the two default-on math features that
+  were never labelled AI — remain present, unit-tested, and covered by the
+  "Calibrated remaining time" e2e suite (all passed this run).
+- Dials: `DIAL_SEGMENT_COUNT = 24` in `src/components/Dial.tsx`; discrete
+  mapping via `litSegments(..., 24)`; target index unsnapped at its true
+  angle; dial modules square (`aspect-ratio: 1` in `src/index.css`) and
+  clear the 148px floor (`--gauge-size-min: 148px`).
+- Range bars: exactly 8 `<SegmentGauge>` usages in `src/pages/Dashboard.tsx`
+  (Chamber, Part Fan, Speed Factor, Flow Factor, Live Vel., Position Z,
+  Hotend Power, Bed Power); the other 5 factors (Z-Offset, Filament,
+  Pressure Advance, Max Accel, Homed) render through `<MetricTile>`, which
+  emits no `<svg>`; no default substituted for an unknown range (Chamber's
+  old `?? 80` fallback is deleted, not defaulted).
+- Print-start regression: `grep` for `PRINT_START`/`SET_GCODE_VARIABLE`/
+  `use_kamp` in `src/lib/printerActions.ts` finds only the header comment
+  explaining why they're gone; `ADAPTIVE_BED_MESH` (the live KAMP pin) is
+  present and defaults on. Timelapse write carries its own 5s deadline
+  (`TIMELAPSE_WRITE_TIMEOUT_MS`) layered under the print-start step list,
+  which cannot throw — confirmed by the passing "rejected settings write"
+  and "HUNG settings write" e2e cases. Light control: `lightControl.ts`
+  still explicitly carries no app-side off-timer (owner-owned watchdog cron
+  keeps that half). Tailscale: `describeTailscale` in `src/lib/tailscale.ts`
+  reads undated / stale (>3min old or future-dated) / absent documents as
+  Unknown, never a stale Connected; `e2e/tailscale.spec.ts` (all 11 cases)
+  passed.
+- Laws: `e2e/button-law.spec.ts`, `e2e/concentricity-law.spec.ts`,
+  `e2e/swiss-grid.spec.ts`, `e2e/telemetry-rows.spec.ts`, and
+  `e2e/console-clip.spec.ts` (app-wide reachability) all passed this run,
+  including the 320 / 800x480 (K1 panel) / 1280 / 2560 floor sweeps inside
+  `swiss-grid.spec.ts` and the four-size reachability sweep in
+  `console-clip.spec.ts`.
+- Console: `e2e/console-hygiene.spec.ts` passed for both basic and expert
+  routes, zero console noise.
+
+**SAFE TO DEPLOY: YES**
