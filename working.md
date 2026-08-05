@@ -1200,6 +1200,56 @@ rewritten lineage from `a140447` — no rebase, no reset, no force-push used.
 
 **SAFE TO DEPLOY: YES**
 
+## Deployment record — 2026-08-04, HEAD `078d98d`
+
+Deployed under the standing owner authorization after the `a89ccd4` gate
+(`078d98d` is that gate's own working.md record; no code changed since).
+Host addressed as `192.168.50.179` throughout — no mDNS. `deploy.sh` only,
+no config/service/watchdog contact, no print started.
+
+- Preflight: `./deploy.sh --preflight` exit 0 (auth via `sshpass -e`,
+  printer conclusively idle: `cancelled`, `Idle`).
+- Rollback anchor (pre-deploy): live `index.html` sha256 `a604786…`,
+  `fluidd.previous` present at `2130c3f…`, newest backup
+  `fluidd-before-20260804T192050Z.tgz`.
+- Double idle check immediately before deploy, two Moonraker samples 10s
+  apart: klipper `ready`, print `cancelled`, idle_timeout `Idle`,
+  virtual_sdcard inactive, extruder target 0, bed target 0, toolhead
+  position byte-identical across samples. PROCEED.
+- Deploy: `./deploy.sh` exit 0 (bash-captured `PIPESTATUS`). Persistent
+  backup `fluidd-before-20260805T003545Z.tgz` size 269696 sha256
+  `acae1f8…` files 34, retained 5 / pruned 1. Atomic swap OK, every
+  referenced asset HTTP-verified, staging cleaned.
+- On-device verify (Chromium via SSH tunnel `127.0.0.1:18080→:80` because
+  the Mac's local-network permission blocks headless Chromium on the LAN;
+  camera port 8080 tunneled too, after which console errors went to zero
+  at both sizes — the earlier 5x `ERR_CONNECTION_REFUSED` were tunnel
+  artifacts of the untunneled camera port, not the deployment):
+  - 1280x800 and 800x480, screenshots in the session scratchpad
+    (`regolith-live-1280x800.png`, `regolith-live-800x480.png`).
+  - Flattened instruments: all 6 Telemetry tiles computed background
+    `rgba(0,0,0,0)` on ground `lab(2.75381 0 0)` — the tile surface IS the
+    ground; no residual fills.
+  - No glow: `filter: none`, `box-shadow: none` on both dials, their
+    modules, and the chip lamp.
+  - Dials square: 1280x800 modules exactly 234.2x234.2; 800x480 modules
+    176.5x180.3 (aspect-ratio is a documented PREFERENCE — content height
+    wins at panel size; dial width 176.5 ≥ the 148px floor).
+  - Even edge insets: 12.8/12.8/12.8 at 1280x800; 10/10/10 at 800x480.
+  - Light chip vs real LED: Moonraker `output_pin LED` value 0; chip reads
+    `LIGHT OFF`, lamp `data-lit="false"`, `aria-pressed="false"`. Match.
+  - Zero console errors, zero failed requests at both sizes.
+  - Live tick: 107–109 `notify_status_update` WebSocket frames received
+    during each viewport session (readout text stayed 26.3°C/24.1°C —
+    idle temps hold at 0.1° resolution; the frame stream is the proof).
+  - LINK: `Link Ready` (connected + Klipper ready — the connected-good
+    state) in the mission bar, green.
+- Rollback armed: post-deploy `fluidd.previous/index.html` is exactly the
+  pre-deploy live sha `a604786…`; live now `9843e57…` = freshly built
+  `dist/index.html` byte-for-byte. `fluidd.next` and the upload archive
+  removed. Rollback command:
+  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
+
 ## User-owned files
 
 - `scripts/light-watchdog.py`
