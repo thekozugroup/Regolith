@@ -151,17 +151,185 @@ test.describe("Segmented dials — 24-cell value channel", () => {
   test("the delta band agrees with the segments it spans, exactly", async ({ page }) => {
     // Heating: litValue = round(48.3/300·24) = 4, litTarget =
     // round(220/300·24) = 18 → exactly |18 − 4| = 14 delta-inked segments,
-    // and no segment is ever both lit and delta-inked (lit wins).
+    // and no UNDER segment is ever lit (the shortfall is unlit by
+    // definition — that direction's ink is the ghost track).
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await openScenario(page, "heating");
     await expect(
-      hotendGauge(page).locator('.gauge-segment[data-delta="true"]'),
+      hotendGauge(page).locator('.gauge-segment[data-delta="under"]'),
       "delta segment count must equal the lit-segment distance",
     ).toHaveCount(14);
     await expect(
-      page.locator('.gauge-segment[data-lit="true"][data-delta="true"]'),
-      "no segment may be both lit and delta-inked",
+      page.locator('.gauge-segment[data-lit="true"][data-delta="under"]'),
+      "an under-delta segment is never lit",
     ).toHaveCount(0);
+    await expect(
+      page.locator('.gauge-segment[data-delta="over"]'),
+      "heating below target is not an overshoot",
+    ).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  /**
+   * The delta band used to ink ONLY where the segment was unlit — which
+   * silently meant "only when the actual is BELOW target". An overshooting
+   * hotend, the case you most want to see, drew zero delta segments: every
+   * segment between setpoint and actual was lit, so every one was skipped.
+   */
+  test("an overshoot inks the delta band too, not nothing", async ({ page }) => {
+    // 250 of 300 lights round(250/300·24) = 20; the 200 setpoint lights
+    // round(200/300·24) = 16 → exactly 4 segments of overshoot, on integer
+    // boundaries so the fixture cannot drift on a rounding edge.
+    await page.setViewportSize({ width: 800, height: 480 });
+    const sc = scenario("printing-midjob");
+    const mock = await openScenario(page, "printing-midjob", {
+      state: {
+        ...sc.state,
+        extruder: {
+          ...(sc.state.extruder as Record<string, unknown>),
+          temperature: 250,
+          target: 200,
+        },
+      },
+    });
+    const hotend = hotendGauge(page);
+    await expect(
+      hotend.locator('.gauge-segment[data-delta="over"]'),
+      "an overshoot must ink exactly the segment distance past the setpoint",
+    ).toHaveCount(4);
+    await expect(
+      hotend.locator('.gauge-segment[data-delta="under"]'),
+      "an overshoot is not a shortfall",
+    ).toHaveCount(0);
+    await expect(
+      hotend.locator('.gauge-segment[data-delta="over"][data-lit="true"]'),
+      "lit still wins the ink — an over-delta segment stays lit",
+    ).toHaveCount(4);
+    mock.assertSealed();
+  });
+
+  test("over and under deltas are told apart without colour", async ({ page }) => {
+    // No-colour-only rule: the two directions must differ in a channel that
+    // survives a monochrome print. They differ in stroke width — the
+    // overshoot narrows to a rail inside the track, the shortfall keeps the
+    // full track width and only dims. One fixture carries both: the hotend
+    // overshoots (250 over a 200 setpoint → 20 − 16 = 4 segments), the bed
+    // falls short (20 under a 100 setpoint on a 120° scale → 20 − 4 = 16).
+    await page.setViewportSize({ width: 800, height: 480 });
+    const sc = scenario("printing-midjob");
+    const mock = await openScenario(page, "printing-midjob", {
+      state: {
+        ...sc.state,
+        extruder: {
+          ...(sc.state.extruder as Record<string, unknown>),
+          temperature: 250,
+          target: 200,
+        },
+        heater_bed: { temperature: 20, target: 100, power: 1 },
+      },
+    });
+    const read = (locator: ReturnType<typeof hotendGauge>) =>
+      locator.locator(".gauge-segment").evaluateAll((items) =>
+        items.map((item) => ({
+          delta: item.getAttribute("data-delta"),
+          lit: item.getAttribute("data-lit"),
+          width: Number.parseFloat(getComputedStyle(item).strokeWidth),
+        })),
+      );
+    const hotend = await read(hotendGauge(page));
+    const bed = await read(bedGauge(page));
+    const over = hotend.filter((s) => s.delta === "over");
+    const plainLit = hotend.filter((s) => s.delta == null && s.lit === "true");
+    const under = bed.filter((s) => s.delta === "under");
+    expect(over.length, "the over case must be genuinely exercised").toBe(4);
+    expect(under.length, "the under case must be genuinely exercised").toBe(16);
+    expect(plainLit.length, "plain lit segments must exist to compare against").toBeGreaterThan(0);
+    for (const segment of over) {
+      for (const reference of [...plainLit, ...under]) {
+        expect(
+          Math.abs(segment.width - reference.width),
+          `over-delta stroke ${segment.width} must differ from ${reference.delta ?? "plain lit"} ${reference.width}`,
+        ).toBeGreaterThanOrEqual(2);
+      }
+    }
+    mock.assertSealed();
+  });
+
+  /**
+   * The dial's sweep is a DISPLAY CLAMP, exactly like the factor strips'
+   * 50–150% scale: angleFor() and litSegments() both clamp, so 320°C on a
+   * 300° gauge lit all 24 segments and pinned the arc identically to a true
+   * 300°C. The strips got over/under-range carets; the dials never did, so
+   * the same false ceiling stayed on the primary instrument.
+   */
+  test("a temperature above the gauge maximum is marked, never silently pinned", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const sc = scenario("printing-midjob");
+    const atTemperature = (temperature: number) => ({
+      ...sc.state,
+      extruder: {
+        ...(sc.state.extruder as Record<string, unknown>),
+        temperature,
+        target: 280,
+      },
+    });
+    const mock = await openScenario(page, "printing-midjob", { state: atTemperature(300) });
+    const hotend = hotendGauge(page);
+    await expect(
+      hotend.locator('.gauge-segment[data-lit="true"]'),
+      "exactly-max lights the whole scale",
+    ).toHaveCount(DIAL_SEGMENTS);
+    await expect(
+      hotend.locator("[data-over-range]"),
+      "exactly-max is not over range",
+    ).toHaveCount(0);
+    await expect(hotend.getByText("›")).toHaveCount(0);
+    await expect(hotend.locator(".readout")).toContainText("300.0");
+
+    mock.use({ state: atTemperature(320), camera: "ok", thumbnail: sc.thumbnail });
+    await visit(page, "/");
+    const over = hotendGauge(page);
+    await expect(
+      over.locator('.gauge-segment[data-lit="true"]'),
+      "320 pins the same 24 segments — which is exactly why it needs a caret",
+    ).toHaveCount(DIAL_SEGMENTS);
+    await expect(
+      over.locator("[data-over-range]"),
+      "a reading past the gauge maximum must draw the over-range caret",
+    ).toHaveCount(1);
+    await expect(over.getByText("›"), "and carry the › affix on the readout").toBeVisible();
+    await expect(over.locator(".readout")).toContainText("320.0");
+
+    // The caret is polar, and the tightest dial is the one it can foul: at
+    // the K1 panel's two-up it must stay inside the dial's own box and clear
+    // the "Max" scale endpoint rather than being drawn through it.
+    await page.setViewportSize({ width: 800, height: 480 });
+    await visit(page, "/");
+    const boxes = await hotendGauge(page).evaluate((tile) => {
+      const rect = (el: Element | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      };
+      const endpoint = [...tile.querySelectorAll("span")].find((s) => /^Max/.test(s.textContent ?? ""));
+      return {
+        svg: rect(tile.querySelector(".gauge-dial")),
+        caret: rect(tile.querySelector("[data-over-range]")),
+        endpoint: rect(endpoint ?? null),
+      };
+    });
+    expect(boxes.caret, "the caret must render at the panel too").not.toBeNull();
+    const { svg, caret, endpoint } = boxes;
+    expect(caret!.left).toBeGreaterThanOrEqual(svg!.left - 0.5);
+    expect(caret!.right).toBeLessThanOrEqual(svg!.right + 0.5);
+    expect(caret!.top).toBeGreaterThanOrEqual(svg!.top - 0.5);
+    expect(caret!.bottom).toBeLessThanOrEqual(svg!.bottom + 0.5);
+    expect(
+      caret!.bottom,
+      "the over-range caret must clear the Max scale endpoint, not overprint it",
+    ).toBeLessThanOrEqual(endpoint!.top);
     mock.assertSealed();
   });
 
@@ -538,6 +706,15 @@ test.describe("Telemetry range bars — real ranges only", () => {
       "M220 S200 must draw the over-range caret",
     ).toHaveCount(1);
     await expect(speed.getByText("›")).toBeVisible();
+    // The strip itself still reads 20/20 — it is pinned, and pinning is the
+    // honest thing for a clamped scale to do. What must never happen is that
+    // the pinned strip is INDISTINGUISHABLE from a true 150%: the caret and
+    // the › affix are the two channels that separate them, and both are
+    // asserted above while the strip is at full lit count.
+    await expect(
+      speed,
+      "the strip is pinned at full — the caret is what makes that unambiguous",
+    ).toHaveAttribute("data-lit", "20");
     mock.assertSealed();
   });
 
