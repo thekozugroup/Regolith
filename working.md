@@ -1337,6 +1337,82 @@ failure this printer already hit. The panel prints the two-line repair
 Gates: `bun run lint`, `bun run test` (27 new unit tests), `bun run test:e2e`
 (11 new specs), `bun run build` — all exit 0.
 
+## Final gate validation — 2026-08-05, HEAD `801711b`
+
+Independent final-gate pass ahead of a live K1 Max deploy, quiet tree first
+(only the standing untracked set present — `scripts/`, `.a5c/`, `.claude/`,
+`CLAUDE.md`, and build caches — nothing else outstanding). `main` even with
+`origin/main` at `801711b`; no rebase, reset, or force-push used.
+
+- `bun run lint` — 0 problems, exit 0.
+- `bun run test` — `bun test tests` 358 pass / 0 fail (3,738 expect calls),
+  plus `tests/deploy.test.sh` 19/19 ok and `tests/setup.test.sh` passed. Exit 0.
+- `bun run build` — `tsc -b && vite build` clean, exit 0.
+- `bun run test:e2e` — **214/214 passed (10.6m)**, run once in isolation
+  (no concurrent `playwright test`/`vite preview` collision). This is above
+  the 174 floor recorded at the last hardware-adjacent checkpoint; no shrink.
+- `safety.ts`, `deploy.sh`, `src/lib/printerActions.ts`, `src/lib/moonraker.ts`
+  — zero working-tree diff against `HEAD`; untouched by this pass, confirmed
+  by `git diff HEAD -- <paths>`.
+- `scripts/light-watchdog.py` / `.sh` remain untracked and unstaged; not read
+  or edited by this pass.
+- No literal printer password and no owner LAN IP / tailnet address in any
+  tracked file at this HEAD: `git grep` for `password\s*[:=]\s*"..."`,
+  `192.168.x.x`/`10.x.x.x` octets, and `ts.net` all come back clean except
+  the two placeholder fixtures (`example-printer.example-tailnet.ts.net` in
+  `e2e/tailscale.spec.ts` and `tests/tailscale.test.ts`, which are synthetic
+  test data, not a real address). `<printer-host>` placeholders remain the
+  only host references in docs (25 occurrences).
+- Print-start regression: `tests/printerActions.test.ts` still fails if
+  `MACRO=PRINT_START`, `SET_GCODE_VARIABLE`, or `use_kamp` is sent during
+  print setup; `ADAPTIVE_BED_MESH` is the live KAMP mechanism and is present.
+  KAMP defaults on (`kampEnabledFromStorage` treats anything but a stored
+  `"0"` as enabled).
+- Timelapse mode decision: per-print timelapse is a Moonraker HTTP write
+  (`writeTimelapseSettings`, `src/lib/moonraker.ts`) that now carries a hard
+  5-second client-side deadline (`TIMELAPSE_WRITE_TIMEOUT_MS`,
+  `AbortSignal.timeout`) on top of the existing 15s WS RPC deadline. It sits
+  in `applyPrintSetup`'s optional pre-print step list
+  (`src/lib/printerActions.ts`), which by construction cannot throw: a
+  missing `timelapse` Moonraker component, a rejected write, or a write that
+  never answers within its own deadline all resolve to "skip and notify",
+  never to blocking `printer.print.start`. `e2e/timelapse.spec.ts` pins both
+  the rejected-write and the hung-write (deadline) cases explicitly ("a
+  rejected settings write still starts the print" / "a HUNG settings write
+  still starts the print — the deadline is the law").
+- Tailscale scope: read-only status panel, Expert-only, sourced from a file
+  the printer's own cron optionally publishes (`src/lib/tailscale.ts`); no
+  control path exists or is offered (`e2e/tailscale.spec.ts` pins exactly one
+  button, "Check now"). Staleness law: undated, >3 minutes old, or dated more
+  than a minute in the future all read as **Unknown** and drop the tailnet
+  address. This HEAD's own change narrows a remaining gap: `BackendState`
+  alone used to print "Connected" even when `Self.Online:false` (daemon up,
+  coordination server reports no working path); `describeTailscale` now
+  reads that combination as a qualified "Running, not seen" warn, while an
+  *absent* `Online` field (older tailscale, or a document with no such key)
+  still reads Connected, since absence is not contradiction. Covered by
+  `tests/tailscale.test.ts` (new assertions this HEAD) and the existing
+  `e2e/tailscale.spec.ts` suite.
+- Alignment laws: `e2e/telemetry-rows.spec.ts` pins the telemetry row law —
+  within a `.telemetry-grid` row, every `.instrument-label` top, every
+  `.instrument-value` top, and every present segment-bar top agree within
+  1px, regardless of how many tiles in the row carry a bar. Verified across
+  390 / 800x480 / 1280 / 2560 in both printing-midjob and cooling-after-job
+  scenarios, basic and expert (16 assertions, all passed this run).
+  `e2e/swiss-grid.spec.ts` pins the equal-inset rhythm law ("one page rhythm:
+  equal insets on all four sides at 390, the K1 panel and 1280") and the
+  derived-radius/flat-instrument-fill checks; `e2e/button-law.spec.ts` and
+  `e2e/concentricity-law.spec.ts` pin the button and concentricity laws
+  separately. All passed this run (214/214 overall).
+- Console: `e2e/console-hygiene.spec.ts` passed; no `console.log`/`console.debug`
+  found in `src/` outside tests by direct grep.
+- Light control: `src/lib/lightControl.ts` still explicitly does not
+  implement an app-side off-timer (`scripts/light-watchdog.py`, user-owned,
+  owns the off half via cron); the file's own header comment states this is
+  a deliberate, permanent boundary, not an oversight. Unchanged this pass.
+
+**SAFE TO DEPLOY: YES**
+
 ## User-owned files
 
 - `scripts/light-watchdog.py`
