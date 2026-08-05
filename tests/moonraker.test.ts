@@ -150,6 +150,76 @@ describe("Moonraker subscription ref-count", () => {
   });
 });
 
+describe("Moonraker timelapse events", () => {
+  test("notify_timelapse_event drives frame count and render progress", async () => {
+    const { mr, sock } = freshClient();
+    const seen: Array<number | null> = [];
+    const stop = mr.onTimelapseActivity((activity) => seen.push(activity.frames));
+
+    expect(mr.getTimelapseActivity()).toEqual({
+      frames: null,
+      lastFrameAt: null,
+      render: null,
+    });
+
+    sock.receive({
+      jsonrpc: "2.0",
+      method: "notify_timelapse_event",
+      params: [{ action: "newframe", frame: 3 }],
+    });
+    expect(mr.getTimelapseActivity().frames).toBe(3);
+    expect(mr.getTimelapseActivity().lastFrameAt).not.toBeNull();
+
+    sock.receive({
+      jsonrpc: "2.0",
+      method: "notify_timelapse_event",
+      params: [{ action: "render", status: "running", progress: 55 }],
+    });
+    expect(mr.getTimelapseActivity().render).toMatchObject({
+      status: "running",
+      progress: 55,
+    });
+
+    sock.receive({
+      jsonrpc: "2.0",
+      method: "notify_timelapse_event",
+      params: [{ action: "render", status: "success", filename: "job.mp4" }],
+    });
+    const done = mr.getTimelapseActivity();
+    expect(done.render).toMatchObject({ status: "success", filename: "job.mp4" });
+    // Rendering means capture STOPPED — the frame clock is dropped so the
+    // RECORDING lamp cannot coast on a stale timestamp.
+    expect(done.lastFrameAt).toBeNull();
+
+    // The subscriber saw the initial value plus one push per real change.
+    expect(seen[0]).toBeNull();
+    expect(seen.length).toBeGreaterThan(1);
+    stop();
+    mr.disconnect();
+  });
+
+  test("an unparseable timelapse payload notifies nobody", async () => {
+    const { mr, sock } = freshClient();
+    let pushes = 0;
+    const stop = mr.onTimelapseActivity(() => {
+      pushes += 1;
+    });
+    expect(pushes).toBe(1); // the immediate current-value call
+
+    for (const params of [[], [{ action: "unknown" }], [{ action: "newframe" }]]) {
+      sock.receive({
+        jsonrpc: "2.0",
+        method: "notify_timelapse_event",
+        params,
+      });
+    }
+    expect(pushes).toBe(1);
+    expect(mr.getTimelapseActivity().frames).toBeNull();
+    stop();
+    mr.disconnect();
+  });
+});
+
 describe("Moonraker RPC timeout handles", () => {
   test("a settled RPC clears its 15s timer; disconnect clears pending timers", async () => {
     const created: unknown[] = [];

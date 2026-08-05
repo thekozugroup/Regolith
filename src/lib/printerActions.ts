@@ -1,7 +1,21 @@
 import { moonraker, type PrinterState } from "./moonraker";
 import { canJog, getSafetyState, type Axis } from "./safety";
+import { timelapseSettingsWrite, type TimelapseMode } from "./timelapse";
 
-export type PrintSetupOption = "kamp-on" | "kamp-off";
+/**
+ * One optional pre-print setup choice.
+ *
+ * The string forms are klipper gcode steps. The object form is an HTTP step:
+ * moonraker-timelapse has no gcode surface worth using — its `enabled` flag
+ * lives in Moonraker's own database and writing it any other way (e.g. a
+ * `SET_GCODE_VARIABLE` into the macro) would desync the value that Fluidd and
+ * the stock touchscreen read. It carries its own `mode` because the owner's
+ * pinned capture mode is a UI preference, not printer state (lib/timelapse).
+ */
+export type PrintSetupOption =
+  | "kamp-on"
+  | "kamp-off"
+  | { kind: "timelapse"; enabled: boolean; mode: TimelapseMode };
 
 /** Where the print dialog persists the owner's adaptive-bed-mesh choice. */
 export const KAMP_STORAGE_KEY = "forge.print.kamp";
@@ -19,27 +33,68 @@ export function kampEnabledFromStorage(stored: string | null): boolean {
 /**
  * Optional pre-print setup steps.
  *
- * `object` is the klipper object the command needs. Regolith checks the live
- * object list first and skips the step when the object is missing, because
- * printers vary: KAMP here is driven by output pins, other setups use macro
- * variables, and plenty of printers have neither.
+ * Two kinds, because two different subsystems own the state:
+ *
+ *  - `gcode` — `object` is the klipper object the command needs. Regolith
+ *    checks the live object list first and skips the step when the object is
+ *    missing, because printers vary: KAMP here is driven by output pins,
+ *    other setups use macro variables, and plenty of printers have neither.
+ *  - `http` — a Moonraker REST write, for state klipper does not hold. Gated
+ *    by the client exposing the call at all, never by the klipper object list.
  *
  * These steps are conveniences. None of them may ever stop a print — see
  * `applyPrintSetup`.
  */
-const PRINT_SETUP_STEPS: Record<
-  PrintSetupOption,
-  { object: string; gcode: string }
-> = {
+type PrintSetupStep =
+  | { kind: "gcode"; object: string; gcode: string }
+  | {
+      kind: "http";
+      /** Shown to the owner, non-blocking, only when the write FAILED. */
+      notice: string;
+      run: (client: PrinterActionClient) => Promise<void>;
+    };
+
+const KAMP_STEPS: Record<"kamp-on" | "kamp-off", PrintSetupStep> = {
   "kamp-on": {
+    kind: "gcode",
     object: "output_pin ADAPTIVE_BED_MESH",
     gcode: "SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1",
   },
   "kamp-off": {
+    kind: "gcode",
     object: "output_pin ADAPTIVE_BED_MESH",
     gcode: "SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=0",
   },
 };
+
+/**
+ * Resolve one owner choice into the step that carries it out, or null when
+ * this build/printer has no way to honour it.
+ *
+ * The timelapse write goes out on EVERY start, in both directions. Moonraker
+ * holds a single global `enabled` flag that Fluidd and the stock touchscreen
+ * share, so the state left behind by the last thing to touch it is never
+ * something to assume — "do not record this one" has to be asserted.
+ */
+function resolveSetupStep(option: PrintSetupOption): PrintSetupStep | null {
+  if (option === "kamp-on" || option === "kamp-off") return KAMP_STEPS[option];
+  if (option && typeof option === "object" && option.kind === "timelapse") {
+    const patch = timelapseSettingsWrite(option.enabled, option.mode);
+    return {
+      kind: "http",
+      notice: option.enabled
+        ? "The printer did not accept the timelapse setting, so this print is not being recorded."
+        : "The printer did not accept the timelapse setting, so a previously enabled timelapse may still be recording.",
+      run: async (client) => {
+        // Absent on hosts without the timelapse component. Nothing to do,
+        // and nothing to report: the feature simply is not there.
+        if (!client.writeTimelapseSettings) return;
+        await client.writeTimelapseSettings(patch);
+      },
+    };
+  }
+  return null;
+}
 
 /**
  * Chamber light.
@@ -115,6 +170,13 @@ export interface PrinterActionClient {
   emergencyStop(): Promise<void>;
   restart(): Promise<void>;
   firmwareRestart(): Promise<void>;
+  /**
+   * Optional: `POST /machine/timelapse/settings`. Absent on hosts without
+   * moonraker-timelapse, in which case the timelapse setup step is a no-op.
+   */
+  writeTimelapseSettings?(
+    patch: Record<string, string | number | boolean>,
+  ): Promise<unknown>;
 }
 
 export interface ActionCheck {
@@ -483,44 +545,83 @@ function actionKey(action: PrinterAction): string {
  * Apply optional pre-print setup. NEVER THROWS.
  *
  * Every step here is a nicety. A missing klipper object, an unsupported
- * command, or a printer that rejects the command must leave the print
- * unaffected — the user asked to print, not to configure.
+ * command, an unreachable REST endpoint, or a printer that rejects the write
+ * must leave the print unaffected — the user asked to print, not to
+ * configure. That guarantee covers the HTTP step exactly as it covers the
+ * gcode ones: a timelapse that could not be armed is a note, never a refusal.
  *
  * Regolith used to send `SET_GCODE_VARIABLE MACRO=PRINT_START
  * VARIABLE=use_kamp` and abort the print when it failed. The K1 Max has no
  * `PRINT_START` macro (its start macro is `START_PRINT`) and no `use_kamp`
  * variable, so klipper rejected the mux key and every single print was
  * blocked. Both the wrong target and the fatal handling are fixed here.
+ *
+ * Returns what could not be done, so the caller can say so WITHOUT turning it
+ * into an error. An empty array means every requested step landed (or was
+ * legitimately skipped as unsupported).
  */
 async function applyPrintSetup(
   client: PrinterActionClient,
   setup: PrintSetupOption[],
-): Promise<void> {
-  if (setup.length === 0) return;
+): Promise<string[]> {
+  const notices: string[] = [];
+  if (setup.length === 0) return notices;
 
-  let objects: string[];
-  try {
-    objects = await client.listObjects();
-  } catch {
-    // Cannot confirm what this printer supports, so send nothing.
-    return;
-  }
+  const steps = setup
+    .map(resolveSetupStep)
+    .filter((step): step is PrintSetupStep => step !== null);
+  if (steps.length === 0) return notices;
 
-  for (const option of setup) {
-    const step = PRINT_SETUP_STEPS[option];
-    if (!step || !objects.includes(step.object)) continue;
+  // Only asked for when a gcode step actually needs it, and a failure to read
+  // it never suppresses the HTTP steps — they do not depend on klipper.
+  let objects: string[] | null = null;
+  if (steps.some((step) => step.kind === "gcode")) {
     try {
-      await client.runGcode(step.gcode);
+      objects = await client.listObjects();
     } catch {
-      // Optional step. Keep going and start the print.
+      // Cannot confirm what this printer supports, so send no gcode.
+      objects = null;
     }
   }
+
+  for (const step of steps) {
+    if (step.kind === "gcode") {
+      if (!objects || !objects.includes(step.object)) continue;
+      try {
+        await client.runGcode(step.gcode);
+      } catch {
+        // Optional step. Keep going and start the print.
+      }
+      continue;
+    }
+    try {
+      await step.run(client);
+    } catch {
+      // Optional step. Keep going and start the print — and tell the owner
+      // afterwards, because a timelapse silently not recording is exactly the
+      // failure this whole feature exists to avoid.
+      notices.push(step.notice);
+    }
+  }
+  return notices;
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message
     ? error.message
     : "Printer did not provide an error message.";
+}
+
+/**
+ * What a dispatched action did.
+ *
+ * `notices` appears only when an OPTIONAL step could not be carried out while
+ * the action itself succeeded. It is deliberately not an error: the print
+ * started, and the owner is told what it started without.
+ */
+export interface PrinterActionResult {
+  executed: boolean;
+  notices?: string[];
 }
 
 export function createPrinterActionRunner(client: PrinterActionClient) {
@@ -531,7 +632,7 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
     options: {
       confirm?: (details: ActionConfirmation) => boolean | Promise<boolean>;
     } = {},
-  ): Promise<{ executed: boolean }> {
+  ): Promise<PrinterActionResult> {
     const key = actionKey(action);
     if (inFlight.has(key)) {
       throw new PrinterActionError(
@@ -563,11 +664,12 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
         );
       }
 
+      let setupNotices: string[] = [];
       try {
         switch (action.type) {
           case "start-print":
             // Best-effort only. Cannot throw, so it cannot block the print.
-            await applyPrintSetup(client, action.setup);
+            setupNotices = await applyPrintSetup(client, action.setup);
             {
               // Setup takes time on the wire; re-gate on live state.
               const startCheck = guardPrinterAction(
@@ -656,7 +758,9 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
         );
       }
 
-      return { executed: true };
+      return setupNotices.length > 0
+        ? { executed: true, notices: setupNotices }
+        : { executed: true };
     } finally {
       inFlight.delete(key);
     }

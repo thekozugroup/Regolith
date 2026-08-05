@@ -17,10 +17,17 @@ import {
   jitteredDelay,
   moonrakerReconnectDelay,
 } from "./retry";
+import {
+  NO_TIMELAPSE_ACTIVITY,
+  reduceTimelapseEvent,
+  type TimelapseActivity,
+  type TimelapseEvent,
+} from "./timelapse";
 
 type SubscriptionCallback = (state: PrinterState) => void;
 type ConnectionCallback = (connected: boolean) => void;
 type GcodeLogCallback = (lines: GcodeLine[]) => void;
+type TimelapseCallback = (activity: TimelapseActivity) => void;
 
 /**
  * What the link is actually doing, as opposed to what `readyState` claims.
@@ -218,6 +225,8 @@ export class Moonraker {
   private manuallyDisconnected = false;
   private gcodeLog: GcodeLine[] = [];
   private static MAX_LOG = 200;
+  private timelapse: TimelapseActivity = NO_TIMELAPSE_ACTIVITY;
+  private timelapseSubs = new Set<TimelapseCallback>();
   private linkSubs = new Set<LinkStateCallback>();
   private linkState: LinkState = "down";
   /** When the current socket was created — drives the CONNECTING timeout. */
@@ -541,9 +550,42 @@ export class Moonraker {
     } else if (msg.method === "notify_gcode_response") {
       const [text] = msg.params as [string];
       this.appendGcodeLine({ ts: Date.now(), text, type: "response" });
+    } else if (msg.method === "notify_timelapse_event") {
+      // moonraker-timelapse pushes both `newframe` and `render` through this
+      // one notification. The reducer is total, so a payload shape this build
+      // does not recognize leaves the cockpit readout untouched.
+      const [event] = (msg.params ?? []) as [TimelapseEvent | undefined];
+      this.setTimelapseActivity(
+        reduceTimelapseEvent(this.timelapse, event, Date.now()),
+      );
     } else if (msg.method === "notify_proc_stat_update") {
       // ignore — high frequency
     }
+  }
+
+  private setTimelapseActivity(next: TimelapseActivity): void {
+    if (next === this.timelapse) return;
+    this.timelapse = next;
+    this.timelapseSubs.forEach((cb) => cb(next));
+  }
+
+  /**
+   * Live capture state — frame count and render progress.
+   *
+   * Deliberately NOT "is timelapse enabled": that is a global setting shared
+   * with every other UI on the machine and it is true on printers that have
+   * never captured a frame. See `isRecordingNow` in lib/timelapse.ts.
+   */
+  getTimelapseActivity(): TimelapseActivity {
+    return this.timelapse;
+  }
+
+  onTimelapseActivity(cb: TimelapseCallback): () => void {
+    this.timelapseSubs.add(cb);
+    cb(this.timelapse);
+    return () => {
+      this.timelapseSubs.delete(cb);
+    };
   }
 
   private appendGcodeLine(line: GcodeLine): void {
@@ -753,11 +795,70 @@ export class Moonraker {
     return data.result;
   }
 
+  // ----- Timelapse (moonraker-timelapse component, REST) -----
+  //
+  // These endpoints exist only when the component is installed. Every caller
+  // must treat a rejection as "this printer cannot do timelapses" and carry
+  // on — most importantly `applyPrintSetup`, which may never block a print.
+  // `snapshoturl` is refused by the plugin itself and is never written here.
+
+  async getTimelapseSettings(): Promise<TimelapseSettings> {
+    const response = await fetch(`${HTTP_BASE}/machine/timelapse/settings`);
+    if (!response.ok) {
+      throw new Error(`Timelapse settings unavailable (HTTP ${response.status}).`);
+    }
+    const data = (await response.json()) as { result?: TimelapseSettings };
+    return data.result ?? {};
+  }
+
+  /** Flat JSON body of only the keys to change; returns the updated config. */
+  async writeTimelapseSettings(
+    patch: Record<string, string | number | boolean>,
+  ): Promise<TimelapseSettings> {
+    const response = await fetch(`${HTTP_BASE}/machine/timelapse/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!response.ok) {
+      throw new Error(`Timelapse settings write failed (HTTP ${response.status}).`);
+    }
+    const data = (await response.json()) as { result?: TimelapseSettings };
+    return data.result ?? {};
+  }
+
+  /** Manual re-render. Autorender already fires on print completion. */
+  async renderTimelapse(): Promise<void> {
+    const response = await fetch(`${HTTP_BASE}/machine/timelapse/render`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Timelapse render failed (HTTP ${response.status}).`);
+    }
+  }
+
   // NOTE: there is deliberately NO thumbnailUrl() helper here. The flat
   // Fluidd guess (`.thumbs/<basename>-NxN.png` percent-encoded at the gcode
   // root) can never resolve for nested files and 404s for every thumbless
   // one. Previews are resolved from what `/server/files/metadata` REPORTS,
   // via `thumbnailUrlFor()` in src/lib/thumbnails.ts.
+}
+
+/**
+ * moonraker-timelapse configuration, as the plugin reports it.
+ *
+ * Loosely typed on purpose: the payload carries ~35 keys across several
+ * plugin versions and Regolith reads three of them. An index signature keeps
+ * an unfamiliar build from failing to parse.
+ */
+export interface TimelapseSettings {
+  enabled?: boolean;
+  mode?: string;
+  hyperlapse_cycle?: number;
+  autorender?: boolean;
+  parkhead?: boolean;
+  output_framerate?: number;
+  [key: string]: unknown;
 }
 
 export interface MoonrakerFile {

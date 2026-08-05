@@ -44,10 +44,17 @@ function client(
 ): PrinterActionClient & {
   state: PrinterState;
   calls: string[];
+  timelapseWrites: Array<Record<string, string | number | boolean>>;
 } {
   return {
     state: initialState,
     calls: [],
+    timelapseWrites: [],
+    async writeTimelapseSettings(patch) {
+      this.timelapseWrites.push(patch);
+      this.calls.push(`timelapse:${JSON.stringify(patch)}`);
+      return patch;
+    },
     getState() {
       return this.state;
     },
@@ -178,10 +185,24 @@ describe("printer action safety", () => {
   // a macro this printer does not have (PRINT_START) makes klipper reject the
   // request, which used to abort every print. Never send it again.
   test("never targets a PRINT_START macro during print setup", async () => {
+    const TIMELAPSE_ON = {
+      kind: "timelapse",
+      enabled: true,
+      mode: "hyperlapse",
+    } as const;
+    const TIMELAPSE_OFF = {
+      kind: "timelapse",
+      enabled: false,
+      mode: "hyperlapse",
+    } as const;
     for (const setup of [
       ["kamp-on"],
       ["kamp-off"],
       ["kamp-on", "kamp-off"],
+      [TIMELAPSE_ON],
+      [TIMELAPSE_OFF],
+      ["kamp-on", TIMELAPSE_ON],
+      ["kamp-off", TIMELAPSE_OFF],
     ] as const) {
       const fake = client();
       await createPrinterActionRunner(fake)(
@@ -193,6 +214,11 @@ describe("printer action safety", () => {
         expect(call).not.toContain("PRINT_START");
         expect(call).not.toContain("SET_GCODE_VARIABLE");
         expect(call).not.toContain("use_kamp");
+      }
+      // ADAPTIVE_BED_MESH stays the KAMP mechanism, and nothing about
+      // timelapse may displace it.
+      if (setup.some((option) => option === "kamp-on")) {
+        expect(fake.calls).toContain("gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1");
       }
     }
   });
@@ -315,6 +341,170 @@ describe("adaptive bed mesh default", () => {
   test("garbage in storage falls back to the QoL default, ON", () => {
     expect(kampEnabledFromStorage("")).toBe(true);
     expect(kampEnabledFromStorage("false")).toBe(true);
+  });
+});
+
+describe("per-print timelapse setup", () => {
+  const ON = { kind: "timelapse", enabled: true, mode: "hyperlapse" } as const;
+  const OFF = { kind: "timelapse", enabled: false, mode: "hyperlapse" } as const;
+
+  // The setting is ONE global value in Moonraker's database, shared with
+  // Fluidd and the stock touchscreen. Whatever the last thing to touch it
+  // left behind is never safe to assume, so both directions are asserted on
+  // every start — a print the owner did not want recorded must actively turn
+  // recording off.
+  test("writes on every start, in both directions", async () => {
+    const on = client();
+    await createPrinterActionRunner(on)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(on.timelapseWrites).toEqual([{ enabled: true, mode: "hyperlapse" }]);
+    expect(on.calls.at(-1)).toBe("start:part.gcode");
+
+    const off = client();
+    await createPrinterActionRunner(off)(
+      { type: "start-print", filename: "part.gcode", setup: [OFF] },
+      { confirm: () => true },
+    );
+    expect(off.timelapseWrites).toEqual([{ enabled: false }]);
+    expect(off.calls.at(-1)).toBe("start:part.gcode");
+  });
+
+  // Enabling from the UI must carry the mode with it, or the owner gets a
+  // switch that is on while the printer is in a mode that captures nothing.
+  test("an enable carries the chosen mode; a deliberate layermacro is honoured", async () => {
+    const fake = client();
+    await createPrinterActionRunner(fake)(
+      {
+        type: "start-print",
+        filename: "part.gcode",
+        setup: [{ kind: "timelapse", enabled: true, mode: "layermacro" }],
+      },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites).toEqual([
+      { enabled: true, mode: "layermacro" },
+    ]);
+  });
+
+  // THE LAW: applyPrintSetup NEVER THROWS, and that guarantee now covers an
+  // HTTP step exactly as it covers a gcode one.
+  test("a rejected settings write still starts the print, and says so", async () => {
+    const fake = client();
+    fake.writeTimelapseSettings = async () => {
+      throw new Error("HTTP 500");
+    };
+    const result = await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls).toEqual(["start:part.gcode"]);
+    expect(result.notices?.length).toBe(1);
+    expect(result.notices?.[0]).toContain("not being recorded");
+  });
+
+  test("a write that hangs up on the socket still starts the print", async () => {
+    for (const thrown of [
+      new Error("Failed to fetch"),
+      new Error("Timelapse settings write failed (HTTP 404)."),
+      "not even an error",
+    ]) {
+      const fake = client();
+      fake.writeTimelapseSettings = async () => {
+        throw thrown;
+      };
+      const result = await createPrinterActionRunner(fake)(
+        { type: "start-print", filename: "part.gcode", setup: [ON, "kamp-on"] },
+        { confirm: () => true },
+      );
+      expect(result.executed).toBe(true);
+      expect(fake.calls).toContain("start:part.gcode");
+    }
+  });
+
+  test("a failed disable warns that a previous timelapse may still run", async () => {
+    const fake = client();
+    fake.writeTimelapseSettings = async () => {
+      throw new Error("HTTP 503");
+    };
+    const result = await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [OFF] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(result.notices?.[0]).toContain("may still be recording");
+  });
+
+  // A host without moonraker-timelapse simply has no such call. That is not
+  // a failure and must not be reported as one.
+  test("a host without the timelapse API sends nothing and reports nothing", async () => {
+    const fake = client();
+    delete (fake as { writeTimelapseSettings?: unknown }).writeTimelapseSettings;
+    const result = await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(result).toEqual({ executed: true });
+    expect(fake.calls).toEqual(["start:part.gcode"]);
+  });
+
+  // The klipper object list gates GCODE steps. A timelapse write is a
+  // Moonraker REST call and does not depend on klipper at all, so an
+  // unreadable object list must not silently suppress it.
+  test("an unreadable klipper object list does not suppress the settings write", async () => {
+    const fake = client();
+    fake.listObjects = async () => {
+      throw new Error("RPC timeout: printer.objects.list");
+    };
+    await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on", ON] },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites).toEqual([{ enabled: true, mode: "hyperlapse" }]);
+    // ...while the gcode step it COULD not confirm stays unsent.
+    expect(fake.calls).not.toContain("gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1");
+    expect(fake.calls).toContain("start:part.gcode");
+  });
+
+  test("the write lands before the print starts, never after", async () => {
+    const fake = client();
+    await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on", ON] },
+      { confirm: () => true },
+    );
+    expect(fake.calls).toEqual([
+      "gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1",
+      'timelapse:{"enabled":true,"mode":"hyperlapse"}',
+      "start:part.gcode",
+    ]);
+  });
+
+  test("a print blocked after setup reports no success notice", async () => {
+    const fake = client();
+    fake.writeTimelapseSettings = async () => {
+      fake.state = readyState({
+        print_stats: { state: "printing", filename: "other.gcode" },
+      });
+      throw new Error("HTTP 500");
+    };
+    await expect(
+      createPrinterActionRunner(fake)(
+        { type: "start-print", filename: "part.gcode", setup: [ON] },
+        { confirm: () => true },
+      ),
+    ).rejects.toThrow("state changed during setup");
+    expect(fake.calls).not.toContain("start:part.gcode");
+  });
+
+  test("a repeat-print carries no setup and writes nothing", async () => {
+    const fake = client();
+    await createPrinterActionRunner(fake)(
+      { type: "repeat-print", filename: "part.gcode" },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites).toEqual([]);
   });
 });
 
