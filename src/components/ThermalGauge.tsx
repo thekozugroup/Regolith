@@ -61,8 +61,14 @@ export function ThermalGauge({
         </span>
       </div>
 
-      {/* Dial renderer — shown only when the instrument is ≥148px wide */}
-      <div className="dial-slot mt-3">
+      {/* Dial renderer — shown only when the instrument is ≥148px wide.
+          NO top margin: the dial's own viewBox already carries ~20 units of
+          dead band above the arc, and a margin on top of that padding was
+          exactly what broke the owner's square. `.thermal-instrument >
+          .dial-slot { margin-block: auto }` owns the spacing now — it
+          centers whatever slack the square leaves, and collapses to nothing
+          when the tile is at the 148px floor and has none to give. */}
+      <div className="dial-slot">
         <Dial actual={actual} target={setpoint} power={power} maxTemp={maxTemp} />
       </div>
 

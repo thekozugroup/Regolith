@@ -796,14 +796,21 @@
     container-type: inline-size;
     padding: 0;
     /* The owner's "digital dashboard squares": each thermal instrument is a
-       square module. aspect-ratio is a PREFERENCE — when the tile is too
-       narrow for its content (the 148px floor arithmetic, the 800x480
-       panel), content height wins and every measured floor stands. */
+       square module. aspect-ratio is a PREFERENCE — content height can still
+       win — so the tile's content budget must FIT the square at every width
+       the dial renders at, or the preference silently loses and the module
+       is no longer square. It does: header (16.5px) + dial (0.86 x width,
+       the 200:172 viewBox) <= width for every width >= 118px, comfortably
+       under the 148px dial floor. Nothing may be added between them without
+       redoing that arithmetic — a 12px slot margin used to live here and
+       cost the floor case 5% of its square. */
     aspect-ratio: 1;
     display: flex;
     flex-direction: column;
   }
-  /* Square slack centers on the instrument, never pools below it. */
+  /* Square slack centers on the instrument, never pools below it. Utilities
+     outrank this layer, so the slot must carry NO margin utility of its own
+     (see ThermalGauge.tsx) or `auto` never gets to run. */
   .thermal-instrument > .dial-slot { margin-block: auto; }
   .dial-slot { display: none; }
   @container (min-width: 148px) {

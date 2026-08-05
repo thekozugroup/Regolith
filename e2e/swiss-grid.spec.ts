@@ -263,24 +263,92 @@ test.describe("Swiss grid — alignment and floors", () => {
           `tile ${tile.width}x${tile.height} must stay square at ${viewport.width}`,
         ).toBeLessThanOrEqual(0.02);
       }
-      // The dial svg keeps its authored 200:172 viewBox ratio — squares may
-      // never be bought by stretching the instrument art.
+      // The dial svg keeps its OWN authored viewBox ratio — squares may
+      // never be bought by stretching the instrument art. Read the ratio off
+      // the element rather than hardcoding it: the law is "render matches
+      // what was authored", and a hardcoded pair silently stops testing that
+      // the day the viewBox is retuned.
       const dials = await page
         .locator(".gauge-dial:visible")
         .evaluateAll((items) =>
           items.map((dial) => {
             const box = dial.getBoundingClientRect();
-            return box.width / box.height;
+            const [, , vbW, vbH] = (dial.getAttribute("viewBox") ?? "")
+              .split(/[\s,]+/)
+              .map(Number);
+            return { rendered: box.width / box.height, authored: vbW / vbH };
           }),
         );
       expect(dials.length).toBe(2);
-      for (const ratio of dials) {
+      for (const { rendered, authored } of dials) {
+        expect(Number.isFinite(authored), "the dial must carry a readable viewBox").toBe(true);
         expect(
-          Math.abs(ratio - 200 / 172) / (200 / 172),
-          `dial render ratio ${ratio.toFixed(3)} must match the authored viewBox at ${viewport.width}`,
+          Math.abs(rendered - authored) / authored,
+          `dial render ratio ${rendered.toFixed(3)} must match the authored viewBox ${authored.toFixed(3)} at ${viewport.width}`,
         ).toBeLessThanOrEqual(0.02);
       }
     }
+    mock.assertSealed();
+  });
+
+  /**
+   * The square law above only ever looked at comfortable widths — and a
+   * comfortable width is precisely where the square is FREE, because the
+   * tile has slack to give. The square is expensive at the FLOOR: the width
+   * where the two-up thermal grid is tightest and the dial is closest to its
+   * 148px minimum. That case shipped at 149.0 x 156.6 (5% off square, an
+   * owner-protected property) while this file reported green, because 1280
+   * and 2560 were the only widths asked.
+   *
+   * So sweep. Every 16px from 320 to 2560, reloading at each step (resizing
+   * alone leaves JS-driven chrome stale and measures a layout that never
+   * existed), and prove the sweep actually reached the floor rather than
+   * skating over it.
+   */
+  test("dial modules stay square at the FLOOR too, not just at comfortable widths", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: idleState });
+    let narrowest = Number.POSITIVE_INFINITY;
+    let narrowestAt = "";
+    let smallestDial = Number.POSITIVE_INFINITY;
+    for (let width = 320; width <= 2560; width += 16) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      await expect(page.locator(".thermal-instrument")).toHaveCount(2);
+      const tiles = await page.locator(".thermal-instrument:visible").evaluateAll((items) =>
+        items.map((tile) => {
+          const box = tile.getBoundingClientRect();
+          const dial = tile.querySelector(".gauge-dial")?.getBoundingClientRect();
+          return { width: box.width, height: box.height, dial: dial?.width ?? 0 };
+        }),
+      );
+      expect(tiles.length, `${width}: both instruments render`).toBe(2);
+      for (const tile of tiles) {
+        expect(
+          Math.abs(tile.width - tile.height) / tile.width,
+          `tile ${tile.width.toFixed(2)}x${tile.height.toFixed(2)} must stay square at ${width}`,
+        ).toBeLessThanOrEqual(0.02);
+        if (tile.width < narrowest) {
+          narrowest = tile.width;
+          narrowestAt = `${width}`;
+        }
+        // A square bought by dropping under the dial floor is not a fix.
+        if (tile.dial > 0) smallestDial = Math.min(smallestDial, tile.dial);
+      }
+    }
+    // The sweep must genuinely reach the tight two-up case — otherwise this
+    // test degrades back into the comfortable-width check it replaced.
+    expect(
+      narrowest,
+      `the sweep must exercise a near-floor tile (narrowest was ${narrowest.toFixed(2)} at ${narrowestAt})`,
+    ).toBeLessThanOrEqual(155);
+    expect(
+      smallestDial,
+      `the narrowest rendered dial (${smallestDial.toFixed(2)}) must still clear the 148px floor`,
+    ).toBeGreaterThanOrEqual(148);
     mock.assertSealed();
   });
 
