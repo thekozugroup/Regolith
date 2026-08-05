@@ -1425,3 +1425,58 @@ Keep both byte-for-byte unchanged, untracked, and unstaged.
 1. Rotate the exposed historical printer password; decide whether coordinated history rewriting is worth clone disruption.
 2. Keep using fresh guided Check, identity, idle, inactive, zero-target, zero-power, backup, and rollback gates for every later deployment. Recheck exact hashes and zero-write browser QA after each successful static swap; roll back only on deployment verification failure.
 3. Produce a prebuilt macOS-friendly release path; sign and notarize when credentials are available.
+
+## Deployment record — 2026-08-05, HEAD `1c50adf`
+
+Deployed under the standing owner authorization after the `1c50adf` gate
+(SAFE TO DEPLOY: YES; `1c50adf` is the gate's own record commit on top of
+`801711b`). Host addressed as `<printer-host>` throughout. `deploy.sh` only,
+no config/service/watchdog contact, no print started.
+
+- Preflight: `./deploy.sh --preflight` exit 0 (auth via `sshpass -e`,
+  printer conclusively idle: `cancelled`, `Idle`).
+- Rollback anchor (pre-deploy): live `index.html` sha256 `9843e57…`,
+  `fluidd.previous` present at `a604786…`, newest backup
+  `fluidd-before-20260805T003545Z.tgz`.
+- Double idle check immediately before deploy, two Moonraker samples 10s
+  apart: klipper `ready`, print `cancelled`, idle_timeout `Idle`,
+  virtual_sdcard inactive, extruder target 0, bed target 0, toolhead
+  live_position byte-identical across samples. PROCEED.
+- Deploy: `./deploy.sh` exit 0 (bash-captured). Local gates inside the
+  script: eslint clean, 358 unit tests pass / 0 fail, production build OK.
+  Persistent backup `fluidd-before-20260805T044530Z.tgz` size 270508
+  files 34, retained 5 / pruned 1. Atomic swap OK, every referenced asset
+  HTTP-verified, staging slot and upload archive removed.
+- On-device verify (Chromium via SSH tunnel `127.0.0.1:18080→:80`, camera
+  `8080→:8080`), 1280x800 and 800x480, screenshots in the session
+  scratchpad (`live-1c50adf-{1280x800,800x480}.png`):
+  - Telemetry label row alignment: every row measured, label tops
+    byte-equal within each row — maxDelta 0.0px in all 7 rows (1280x800,
+    two-column) and all 13 rows (800x480, single-column).
+  - Mission Status header action cluster (`Print again`): insets vs
+    header padding — 1280x800 pad 12.8, gaps right/top/bottom
+    12.8/12.8/13.8 (bottom includes the header's 1px border ⇒ 12.8);
+    800x480 pad 10, gaps 10/10/11 (⇒ 10). Even within the law's 1px.
+  - Bed Power: half-width tile at 1280x800 (gauge 234.2px in a 481.2px
+    grid); at 800x480 the whole telemetry grid is a single 363px column
+    and Bed Power spans exactly its column like every sibling tile — no
+    distinguished full-width strip at either size.
+  - Print dialog (opened from Files via Start print; PRINT NOT sent;
+    closed via the X): `timelapse-toggle` present with "Record timelapse"
+    label at both sizes. Printer re-sampled idle afterward — unchanged.
+  - Tailscale panel (expert Settings): honest state — "Not reporting",
+    Last report "—", with the one-time on-printer setup text; no
+    fabricated status.
+  - Flat grammar: all 13 telemetry tiles computed background
+    `rgba(0,0,0,0)` on ground `lab(2.75381 0 0)`; dials `filter: none`,
+    `box-shadow: none`; modules 234.2x234.2 (square) at 1280x800,
+    176.5x180.3 at 800x480 (documented aspect-ratio preference; width
+    above the 148px floor).
+  - Zero console errors, zero failed requests at both sizes.
+  - Live tick: 40 `notify_status_update` frames received during each 10s
+    observation window; readout text changed across the window.
+  - LINK: `Link Ready` in the mission bar, green.
+- Rollback armed: post-deploy `fluidd.previous/index.html` is exactly the
+  pre-deploy live sha `9843e57…`; live now `f600ff5…` = freshly built
+  `dist/index.html` byte-for-byte. Rollback command:
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
