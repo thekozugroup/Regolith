@@ -1,20 +1,16 @@
 /**
- * Track A — the calibrated estimate, and the assistant's default silence.
+ * Track A — the calibrated estimate.
  *
- * Two properties are pinned here:
- *
- *   1. The calibrated remaining time appears in the early-job window the
- *      measured extrapolation cannot serve, and it NEVER wears the styling of
- *      a measured value: `~` prefix, muted rather than accented, provenance
- *      in text. When the history endpoints are absent — which is the default
- *      in every other fixture in this suite — the panel reads `—` exactly as
- *      it always has.
- *   2. With no assistant key configured, no assistant affordance exists
- *      anywhere in the app. Not disabled, not a placeholder: absent.
+ * The calibrated remaining time appears in the early-job window the
+ * measured extrapolation cannot serve, and it NEVER wears the styling of
+ * a measured value: `~` prefix, muted rather than accented, provenance
+ * in text. When the history endpoints are absent — which is the default
+ * in every other fixture in this suite — the panel reads `—` exactly as
+ * it always has.
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { installActiveMock, useExperience } from "./support/active-state-harness";
+import { installActiveMock } from "./support/active-state-harness";
 import { scenario } from "./support/printer-scenarios";
 
 /** Mid-job fixture rewound to 45 s in — below both jobProgress trust floors. */
@@ -157,54 +153,6 @@ test.describe("Calibrated remaining time", () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("main [data-estimate='true']")).toHaveCount(0);
     await expect(remaining(page)).toContainText("—");
-    mock.assertSealed();
-  });
-});
-
-test.describe("Assistant defaults", () => {
-  test("no assistant affordance exists anywhere without a key", async ({
-    page,
-  }) => {
-    const mock = await open(page);
-    await expect(
-      page.locator("main").getByRole("heading", { name: "Mission Status" }),
-    ).toBeVisible({ timeout: 15_000 });
-
-    for (const path of ["/", "/console", "/files", "/tune"]) {
-      await page.goto(path);
-      await expect(page.locator("[data-ai-gloss]")).toHaveCount(0);
-      await expect(page.getByRole("button", { name: /Explain/i })).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: /Review failure log/i }),
-      ).toHaveCount(0);
-    }
-
-    mock.assertSealed();
-  });
-
-  test("the settings panel is opt-in: features are unreachable until configured", async ({
-    page,
-  }) => {
-    // The panel itself is an Expert surface (the API-key/endpoint fields are
-    // the app's only egress affordance); Basic-mode absence is pinned in
-    // e2e/regolith.spec.ts.
-    await useExperience(page, "expert");
-    const mock = await open(page, { path: "/settings" });
-    const card = page
-      .locator("section, article, div")
-      .filter({ has: page.getByRole("heading", { name: "Assistant" }) })
-      .first();
-    await expect(card).toBeVisible({ timeout: 15_000 });
-
-    // The honesty clause: the two default-on statistics are explicitly NOT
-    // part of this panel, and the copy must keep saying so.
-    await expect(card).toContainText("not part of this");
-    await expect(card).toContainText("never sent");
-
-    // Feature toggles are inside a disabled fieldset until endpoint + key.
-    const toggle = page.getByRole("button", { name: /Explain messages/i });
-    await expect(toggle).toBeDisabled();
-
     mock.assertSealed();
   });
 });

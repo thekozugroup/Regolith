@@ -12,7 +12,6 @@ import { ThemeSettings } from "@/components/ThemeSettings";
 import { BackupSettings } from "@/components/BackupSettings";
 import { ProfileSettings } from "@/components/ProfileSettings";
 import { ExperienceSettings } from "@/components/ExperienceSettings";
-import { AiSettings } from "@/components/AiSettings";
 import { TimelapseSettings } from "@/components/TimelapseSettings";
 import { TailscaleSettings } from "@/components/TailscaleSettings";
 import { useActionConfirm } from "@/components/useActionConfirm";
@@ -135,11 +134,6 @@ export function SettingsPage() {
       <ThemeSettings />
       {isExpert && <ProfileSettings />}
       {isExpert && <BackupSettings />}
-      {/* Opt-in, off by default, and the only outbound path in the app —
-          which is exactly why the affordance (API key + endpoint fields)
-          belongs behind Expert, like its neighbours above. Basic stays the
-          safe default surface. */}
-      {isExpert && <AiSettings />}
       {/* Capture mode is not an expert control: choosing it wrong is the
           difference between a timelapse and an empty folder, so it belongs
           wherever the owner turns recording on. */}

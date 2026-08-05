@@ -70,8 +70,8 @@ Binding design amendments from the SD1/Track A workflow (`d37c24d`…`79e8a0a`, 
 - **Derived concentric radius system (R4/R5).** Recorded in full under "UI and accessibility" above (2026-08-03 amendment): exactly two authored radii (`--radius-control`, `--radius-lamp`), every container radius derived as pad + inner, children consume `rounded-inner`. Supersedes the 6px-panel and 12px-corner prose. Two verified consequences: the system is concentric with respect to the PADDING box (a systematic, accepted +1.00px against the border box — do not "rediscover" it), and any surface whose real pad differs from its cascade default must override the pad token on the element (BrandLogo popover: `--modal-pad: 0.5rem`; re-check the HealthAlerts toast, same class of mismatch).
 - **Tell-tale cluster (SD1 §3).** Eight lamps in severity order: THERMAL RUNAWAY, HEATER FAULT, FIRMWARE, LINK LOST, FAN FAULT, MCU HOT, MESH ACTIVE, HOMED XYZ. FILAMENT ships in code but the lamp exists only where the profile declares a physical sensor — the K1 Max base profile declares none, pending a live probe of the machine (an unlit lamp would promise monitoring that is not happening). MAINTENANCE is deferred (P2): no honest data source exists in push state. Every lamp carries three channels (shape, icon, always-visible 11px label); the unlit outline is `--color-gauge-tick` (4.071:1 on the cell well — the 3:1 non-text floor is e2e-pinned); MCU HOT's warning→error escalation carries a CRIT text affix, never color alone.
 - **Collapsible sidebar.** Desk-only icon rail with persisted preference; the `desk` HEIGHT-GATE OUTRANKS THE PREFERENCE — the K1's 800x480 panel keeps touch chrome regardless of the stored collapse state (e2e-pinned). Above the dashboard shell's deliberate 2200px readability cap (viewports ≳2424px), collapsing the rail widens the centring margins rather than the dials — accepted trade, e2e-pinned, Sidebar docstring corrected.
-- **ETA calibration + thermal slope heuristics are ON BY DEFAULT and are NOT labeled AI.** Both are arithmetic over data the printer already sends, run entirely on the client, and must never be described as AI or gated behind the assistant flags. Calibrated values render visibly non-measured (`~` prefix, muted, always-visible provenance text — never hover-only) and fail closed to the placeholder; the calibrated estimate is spent once the measured crossfade completes (never leaks past 100% progress).
-- **AI gateway is OFF BY DEFAULT behind a build-failing lint fence.** `src/lib/ai/**` may be imported only by its allowlisted consumers (`no-restricted-imports` + `tests/aiImportFence.test.ts`); every feature requires an owner-supplied endpoint + key; the key never proxies through the printer. The settings panel itself is an Expert surface (Basic never shows the key/endpoint affordance). Bundle verified 2026-08-03: the gateway is code-split — it lands in the lazy `flags`/`explain` chunks loaded only with route chunks (~2.2 kB gz total), and the eager index chunk contains zero AI code (only Vite's preload manifest reference).
+- **ETA calibration + thermal slope heuristics are ON BY DEFAULT and are NOT labeled AI.** Both are arithmetic over data the printer already sends, run entirely on the client, and must never be described as AI. Calibrated values render visibly non-measured (`~` prefix, muted, always-visible provenance text — never hover-only) and fail closed to the placeholder; the calibrated estimate is spent once the measured crossfade completes (never leaks past 100% progress). These two features deliberately survived the 2026-08-05 assistant removal (see "AI assistant removal" below) — they were never part of the assistant.
+- **AI gateway — REMOVED 2026-08-05 (superseded; see "AI assistant removal" below).** The gateway/flags/explain/post-mortem feature, its Settings panel, its lint fence, and its tests were removed at the owner's request. The historical design (off by default, build-failing import fence, owner-supplied endpoint + key, Expert-only panel, code-split off the cold path) is recorded in the removal entry for whenever it is restored.
 - **`--color-fg-subtle` is PROVISIONAL** at oklch(0.64 0 0) pending the WP-VERIFY contrast measurement pass; finalize from measurement, not taste.
 - **Open owner checkpoints (unanswered as of this ledger):**
   - (a) Neutral palette Variant A vs Variant B.
@@ -1480,3 +1480,51 @@ no config/service/watchdog contact, no print started.
   pre-deploy live sha `9843e57…`; live now `f600ff5…` = freshly built
   `dist/index.html` byte-for-byte. Rollback command:
   `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
+
+## AI assistant removal — 2026-08-05 (owner: "remove the assistant feature for now")
+
+The opt-in AI assistant (gateway + flags + explain + post-mortem) is removed
+in this commit, cleanly and reversibly. The feature last exists intact at sha
+`304afca` (this removal commit's parent); to restore it, `git revert` this
+removal commit, or cherry-pick the deleted files from `304afca`.
+
+Deleted (everything that existed only to serve the assistant):
+
+- `src/lib/ai/` — `gateway.ts`, `flags.ts`, `explain.ts`, `postmortem.ts`.
+- `src/components/AiGloss.tsx`, `AiPostMortem.tsx`, `AiSettings.tsx`.
+- The Settings mount (`{isExpert && <AiSettings />}`) — no empty section or
+  dangling expert-gated block remains; Backup and Tailscale close ranks.
+- MissionTimeline's lazy `AiGloss`/`AiPostMortem` chunk wiring, `explainLine`,
+  and the stopped-job gloss block; Console's explain affordance.
+- The ESLint safety fence (`no-restricted-imports` on `src/lib/ai/**`) and
+  `tests/aiImportFence.test.ts` — the fence guarded an import path that no
+  longer exists; a rule for deleted code is cruft. **If the assistant is
+  restored, restore the fence and its test in the same commit** — the fence
+  is the reason AI output could never reach the printer. Also removed the
+  `__*__` synthetic-file lint ignore that existed only for that test.
+- `tests/aiGateway.test.ts`.
+- e2e: the two "Assistant defaults" tests in `e2e/track-a.spec.ts`; the
+  Assistant-heading assertions in `e2e/regolith.spec.ts` (replaced with the
+  equivalent Expert-gating assertion on "Backup & Restore" so the Basic/Expert
+  toggle behaviour stays pinned); the four `forge.ai.*` corrupt-key seeds in
+  `e2e/resilience.spec.ts` (no reader exists any more).
+
+**e2e baseline: 214 → 212.** This is the one sanctioned shrink: exactly the
+two deleted "Assistant defaults" tests, nothing else. Recorded here so the
+new baseline is explicit and auditable, not silent erosion.
+
+**Deliberately NOT removed — the two default-on math features that were never
+labelled AI:** the calibrated ETA (`src/lib/jobProgress.ts` + job history
+calibration) and the thermal-slope heuristics feeding `src/lib/health.ts`.
+Both stay on by default. Verified after removal: `bun test` targeted run of
+`thermalSlope`/`jobProgress`/`jobCalibration`/`health` — 80 pass, 0 fail —
+and the three "Calibrated remaining time" e2e tests passed in the full run.
+
+localStorage: the persisted `forge.ai.{endpoint,key,model,disabled,feature.*}`
+keys become dead data. Existing values are left alone (harmless), but nothing
+reads them and no code path can resurrect the feature — verified against the
+built bundle: zero AI chunks in `dist/assets`, zero `forge.ai` references.
+
+Gates at this commit, all run to completion: `bun run lint` exit 0;
+`bun run test` 336 pass / 0 fail (26 files); `bun run test:e2e` 212 passed
+(10.5m), exit 0; `bun run build` exit 0.

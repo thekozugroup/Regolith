@@ -32,10 +32,6 @@ const CORRUPTED_KEYS: Record<string, string> = {
   "forge.printer.image": "{",
   "regolith.profile.active": "a-profile-that-was-deleted",
   "regolith.profile.custom": '{"not":"an array"}',
-  "forge.ai.disabled": "[]",
-  "forge.ai.endpoint": "{{{",
-  "forge.ai.feature.explain": "maybe",
-  "forge.ai.feature.postmortem": "null",
 };
 
 async function openDashboard(page: Page): Promise<ActiveMock> {
