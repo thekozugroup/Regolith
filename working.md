@@ -80,32 +80,36 @@ Binding design amendments from the SD1/Track A workflow (`d37c24d`…`79e8a0a`, 
   - (d) Camera/vision default-off override: explicit acknowledgment required before any camera-vision feature ships (no camera/vision code exists in v1; default is OFF).
 - **Still open:** rotate the historical printer password (see "Remaining issues" — unchanged, out of this workflow's scope, still recommended).
 
+## Record conventions
+
+Deploy and validation records below use placeholders: `<printer-host>` for the printer's address and `<accepted-host-fingerprint>` for its SSH host key. Supply the real values at runtime (`PRINTER_HOST=... ./deploy.sh`, plus `PRINTER_USER`, `FLUIDD_ROOT`, and `WEBUI_DIR` if your printer differs from the defaults — see README “Any Klipper printer”). Never commit host-specific addresses, host keys, or credentials: Regolith targets any Klipper printer, and machine-specific values belong in your shell environment or an ignored `.env.local`.
+
 ## Live printer validation — 2026-08-02, `93fcf9b`
 
-- Latest release attempt stopped before authentication or writes: `forge.local` freshly resolved to `192.168.50.179`, its ECDSA fingerprint exactly matched accepted `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`, then a read-only Moonraker query found the active `Ivar_Skadis_Hook_PETG_34m53s.gcode` print described above. The guarded installer, backup inspection, static swap, live browser checks, and camera hold were not run.
+- Latest release attempt stopped before authentication or writes: `forge.local` freshly resolved to `<printer-host>`, its ECDSA fingerprint exactly matched the accepted host key (`<accepted-host-fingerprint>`), then a read-only Moonraker query found the active `Ivar_Skadis_Hook_PETG_34m53s.gcode` print described above. The guarded installer, backup inspection, static swap, live browser checks, and camera hold were not run.
 - Target: Creality K1 Max (`# K1-MAX`, 300 x 300 x 300 mm in `printer.cfg`). Firmware `1.3.5.19`; board `CR4CU220812S11`; Moonraker `v0.10.0-19-g1ed102e` / API `1.5.0`; Klipper reported ready.
 - Pre-deploy gate: `print_stats.state=standby`, empty filename/message, `idle_timeout.state=Ready`, `virtual_sdcard.is_active=false`, and no active file.
 - No hardware actions occurred: no G-code, motion, homing, heating, extrusion, fan/light, print control, calibration, firmware update, service restart, or config write.
-- `forge.local` SSH succeeded but the first HTTP gate failed closed when macOS mDNS timed out. A fresh resolver lookup returned `192.168.50.179`; its ECDSA host key matched accepted `forge.local` byte-for-byte before use.
+- `forge.local` SSH succeeded but the first HTTP gate failed closed when macOS mDNS timed out. A fresh resolver lookup returned `<printer-host>`; its ECDSA host key matched accepted `forge.local` byte-for-byte before use.
 - Read-only preflight through the fingerprint-matched resolver address passed with ready/standby/Ready/inactive state and changed no remote files.
 - The new `Install Regolith.command --check` path discovered the ECDSA fingerprint, matched it against the saved known host, explained its read-only scope, and passed preflight without changing remote files.
-- Guided deployment archive: 141,305 bytes, SHA-256 `0bbd55e25e5ba16fec6015196615aef1e8de577bf20174fe09c5126be9130c25`.
+- Guided deployment archive: 141,305 bytes, SHA-256 `0bbd55e25e5b…0c25`.
 - Routes `/`, `/settings`, `/print`, `/control`, `/tune`, `/timelapses`, and `/console` returned HTTP 200. Printer, system, and server APIs returned HTTP 200; browser WebSocket opened successfully.
 - Live browser smoke passed every Basic and Expert route at 1440x1000 and 390x844. Each had one page title, zero overflow, and zero visible targets below 44px. The real camera remained Live with no new request during a 15-second hold. There were zero write requests, bad responses, request failures, console errors, or page exceptions. No control was clicked.
 - Rollback ready: the previously verified UI remains in `/usr/data/fluidd.previous`.
-- Latest persistent verified backup: `/usr/data/regolith-backups/fluidd-before-20260802T180532Z.tgz`, 140,357 bytes, SHA-256 `62fca6533c1195b5f48062a09fe639a3d7cd62256ea4914013f159fbd9ded0c2`, 21 entries. Five archives remain; this deployment pruned none.
+- Latest persistent verified backup: `/usr/data/regolith-backups/fluidd-before-20260802T180532Z.tgz`, 140,357 bytes, SHA-256 `62fca6533c11…d0c2`, 21 entries. Five archives remain; this deployment pruned none.
 - A later read-only preflight for `f2acff5` stopped before writes when `idle_timeout.state=Printing`. A print then failed at 0.15% with `Unknown gcode_macro variable 'user_flag'`. Root cause was a stale KAMP `Start_Print.cfg` symlink pointing at the Ender-3 V3 macro instead of the K1 macro. The printer-side repair was backed up under `/usr/data/printer_data/config/.regolith-repair-backups/20260802T193155Z`, applied as an atomic reversible symlink retarget, and verified before retrying.
 - `Skadis Ivar Halter_PETG_2h49m.gcode` then completed at 100% with the full `11,348,737/11,348,737` byte count. A subsequent 12-minute read-only watch found virtual SD inactive, Klipper ready, Idle, zero heater targets/power, no new errors, and a stable camera stream. Fresh gates are still mandatory before deployment.
-- Accepted ECDSA fingerprint remains `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k`. Never use a resolver fallback without matching it first.
+- The accepted ECDSA fingerprint is unchanged; it lives in your own `known_hosts`, not in this repo. Never use a resolver fallback without matching it first.
 
 ## Live exact-current release — 2026-08-02, `5826002`
 
-- `forge.local` freshly resolved to `192.168.50.179`; a new ECDSA scan exactly matched accepted fingerprint `SHA256:43wgMSNzgWwHJt/gd9dfgLRYAZGh4XhYfQTaw/OaT2k` before authentication.
+- `forge.local` freshly resolved to `<printer-host>`; a new ECDSA scan exactly matched accepted fingerprint `<accepted-host-fingerprint>` before authentication.
 - The earlier attempt stopped before authentication or writes when the new print was active. The successful retry freshly proved `Ivar_Skadis_Hook_PETG_34m53s.gcode` complete at `2,446,934/2,446,934` bytes, virtual SD inactive, idle `Ready`, Klipper ready, empty message, and both heater targets/power zero.
 - Exact-current syntax, tracked-diff, lint, 31 unit assertions, 11 deployment safety tests, guided setup checks, production build, and 10 strict mocked Playwright tests passed before deployment. Guided `--check` then passed read-only through the verified resolver address.
 - Pre-deploy storage was 28% used with 4,645,936 KiB available. Live and previous slots each had a valid index, and all five retained backup candidates were nonempty, tar-readable, traversal-clean, and contained `fluidd/index.html`.
-- Deployment archive was 141,583 bytes, SHA-256 `87ff688503ae83bb32f72ed5b02e28a00077d69b006529ade80d7a054359e02a`. Remote size/hash and staged file list matched exactly before swap.
-- New verified backup: `/usr/data/regolith-backups/fluidd-before-20260803T010558Z.tgz`, 140,191 bytes, SHA-256 `7119232ab4798475fc7f2f5d0c1fc0a970ba24285a5c530634fe18b140e2cf5a`, 21 entries. Retention kept five verified archives and pruned one oldest archive only after the new backup passed. Post-deploy inspection revalidated all five.
+- Deployment archive was 141,583 bytes, SHA-256 `87ff688503ae…e02a`. Remote size/hash and staged file list matched exactly before swap.
+- New verified backup: `/usr/data/regolith-backups/fluidd-before-20260803T010558Z.tgz`, 140,191 bytes, SHA-256 `7119232ab479…cf5a`, 21 entries. Retention kept five verified archives and pruned one oldest archive only after the new backup passed. Post-deploy inspection revalidated all five.
 - Atomic static-asset swap and required-asset HTTP verification passed. Rollback was not needed. `/usr/data/fluidd.previous/index.html` retains pre-deploy SHA-256 `3fa526078f52bf73bc9289590a609e9d67c55f3c9664d2bedf8b6561c45c0da4` and remains ready for guarded rollback.
 - Exact local/live SHA-256 matched: HTML `fbfa8d9c7160f1377c9d74ca36ac3a129cda26be4197c903b7624f993f529a7d`; core JS `16e06eeb8db7ed0bc6a9c00d0f231347f602df0c6f35c9e2d8b67b064d5458a4`; CSS `eb71778858384b04b9624cfd2f3f53521f819c382af605266cc772dfba9ab19d`; Dashboard JS `6b3640d7590c94d13daa397da7d47b81c59c0243df8e8a22422b2d4a8d2104cb`.
 - Read-only live browser QA covered all seven routes in Basic and Expert at 1440x1000 and 390x844: 28/28 states had one `h1`, zero overflow, zero targets under 44px, zero out-of-bounds panels, and zero clipped text. Mobile and desktop captures were visually reviewed for hierarchy and card alignment.
@@ -115,12 +119,12 @@ Binding design amendments from the SD1/Track A workflow (`d37c24d`…`79e8a0a`, 
 
 ## Live release and print-start proof — 2026-08-03, `68181d0`
 
-Deployed with the repo's own `deploy.sh` (no hand-rolled copy) at printer clock 2026-08-03 13:22:35 EST, against `PRINTER_HOST=192.168.50.179`. `forge.local` does not resolve through this Mac's HTTP client, so the verified resolver address was used.
+Deployed with the repo's own `deploy.sh` (no hand-rolled copy) at printer clock 2026-08-03 13:22:35 EST, against `PRINTER_HOST=<printer-host>`. `forge.local` does not resolve through this Mac's HTTP client, so the verified resolver address was used.
 
 - Pre-deploy gate, re-confirmed immediately before the swap: `webhooks=ready`, `print_stats=complete`, `idle_timeout=Idle`, `virtual_sdcard.is_active=false`, hotend `28.29 C`/0, bed `26.17 C`/0, plate visually clear on camera. `--preflight` exited 0 and changed no remote files.
 - The first deploy attempt failed closed at "Create persistent known-good backup" when dropbear refused a mid-run SSH auth (the printer has 209 MB RAM, ~67 MB free). **Live assets were never touched**: `/usr/data/fluidd/index.html` still hashed `fbfa8d9c…`, the staging slot and upload archive were both cleaned up. The retry succeeded end to end.
-- Deployment archive 145,032 bytes, SHA-256 `cdf00b0a4fde24a006cb34536f51bb7b6823f235212df4c60b3a4d33b8f26101`. Remote size/hash and staged file list matched before swap.
-- New verified backup `/usr/data/regolith-backups/fluidd-before-20260803T182235Z.tgz`, 139,747 bytes, SHA-256 `c49f75adf21cee318f6719331666a2872d664f8f0a903bd79e383edcbbf756c0`, 21 entries; retention kept five and pruned one oldest only after the new archive verified.
+- Deployment archive 145,032 bytes, SHA-256 `cdf00b0a4fde…6101`. Remote size/hash and staged file list matched before swap.
+- New verified backup `/usr/data/regolith-backups/fluidd-before-20260803T182235Z.tgz`, 139,747 bytes, SHA-256 `c49f75adf21c…56c0`, 21 entries; retention kept five and pruned one oldest only after the new archive verified.
 - Atomic swap and required-asset HTTP verification passed; automatic rollback was not triggered. Live `index.html` is now `7abea8ff22966f6440a3d9e3446b838890dd41c517e7a8b5089a3f281cf31919` (was `fbfa8d9c7160f1377c9d74ca36ac3a129cda26be4197c903b7624f993f529a7d`). Live bundles are `index-BDcwHCix.js` / `index-t7XHCBCK.css` / `Dashboard-DOP69ueL.js`.
 - **Rollback is armed:** `/usr/data/fluidd.previous` holds the exact prior build (`index.html` = `fbfa8d9c…`, `index-DMN7bzFR.js`, `index-xuuYb8Er.css`, `Dashboard-JWPuMzEa.js`).
 
@@ -160,7 +164,7 @@ Live UI verification, headless Chromium against the deployed build on the real p
 Rollback command for this release:
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
+PRINTER_HOST=<printer-host> PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
 
 Password: set PRINTER_PASSWORD in your environment; do not commit it.
@@ -220,12 +224,12 @@ Read-only exact-current local Chrome smoke covered every route in Basic and Expe
 Recovery commands; provide the password only at runtime or through the silent prompt:
 
 ```sh
-PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight
-PRINTER_HOST=192.168.50.179 ./deploy.sh --rollback
-curl --fail --show-error --connect-timeout 5 --max-time 12 http://192.168.50.179/
+PRINTER_HOST=<printer-host> ./deploy.sh --preflight
+PRINTER_HOST=<printer-host> ./deploy.sh --rollback
+curl --fail --show-error --connect-timeout 5 --max-time 12 http://<printer-host>/
 ```
 
-If mDNS fails, resolve `forge.local`, verify that address against the stored ECDSA fingerprint above, then use `PRINTER_HOST=<verified-resolver-address> ./deploy.sh --preflight` or `--rollback`. Never hard-code an unverified address. Rollback swaps live and previous slots and verifies HTTP; failed verification restores the original slot automatically.
+If mDNS fails, resolve `forge.local`, verify that address against the fingerprint stored in your `known_hosts`, then use `PRINTER_HOST=<verified-resolver-address> ./deploy.sh --preflight` or `--rollback`. Never hard-code an unverified address. Rollback swaps live and previous slots and verifies HTTP; failed verification restores the original slot automatically.
 
 ## Resolved: print start blocked by `PRINT_START`/`use_kamp` setup
 
@@ -257,7 +261,7 @@ Live `index.html` sha256 moved `7abea8ff2296…1919` → `de1175ff35e8…de59`.
 Rollback (armed and verified — `/usr/data/fluidd.previous/index.html` is exactly the pre-deploy `7abea8ff…`):
 
 ```
-PRINTER_HOST=192.168.50.179 ./deploy.sh --rollback
+PRINTER_HOST=<printer-host> ./deploy.sh --rollback
 ```
 
 Persistent backup `/usr/data/regolith-backups/fluidd-before-20260803T204754Z.tgz` (143133 bytes, sha256 `74dd0a29e92e…f3e2`, 21 files, 5 retained, 1 pruned).
@@ -413,13 +417,13 @@ Printer idle re-confirmed cold before this record (`print_stats=cancelled`, extr
 Deployed static assets built at sha `8cffd40993a9c792fe484e732e6cdb67ef9a7cd4` (the working tree at deploy was `2d91305`, which differs from `8cffd40` only by this file's validation record — no source, build config, or asset input changed). Printer clock at deploy: **Mon 2026-08-03 23:46:54 EST** (backup timestamp `20260804T044640Z`).
 
 - Pre-deploy gate, re-confirmed immediately before the swap with two samples 11 s apart: `webhooks=ready`, `print_stats=cancelled`, `idle_timeout=Idle`, `virtual_sdcard.is_active=false`, hotend `25.40→25.37 C`/target 0/power 0, bed `23.55→23.54 C`/target 0/power 0, toolhead position identical across both samples (`296.50, 153.00, 150.04`). **No print was started.** `--preflight` exited 0 and changed no remote files.
-- `./deploy.sh` (repo script, `PRINTER_HOST=192.168.50.179`) exited 0 first try — no dropbear flake this run. Archive 162,458 bytes, SHA-256 `b3e55873051be9839d9ca238dedd39daa620fc90e03416842567d940a7fa1d83`; remote size/hash and staged file list matched before the swap. Atomic swap and required-asset HTTP verification passed; automatic rollback was not triggered.
+- `./deploy.sh` (repo script, `PRINTER_HOST=<printer-host>`) exited 0 first try — no dropbear flake this run. Archive 162,458 bytes, SHA-256 `b3e55873051b…1d83`; remote size/hash and staged file list matched before the swap. Atomic swap and required-asset HTTP verification passed; automatic rollback was not triggered.
 - Live `index.html` moved `de1175ff35e8b1d6984a27a1bf14efccd56f10af1a55d668df75da858140de59` → `ffd9036110b76ae699160ee6e710aa030c93b1305112adee4f4ccb2726076609` (exact match with local `dist/index.html`). Live bundles: `index-DxjXKT4b.js` / `index-BRomDO5p.css` / `Dashboard-DAJTRcUl.js`.
-- New verified backup `/usr/data/regolith-backups/fluidd-before-20260804T044640Z.tgz`, 143,065 bytes, SHA-256 `96d504b58589dd238241d59b2adc2094faf26567320d525d9291f70617ae5bc2`, 21 files; retention kept five and pruned the oldest (`20260802T174223Z`) only after the new archive verified.
+- New verified backup `/usr/data/regolith-backups/fluidd-before-20260804T044640Z.tgz`, 143,065 bytes, SHA-256 `96d504b58589…5bc2`, 21 files; retention kept five and pruned the oldest (`20260802T174223Z`) only after the new archive verified.
 - **Rollback is armed:** `/usr/data/fluidd.previous/index.html` is exactly the pre-deploy `7dd3c0d` build (`de1175ff…de59`). Note the previous slot now holds the `7dd3c0d`-era build, not `68181d0` — `68181d0`'s build (`7abea8ff…1919`) was rotated out of the slot by this swap but survives in backup `fluidd-before-20260803T204754Z.tgz`.
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
+PRINTER_HOST=<printer-host> PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
 
 On-device verification (headless Chromium via SSH loopback tunnels — page through printer nginx :80, camera through printer :8080, since macOS local-network privacy still blocks Chromium from LAN addresses; every byte came from the printer and nothing on it was modified), at 1280x800 and 800x480:
@@ -522,7 +526,7 @@ Deployed static assets built at sha `3e38c9f8bd95a69f9753549f3c43e8834c7aec8d`
 (`main`, even with `origin/main`; tree had no tracked modifications). Backup
 timestamp `20260804T125648Z`.
 
-- `./deploy.sh --preflight` (`PRINTER_HOST=192.168.50.179`) exited 0 and changed
+- `./deploy.sh --preflight` (`PRINTER_HOST=<printer-host>`) exited 0 and changed
   no remote files.
 - Idle re-confirmed immediately before the deploy with two Moonraker samples
   10.2 s apart (12:56:05Z / 12:56:15Z): `webhooks=ready`,
@@ -546,7 +550,7 @@ timestamp `20260804T125648Z`.
   pre-deploy `8cffd40` live build (`ffd90361…6609`), re-verified after the swap.
 
 ```sh
-PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
+PRINTER_HOST=<printer-host> PRINTER_PASSWORD="$PRINTER_PASSWORD" ./deploy.sh --rollback
 ```
 
 On-device verification (SSH loopback tunnels — page through printer nginx :80,
@@ -660,11 +664,11 @@ untracked, not staged.
 ## Live deployment — 2026-08-04, `d96968f`
 
 Deployed `main` HEAD `d96968f2fe14347a04e4a824690d0b2bd4caef6e` (tracked tree
-clean, even with `origin/main`) to the K1 Max at `192.168.50.179` via
+clean, even with `origin/main`) to the K1 Max at `<printer-host>` via
 `deploy.sh` only. Gate had reported SAFE TO DEPLOY: YES; standing owner
 authorization. No config, service, or watchdog contact; no print started.
 
-- **Preflight**: `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD
+- **Preflight**: `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD
   ./deploy.sh --preflight` — exit 0; "Printer is conclusively idle
   (cancelled, Idle)".
 - **Rollback anchor**: pre-deploy live `index.html` SHA-256
@@ -707,7 +711,7 @@ authorization. No config, service, or watchdog contact; no print started.
   the pre-deploy anchor exactly (`3e7eb1ba…331b317`); new live index SHA-256
   `942e0b611a148a6f240e13fbf37edb154c01bd87fd089570d976c14e8d28e0ec`; 5
   backups retained. Rollback command:
-  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
 
 ## Final gate validation — 2026-08-04, `5324d46`
 
@@ -740,10 +744,10 @@ untracked, not staged.
 ## Deployment — 2026-08-04, `81f2084` live on the K1 Max
 
 Deployed HEAD `81f2084b1f1a50d6eeb3d52763a2a93c7d9437cd` (identical to
-`origin/main`, tracked tree clean) to 192.168.50.179 via `./deploy.sh` only.
+`origin/main`, tracked tree clean) to `<printer-host>` via `./deploy.sh` only.
 Credentials supplied solely through `$PRINTER_PASSWORD` (never a literal).
 
-- **Preflight**: `PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight` exit 0
+- **Preflight**: `PRINTER_HOST=<printer-host> ./deploy.sh --preflight` exit 0
   (klipper ready, print `cancelled`, activity Idle, no SD job).
 - **Double idle check immediately before deploy** (read-only Moonraker
   samples at 18:07:40Z and 18:07:50Z, 10 s apart): extruder/bed targets
@@ -786,7 +790,7 @@ Credentials supplied solely through `$PRINTER_PASSWORD` (never a literal).
   succeeded (known memory-pressure flake — live assets unaffected).
 - **Rollback armed**: `fluidd.previous` holds the prior verified release
   (anchor hash match exact). Rollback command:
-  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
 
 ## Final gate validation — 2026-08-04, `8cd188e`
 
@@ -815,13 +819,13 @@ untracked, user-owned/tooling paths present (`scripts/`, `.a5c/`, `.claude/`,
 
 ## Deployment — 2026-08-04, `8cd188e` live on the K1 Max
 
-Deployed the validated `8cd188e` tree to 192.168.50.179 via `./deploy.sh`
+Deployed the validated `8cd188e` tree to `<printer-host>` via `./deploy.sh`
 only. The working tree at deploy time sat at `7f068a5`, which is `8cd188e`
 plus this file's validation record — a docs-only delta, so the built UI
 assets are exactly the `8cd188e` source. Credentials supplied solely through
 `$PRINTER_PASSWORD` (never a literal).
 
-- **Preflight**: `PRINTER_HOST=192.168.50.179 ./deploy.sh --preflight`
+- **Preflight**: `PRINTER_HOST=<printer-host> ./deploy.sh --preflight`
   exit 0 (klipper ready, print `cancelled`, activity Idle, no SD job).
 - **Double idle check immediately before deploy** (read-only Moonraker
   samples at 19:20:12Z and 19:20:22Z, 10.3 s apart): extruder/bed targets
@@ -843,7 +847,7 @@ assets are exactly the `8cd188e` source. Credentials supplied solely through
   exactly.
 - **Rollback armed**: `fluidd.previous` holds the prior verified release
   (anchor hash match exact). Rollback command:
-  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`.
 - **On-device QA** (read-only Chromium through an in-process loopback relay
   to the printer's own nginx — Chromium is LAN-blocked by macOS local
   network privacy; the relay was opened and closed inside each
@@ -1204,7 +1208,7 @@ rewritten lineage from `a140447` — no rebase, no reset, no force-push used.
 
 Deployed under the standing owner authorization after the `a89ccd4` gate
 (`078d98d` is that gate's own working.md record; no code changed since).
-Host addressed as `192.168.50.179` throughout — no mDNS. `deploy.sh` only,
+Host addressed as `<printer-host>` throughout — no mDNS. `deploy.sh` only,
 no config/service/watchdog contact, no print started.
 
 - Preflight: `./deploy.sh --preflight` exit 0 (auth via `sshpass -e`,
@@ -1248,7 +1252,7 @@ no config/service/watchdog contact, no print started.
   pre-deploy live sha `a604786…`; live now `9843e57…` = freshly built
   `dist/index.html` byte-for-byte. `fluidd.next` and the upload archive
   removed. Rollback command:
-  `PRINTER_HOST=192.168.50.179 PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
 
 ## User-owned files
 
