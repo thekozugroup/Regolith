@@ -4,6 +4,8 @@ import {
   useExperience,
   type MockPrinterState,
 } from "./support/active-state-harness";
+import { scenario } from "./support/printer-scenarios";
+import { fulfilFileApi, visit } from "./support/sweep-helpers";
 
 /**
  * Button law (owner rule):
@@ -304,5 +306,190 @@ test.describe("Button law — even chrome and strict concentricity", () => {
       /box-shadow:\s*inset 0(px)? -2px 0(px)? var\(--color-accent\)/,
     );
     mock.assertSealed();
+  });
+});
+
+/**
+ * THE EVEN-INSET LAW (owner: "mission status button should be spaced from
+ * the side of the card evenly and follow concentricity").
+ *
+ * The concentricity sweep verifies RADIUS relationships only — nothing
+ * asserted that an element's INSET from its container edges is symmetric,
+ * which is exactly how a 0/16/0 header-button inset shipped. This law closes
+ * that gap:
+ *
+ *   For any `.ui-btn` (or action cluster containing one) inside an
+ *   `.instrument-panel` header, let G be the set of the container's inner
+ *   edges the element is adjacent to — an edge counts as adjacent when no
+ *   sibling lies between the element and that edge. Every gap in G must
+ *   equal the container's padding on that axis (--card-pad, read off the
+ *   computed style, never hard-coded) within 1px.
+ *
+ *   Corollary tying this to the derived-radius law: with the gap uniform,
+ *   the element's concentric radius is container radius − gap — one value
+ *   for every corner (= --radius-control = 4px), so the header's old "skew
+ *   corner" exemption disappears from the cascade.
+ *
+ * Documented exemptions, and only these: the edge a sibling occupies (a
+ * right-aligned header cluster has the title to its left); full-width action
+ * rows (individual buttons inside are exempt on the inline axis); and
+ * `.bleed` strips, which deliberately cancel --card-pad. Header action
+ * clusters — this sweep's subjects — are none of those.
+ *
+ * Adjacency is computed geometrically, so a header that gains a second
+ * control does not need this test edited. The invariant is stated on the
+ * action CLUSTER, not each button: while printing, Pause's own right inset
+ * is ~100px because Cancel sits beside it — the cluster's is --card-pad.
+ */
+
+const INSET_VIEWPORTS = [
+  { name: "390x844", width: 390, height: 844 },
+  { name: "1280x900", width: 1280, height: 900 },
+  { name: "800x480", width: 800, height: 480 },
+] as const;
+
+const INSET_ROUTES = [
+  { name: "Dashboard", path: "/" },
+  { name: "Files", path: "/print" },
+  { name: "Control", path: "/control" },
+  { name: "Tune", path: "/tune" },
+  { name: "Timelapses", path: "/timelapses" },
+  { name: "Console", path: "/console" },
+  { name: "Settings", path: "/settings" },
+] as const;
+
+/** Calibrated 2026-08-04: the even-inset sweep observed 66 header action
+ *  buttons across 7 routes × 2 modes × 2 print states × 3 viewports
+ *  (8 distinct placements: Bed Mesh/Console/Files/Print History/Timelapses
+ *  Refresh-Clear clusters plus Mission Status Pause/Cancel/Print again).
+ *  The floor is ~80%: layout work may retire a placement, but a collapse
+ *  below this means the sweep went blind. */
+const INSET_SUBJECT_FLOOR = 52;
+
+interface InsetSubject {
+  card: string;
+  label: string;
+  pad: number;
+  gaps: { edge: string; gap: number }[];
+  radius: number;
+  cardRadius: number;
+}
+
+/** In-page probe — measures every header action cluster from the container
+ *  down (`section.instrument-panel > .panel-header`), so no card is named
+ *  and a retuned --card-pad clamp() is followed automatically. */
+const EVEN_INSET_PROBE = () => {
+  const rows: {
+    card: string;
+    label: string;
+    pad: number;
+    gaps: { edge: string; gap: number }[];
+    radius: number;
+    cardRadius: number;
+  }[] = [];
+
+  for (const header of Array.from(
+    document.querySelectorAll<HTMLElement>("section.instrument-panel > .panel-header"),
+  )) {
+    const card = header.parentElement as HTMLElement;
+    const cs = getComputedStyle(card);
+    const bw = parseFloat(cs.borderTopWidth) || 0;
+    const hbw = parseFloat(getComputedStyle(header).borderBottomWidth) || 0;
+    const pad = parseFloat(getComputedStyle(header).paddingRight);
+    const cr = card.getBoundingClientRect();
+    const hr = header.getBoundingClientRect();
+
+    // The action cluster = the header's last element child, when it is or
+    // holds a Button (single Buttons land in the slot unwrapped).
+    const cluster = header.lastElementChild as HTMLElement | null;
+    if (!cluster) continue;
+    const btn = cluster.classList.contains("ui-btn")
+      ? cluster
+      : cluster.querySelector<HTMLElement>(".ui-btn");
+    if (!btn) continue;
+    if (cluster.getClientRects().length === 0) continue;
+    const r = cluster.getBoundingClientRect();
+
+    // Adjacency: an edge is a subject only when no sibling sits between.
+    const siblings = Array.from(header.children).filter((n) => n !== cluster) as HTMLElement[];
+    const blockedLeft = siblings.some((s) => s.getBoundingClientRect().right <= r.left + 1);
+    const gaps = [
+      { edge: "top", gap: r.top - (cr.top + bw) },
+      { edge: "right", gap: cr.right - bw - r.right },
+      { edge: "bottom", gap: hr.bottom - hbw - r.bottom },
+      ...(blockedLeft ? [] : [{ edge: "left", gap: r.left - (cr.left + bw) }]),
+    ];
+    rows.push({
+      card: card.querySelector("h2")?.textContent?.trim() ?? "?",
+      label: btn.textContent?.trim() || "(icon)",
+      pad,
+      gaps: gaps.map((g) => ({ edge: g.edge, gap: Math.round(g.gap * 100) / 100 })),
+      radius: parseFloat(getComputedStyle(btn).borderTopRightRadius),
+      cardRadius: parseFloat(cs.borderTopRightRadius),
+    });
+  }
+  return rows;
+};
+
+/** Subject counts survive across the two state tests below (one worker,
+ *  in-file order) so the final floor assertion sees the whole sweep. */
+const insetTotal = { seen: 0, sweeps: 0 };
+
+test.describe("Even-inset law — header action clusters", () => {
+  for (const stateKey of ["idle", "active-print"] as const) {
+    test(`header action clusters sit --card-pad from every free edge, ${stateKey}`, async ({
+      page,
+    }) => {
+      test.setTimeout(360_000);
+      page.setDefaultTimeout(4_000);
+      page.setDefaultNavigationTimeout(15_000);
+
+      const sc = scenario(stateKey === "idle" ? "at-temperature" : "printing-midjob");
+      await installActiveMock(page, { state: sc.state, camera: "ok", thumbnail: true });
+      await fulfilFileApi(page);
+
+      for (const viewport of INSET_VIEWPORTS) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        // Establish the origin so the localStorage mode write lands.
+        await visit(page, "/");
+        for (const mode of ["basic", "expert"] as const) {
+          await page.evaluate((m: string) => {
+            localStorage.setItem("forge.experience-mode", m);
+            localStorage.setItem("forge.sidebar.collapsed", "0");
+          }, mode);
+          for (const route of INSET_ROUTES) {
+            const label = `${viewport.name} · ${route.name} · ${stateKey}/${mode}`;
+            await visit(page, route.path);
+            const subjects = (await page.evaluate(EVEN_INSET_PROBE)) as InsetSubject[];
+            insetTotal.seen += subjects.length;
+            for (const s of subjects) {
+              const where = `${label}: ${s.card} / "${s.label}"`;
+              for (const g of s.gaps) {
+                expect(
+                  Math.abs(g.gap - s.pad),
+                  `${where}: ${g.edge} gap ${g.gap} must equal pad ${s.pad}`,
+                ).toBeLessThanOrEqual(1);
+              }
+              // Ties the new law to the existing one: uniform gap ⇒ one
+              // derived radius (container radius − gap = --radius-control).
+              expect(
+                Math.abs(s.radius - Math.max(0, s.cardRadius - s.pad)),
+                `${where}: radius ${s.radius} must derive from the (now uniform) gap ` +
+                  `(card ${s.cardRadius} − pad ${s.pad})`,
+              ).toBeLessThanOrEqual(1);
+            }
+          }
+        }
+      }
+      insetTotal.sweeps += 1;
+    });
+  }
+
+  test("the even-inset sweep must still see the glass", () => {
+    expect(insetTotal.sweeps, "both even-inset state sweeps must have run").toBe(2);
+    expect(
+      insetTotal.seen,
+      `even-inset subjects collapsed below the calibrated floor (${INSET_SUBJECT_FLOOR}) — selector rot or a blind probe`,
+    ).toBeGreaterThanOrEqual(INSET_SUBJECT_FLOOR);
   });
 });

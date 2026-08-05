@@ -289,14 +289,14 @@
     border-radius: max(0px, calc(var(--radius-panel) - var(--card-pad)));
     --radius-inner: max(0px, calc(var(--radius-panel) - var(--card-pad) - var(--group-pad)));
   }
-  /* Panel header slot: header controls butt against the panel's 1px top
-     border while sitting a full --card-pad from the side — a skew corner
-     with NO uniform concentric radius (the top-right corner would derive
-     outer − 1px while the bottom-right derives the control radius; one
-     radius cannot satisfy both). Sharp-inside-round is the single lawful
-     shape, so the slot publishes 0 for its children — they still write
-     rounded-inner, never a literal. */
-  .panel-header { --radius-inner: 0px; }
+  /* Panel header slot: header controls now sit a full --card-pad from the
+     top, the side AND the header rule (owner: "spaced from the side of the
+     card evenly and follow concentricity"). With the inset uniform, the old
+     skew corner is gone and ONE radius satisfies every corner, so the slot
+     no longer overrides the cascade — it inherits .instrument-panel's
+     published inner radius, which is radius-panel − card-pad ≡
+     --radius-control (4px). Children still write rounded-inner, never a
+     literal. */
   /* Full-bleed strip inside a Card: cancels --card-pad so dividers and row
      hovers reach the panel edge. */
   .bleed { margin-inline: calc(-1 * var(--card-pad)); }
