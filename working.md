@@ -1254,6 +1254,89 @@ no config/service/watchdog contact, no print started.
   removed. Rollback command:
   `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
 
+## Tailscale status panel — 2026-08-04 (read path investigated, gap documented)
+
+Settings gains an expert-only **Tailscale** panel. It is READ-ONLY, and the
+reason is not caution — it is that no control path exists. What was checked,
+live, read-only, against the owner's printer before a line was written:
+
+| Candidate path | Verdict |
+|---|---|
+| `GET /machine/system_info` → `available_services` | Provider is `supervisord_cli`; it lists exactly `klipper`, `moonraker`, `klipper_mcu`. Tailscale is an Entware service (`/opt/etc/init.d/S06tailscaled`), invisible to supervisord — so `POST /machine/services/*` can never act on it. |
+| `GET /machine/services` | **404** — not an endpoint. |
+| Moonraker `shell_command` component | Loaded (it appears in `/server/info` components), but it is an internal helper for other components. Moonraker exposes no HTTP route that runs an arbitrary command, by design. |
+| Klipper `gcode_shell_command` extra | Installed — `RUN_SHELL_COMMAND` is in `/printer/gcode/help`. But it only runs commands DECLARED in the printer config, and the declared set is `beep`, `v4l2-ctl`, the shaper-graph helpers and the Helper-Script backup jobs. Nothing tailscale-shaped. Adding one means editing printer config and restarting Klipper. |
+| Moonraker file API over `config` | **Works.** `/server/files/list?root=config` and `/server/files/config/<file>` are read-only GETs the app already speaks. |
+
+So the app cannot run `tailscale status`, and it does not pretend to. The one
+real implementation is the file path: the printer publishes
+`tailscale status --json` into its config directory once a minute and Regolith
+reads it. **That cron job does not exist on the printer today** (verified: the
+file 404s), so on a stock machine the panel reads *Not reporting* and prints
+the exact one-time setup. Nothing was written to the printer to make this
+work — no `moonraker.conf` edit, no `printer.cfg` edit, no service change.
+
+- `src/lib/tailscale.ts` — parser + adapter + the display law. Pure and
+  injectable (`readTailscaleStatus(fetcher, signal)`), so the whole path is
+  tested without a network.
+- `src/components/TailscaleSettings.tsx` — the panel. Mounted expert-only in
+  Settings, alongside Host and Backup: this is infrastructure, not a printing
+  control.
+- Presence is discovered through the directory LISTING, not by requesting the
+  file and catching a 404 — the listing carries the `modified` time (the only
+  trustworthy basis for staleness) and a printer without the cron job never
+  prints a 404 into the console.
+- Read cadence: ONE read a second after the panel opens, then only on **Check
+  now**. No background poll — Settings already runs four host reads into a
+  six-connection pool, and a fifth fired in the opening frame measurably slowed
+  navigation away from Settings (measured: +5s a visit, which pushed the
+  instrument-cluster geometry sweep from 15.7s to 78s). Freshness survives the
+  choice because the document carries its own timestamp: an untouched panel
+  still crosses into Unknown on a local clock tick.
+- Staleness law: a document that cannot be dated, is older than 3 minutes
+  (three missed cron runs), or is dated more than a minute in the future reads
+  as **Unknown** and the tailnet address disappears with it. A stale
+  "Connected" is worse than an honest "Unknown" — and this printer has already
+  had crond silently dead for three months once.
+- Never rendered: the auth URL. `AuthURL` is reduced to a boolean at the parse
+  boundary and the panel prints `tailscale up` for the owner to run instead.
+  No login, logout, exit node, subnet route, funnel or serve is offered.
+- No start/stop button. Wiring one would require the owner to declare a
+  `[gcode_shell_command …]` in printer config — i.e. to grant the web UI
+  arbitrary root commands through the g-code path. `TAILSCALE_CONTROL_AVAILABLE`
+  is the single source of that truth; `tests/tailscale.test.ts` pins it false
+  and `e2e/tailscale.spec.ts` pins the panel to exactly one button (`Check now`,
+  a re-read).
+
+**What the owner would have to install for status to appear** (read-only; it
+changes nothing about the tailnet, and Regolith will not run it for you). The
+panel prints this verbatim when no document is present:
+
+```sh
+cat > /usr/data/scripts/regolith-tailscale.sh <<'EOF'
+#!/bin/sh
+OUT=/usr/data/printer_data/config/regolith-tailscale.json
+TMP="$OUT.tmp"
+if [ ! -x /opt/bin/tailscale ]; then
+  printf '{"BackendState":"NotInstalled"}\n' > "$TMP"
+elif ! /opt/bin/tailscale status --json > "$TMP" 2>/dev/null; then
+  printf '{"BackendState":"Stopped"}\n' > "$TMP"
+fi
+mv "$TMP" "$OUT"
+EOF
+chmod 755 /usr/data/scripts/regolith-tailscale.sh
+ln -sf /usr/data/scripts/regolith-tailscale.sh /opt/etc/cron.1min/regolith-tailscale
+/usr/data/scripts/regolith-tailscale.sh
+```
+
+That cron directory only fires while Entware's boot hook is intact — the
+failure this printer already hit. The panel prints the two-line repair
+(`printf '#!/bin/sh\n/opt/etc/init.d/rc.unslung "$1"\n' > /etc/init.d/S50unslung`
++ `chmod 755`) alongside it, because a firmware update can wipe it again.
+
+Gates: `bun run lint`, `bun run test` (27 new unit tests), `bun run test:e2e`
+(11 new specs), `bun run build` — all exit 0.
+
 ## User-owned files
 
 - `scripts/light-watchdog.py`

@@ -14,6 +14,7 @@ import { ProfileSettings } from "@/components/ProfileSettings";
 import { ExperienceSettings } from "@/components/ExperienceSettings";
 import { AiSettings } from "@/components/AiSettings";
 import { TimelapseSettings } from "@/components/TimelapseSettings";
+import { TailscaleSettings } from "@/components/TailscaleSettings";
 import { useActionConfirm } from "@/components/useActionConfirm";
 import { usePrinter } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
@@ -143,6 +144,10 @@ export function SettingsPage() {
           difference between a timelapse and an empty folder, so it belongs
           wherever the owner turns recording on. */}
       {profile.features.timelapse && <TimelapseSettings />}
+      {/* Infrastructure, not a printing control: the mesh VPN decides who can
+          reach the printer at all. Expert-gated like Host and Backup, and
+          read-only — see the header of lib/tailscale.ts. */}
+      {isExpert && <TailscaleSettings />}
 
       <Card title="System" icon={<Cog />} className="lg:col-span-2">
         <div className="space-y-[var(--stack)]">
