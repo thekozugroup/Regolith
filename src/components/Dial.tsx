@@ -106,14 +106,44 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
   const showDelta = active && hasActual && Math.abs(value - target) >= 2;
   /* Delta band, per-segment: both endpoints come from litSegments(), so the
      shaded count is exactly the displayed segment distance — the band can
-     never disagree with the segments it spans. Lit always wins. */
+     never disagree with the segments it spans.
+
+     BOTH DIRECTIONS ink. The band used to render only where the segment was
+     unlit, which silently meant "only when the actual is BELOW target": an
+     overshooting hotend — the case you most want to see — drew zero delta
+     segments, because every segment between target and actual was lit. The
+     span is the same either way; only its treatment differs, and it differs
+     in a NON-COLOUR channel so the two stay distinguishable without hue:
+
+       under (actual < target) → unlit segments, full 12-unit stroke, ghost
+                                 ink at 22% — the shortfall still to close.
+       over  (actual > target) → lit segments, full ink, narrowed to a
+                                 5-unit rail inside the track — the
+                                 overshoot past the setpoint.
+
+     Lit still wins the ink: an over-delta segment is data-lit="true", and
+     its angular extent — the value channel — is untouched. Only radial
+     thickness changes, and radial thickness carries no value. */
   const deltaFrom = Math.min(litValue, litTarget);
   const deltaTo = Math.max(litValue, litTarget);
+  const deltaDirection = litValue > litTarget ? "over" : "under";
+  /* Over/under-range honesty — the dial half of what the strips already
+     ship (segmented-dials spec §2.5). The sweep is a DISPLAY CLAMP: both
+     angleFor() and litSegments() clamp to [0, maxTemp], so 320°C on a 300°
+     scale lit all 24 segments and pinned the arc exactly as a true 300°C
+     did. Identical instrument, two different truths — the same false
+     ceiling the factor strips were fixed for. Same treatment, same
+     language: a --color-warning caret past the corresponding sweep end plus
+     a ›/‹ affix on the readout. */
+  const overRange = hasActual && value > maxTemp;
+  const underRange = hasActual && value < 0;
   const targetIndexStyle = {
     transform: `rotate(${targetAngle}deg)`,
     transformOrigin: "100px 100px",
     transition: "transform var(--dur-base) var(--ease-standard)",
   } as const;
+  const caretStyle = (deg: number) =>
+    ({ transform: `rotate(${deg}deg)`, transformOrigin: "100px 100px" }) as const;
 
   return (
     <div
@@ -136,23 +166,24 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
         <g style={{ color: "var(--gauge-stroke)" }}>
           {SEGMENTS.map((d, index) => {
             const lit = index < litValue;
-            const delta = !lit && showDelta && index >= deltaFrom && index < deltaTo;
+            const delta =
+              showDelta && index >= deltaFrom && index < deltaTo ? deltaDirection : undefined;
             return (
               <path
                 key={index}
                 d={d}
                 className="gauge-segment transition-[stroke] duration-150 ease-linear"
                 data-lit={lit ? "true" : "false"}
-                data-delta={delta ? "true" : undefined}
+                data-delta={delta}
                 fill="none"
                 stroke={
                   lit
                     ? "currentColor"
-                    : delta
+                    : delta === "under"
                       ? "color-mix(in oklab, var(--gauge-stroke) 22%, transparent)"
                       : "var(--color-segment-unlit)"
                 }
-                strokeWidth={12}
+                strokeWidth={delta === "over" ? 5 : 12}
                 strokeLinecap="butt"
               />
             );
@@ -181,6 +212,21 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
             <line x1={164} y1={100} x2={184} y2={100} className="gauge-target-index" stroke="var(--color-gauge-target)" strokeWidth={2} />
           </g>
         )}
+        {/* Over/under-range carets — the strip's trailing/leading warning bar
+            in polar form: a radial bar at the sweep end (or start) that
+            over-runs the 68–80 segment band out to r 90, further than the
+            target index's 84, so the two stay separable even when a target
+            sits at the very end of the scale. */}
+        {overRange && (
+          <g style={caretStyle(SWEEP_START + SWEEP_TOTAL)}>
+            <line data-over-range="true" x1={168} y1={100} x2={190} y2={100} stroke="var(--color-warning)" strokeWidth={3} />
+          </g>
+        )}
+        {underRange && (
+          <g style={caretStyle(SWEEP_START)}>
+            <line data-under-range="true" x1={168} y1={100} x2={190} y2={100} stroke="var(--color-warning)" strokeWidth={3} />
+          </g>
+        )}
       </svg>
 
       {/* Primary readout — always --color-fg; the arc, lamp, and status word carry state */}
@@ -189,8 +235,14 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
           className={`readout instrument-value font-semibold ${hasActual ? "" : "text-[var(--color-fg-muted)]"}`}
           style={{ fontSize: "var(--text-readout-lg)" }}
         >
+          {underRange && (
+            <span aria-hidden="true" className="mr-0.5 text-[0.42em] tracking-normal text-[var(--color-warning)]">‹</span>
+          )}
           {hasActual ? value.toFixed(1) : "—"}
           <span className="text-[0.42em] tracking-normal text-[var(--color-fg-muted)]">°C</span>
+          {overRange && (
+            <span aria-hidden="true" className="ml-0.5 text-[0.42em] tracking-normal text-[var(--color-warning)]">›</span>
+          )}
         </span>
       </div>
 

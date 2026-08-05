@@ -753,9 +753,12 @@
     /* Segmented dial (segmented-dials spec §1.6), modelled on .telltale-lamp:
        outline always paints, lit fills. Unlit segments keep the scale
        readable as 24 countable cells — hairline outline at reduced opacity;
-       lit segments restore the full 12-unit stroke. Delta segments have no
-       forced-colors channel and collapse to unlit — acceptable: the delta is
-       an affordance, the numbers are the truth. */
+       lit segments restore the full 12-unit stroke. Under-delta segments have
+       no forced-colors channel and collapse to unlit — acceptable: that delta
+       is an affordance, the numbers are the truth. The OVER-delta band does
+       survive, because its channel is stroke width, which is geometry: the
+       overshoot past the setpoint stays a narrowed rail even once every ink
+       flattens to CanvasText. */
     .gauge-segment {
       stroke: CanvasText;
       stroke-width: 1;
@@ -766,6 +769,9 @@
       stroke: CanvasText;
       stroke-width: 12;
       opacity: 1;
+    }
+    .gauge-segment[data-lit="true"][data-delta="over"] {
+      stroke-width: 5;
     }
     /* The target index keeps a second, geometric channel (it over-runs the
        segment band radially), so it stays distinguishable even if Highlight
