@@ -1745,3 +1745,74 @@ written to any tracked file.
 - No config/service/watchdog contact; no print started; no G-code sent;
   heaters and motion untouched throughout (idle re-confirmed by the
   double check above).
+
+## Deployment record — 2026-08-05, HEAD `8dae959` (square dial modules)
+
+Owner standing authorization ("deploy when ready"). Tree clean, `8dae959`
+even with `origin/main`, gates green before the run (lint 0, unit 0, e2e
+235 passed, build 0). Deployed via `./deploy.sh` only; printer host and
+password supplied on the command line as `PRINTER_HOST=<printer-host>` /
+`$PRINTER_PASSWORD`, never written to any tracked file.
+
+- **Preflight**: `PRINTER_HOST=<printer-host> ./deploy.sh --preflight`
+  exit **0** — Moonraker conclusively idle (`cancelled`, `Idle`), no
+  remote files changed.
+- **Rollback anchor (pre-deploy)**: live `index.html` SHA-256
+  `8c8532ce…`; `fluidd.previous` present (18 assets, prior
+  `Dashboard-DlV9l8nY.js`); latest persistent backup
+  `fluidd-before-20260805T070847Z.tgz`.
+- **Double idle check** (immediately before deploy, two Moonraker samples
+  11.3s apart): both `webhooks=ready`, `print_stats=cancelled`,
+  `idle_timeout=Idle`, `virtual_sdcard.is_active=false`, extruder target
+  0.0, bed target 0.0, toolhead position byte-identical across samples
+  (`[296.5, 153.0, 150.04364591869918, 53278.616829942934]`).
+  **PASS** — no motion, no heat, nothing queued.
+- **Deploy**: `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD
+  ./deploy.sh` exit **0**. Gates re-ran inside the script (lint, 337 unit
+  tests, 19 deploy/setup shell checks, build), archive size/SHA-256
+  matched remote, staged file list matched local `dist`, atomic swap OK,
+  every referenced asset HTTP-verified. New persistent backup
+  `fluidd-before-20260805T081105Z.tgz` (28 files, retained 5 / pruned 1).
+- **On-device verification** (Playwright Chromium against the live UI
+  through a loopback SSH forward, both 1280x800 and 800x480):
+  - **Square dial modules — the owner-protected property**:
+    `.thermal-instrument` tiles measured **234.20 x 234.20 px** at
+    1280x800 and **176.50 x 176.50 px** at 800x480 — both dials at both
+    sizes, **0.000% off square** (budget 2%). The dial art is not
+    stretched to buy it: rendered `.gauge-dial` ratio drifts **0.004%**
+    from the authored `0 0 200 172` viewBox at both sizes (SVG boxes
+    234.20x201.41 and 176.50x151.78, exactly the authored 1.1628).
+  - Dials: 2 dials, **24 `.gauge-segment` cells each** at both sizes.
+  - Discrete lit mapping against live temperature: hotend 27.0°C of 300°
+    → round(2.16) = **2 lit** (observed 2); bed 25.0°C of 120° →
+    round(5.0) = **5 lit** (observed 5); identical at both viewports and
+    cross-checked against Moonraker at sample time (27.04 / 25.01).
+  - Target index: not rendered live — both setpoints are 0 and the index
+    only exists while a target is active (idle machine stayed cold, per
+    the no-heat rule). Deployed `Dashboard-6cNiU2Hd.js` chunk confirmed
+    to carry `gauge-target-index` with the continuous `rotate(${…}deg)`
+    transform — present and unsnapped in the shipped code, and pinned by
+    the passing e2e suite for this build.
+  - Range bars: every eligible factor rendered in the current state
+    carries a bar (Chamber, Part Fan, Speed Factor, Flow Factor — 4
+    `.segment-gauge` strips at both sizes); the rendered ineligible
+    factors (Z-Offset, Filament) carry **zero `<svg>`**; Pressure Adv. /
+    Max Accel / Homed tiles are not rendered in the panel's current
+    mode/state, and the no-bar pin for all five is enforced by the
+    passing e2e suite.
+  - Telemetry rows: per-row top-edge delta **0px** in every row at both
+    viewports (3 two-up rows at 1280x800, 6 single-column rows at
+    800x480).
+  - Console: **zero** console errors and **zero** page errors at both
+    viewports.
+  - Live tick: 71 (1280x800) and 77 (800x480) WebSocket frames received
+    in a 15s window, with Moonraker moving 27.04→27.03 / 25.01→25.03
+    across the same window; mission bar reads **LINK READY**.
+  - Screenshots retained in the session scratchpad (untracked):
+    `deploy-8dae959-1280x800.png`, `deploy-8dae959-800x480.png`.
+- **Rollback armed**: post-deploy `fluidd.previous/index.html` SHA-256
+  equals the pre-deploy anchor (`8c8532ce…`), so one command restores the
+  exact prior UI: `PRINTER_HOST=<printer-host> ./deploy.sh --rollback`.
+- No config/service/watchdog contact; no print started; no G-code sent;
+  no printer config touched; heaters and motion untouched throughout
+  (idle re-confirmed by the double check above).
