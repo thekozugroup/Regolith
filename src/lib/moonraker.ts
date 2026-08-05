@@ -68,6 +68,17 @@ export const LINK_SILENCE_MS = 30_000;
 export const LINK_CHECK_MS = 2_000;
 
 /**
+ * Deadline on the pre-print timelapse settings write. It is the one HTTP
+ * request awaited ahead of `printer.print.start` (the WS RPCs on that path
+ * carry their own 15s deadline), so it must not be able to hang a print:
+ * a fetch that never settles is converted into an abort rejection, which
+ * `applyPrintSetup` folds into the existing "started, but not recording"
+ * notice. 5s is generous for a config write on a LAN and short enough that
+ * the owner is never left staring at a stuck dialog.
+ */
+export const TIMELAPSE_WRITE_TIMEOUT_MS = 5_000;
+
+/**
  * How long a connection must survive before it counts as a good one.
  *
  * The attempt counter used to reset the instant a socket opened, so a
@@ -811,7 +822,18 @@ export class Moonraker {
     return data.result ?? {};
   }
 
-  /** Flat JSON body of only the keys to change; returns the updated config. */
+  /**
+   * Flat JSON body of only the keys to change; returns the updated config.
+   *
+   * The write carries a hard deadline because it sits in the pre-print path:
+   * `applyPrintSetup` awaits it BEFORE `printer.print.start`, and a browser
+   * fetch has no default timeout. Every failure already resolves into a
+   * notice and the print starts — but a socket that accepts and then never
+   * answers (wedged Moonraker, black-holed link) would otherwise hold the
+   * print hostage indefinitely. The WS RPC path has its own 15s deadline;
+   * this is the HTTP equivalent. An abort surfaces as a rejection, which the
+   * caller already treats as "carry on and tell the owner".
+   */
   async writeTimelapseSettings(
     patch: Record<string, string | number | boolean>,
   ): Promise<TimelapseSettings> {
@@ -819,6 +841,7 @@ export class Moonraker {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
+      signal: AbortSignal.timeout(TIMELAPSE_WRITE_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw new Error(`Timelapse settings write failed (HTTP ${response.status}).`);

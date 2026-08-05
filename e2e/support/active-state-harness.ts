@@ -79,8 +79,13 @@ export interface ActiveMockOptions {
   permit?: {
     /** `printer.objects.list`, `printer.gcode.script`, `printer.print.start`. */
     printStart?: boolean;
-    /** `POST /machine/timelapse/settings`. "fail" answers HTTP 500. */
-    timelapseWrite?: "ok" | "fail";
+    /**
+     * `POST /machine/timelapse/settings`. "fail" answers HTTP 500. "hang"
+     * records the body and never answers — a socket that accepts and then
+     * goes silent, the transport state the write's client-side deadline
+     * exists for (a wedged Moonraker cannot be modelled by any HTTP status).
+     */
+    timelapseWrite?: "ok" | "fail" | "hang";
   };
 }
 
@@ -194,6 +199,11 @@ export async function installActiveMock(
         body = { unparseable: request.postData() ?? null };
       }
       timelapseWrites.push(body);
+      if (options.permit.timelapseWrite === "hang") {
+        // Deliberately unanswered: the request stays pending until the app's
+        // own deadline aborts it. Nothing reaches a printer either way.
+        return;
+      }
       if (options.permit.timelapseWrite === "fail") {
         await route.fulfill({
           status: 500,

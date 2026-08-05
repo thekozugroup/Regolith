@@ -229,6 +229,49 @@ test.describe("Per-print timelapse — the write the toggle produces", () => {
 
     mock.assertSealed();
   });
+
+  test("a HUNG settings write still starts the print — the deadline is the law", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // "hang" is not an error path: the socket accepts and never answers, so
+    // no rejection ever arrives on its own. Only the write's own deadline
+    // (TIMELAPSE_WRITE_TIMEOUT_MS) can convert this into the notice path.
+    // Before that deadline existed, this scenario held the print hostage
+    // indefinitely — every FAILURE was handled, but a non-settling write was
+    // the one unbounded step ahead of printer.print.start.
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { printStart: true, timelapseWrite: "hang" },
+    });
+    await fulfilFileApi(page);
+    await page.addInitScript(() => {
+      localStorage.setItem("forge.print.timelapse", "1");
+    });
+
+    const dialog = await openPrintDialog(page);
+    await startPrintFrom(page, dialog);
+
+    // THE LAW, hang edition: the print still starts, and the owner is told
+    // the recording did not stick. 15s allows the 5s abort plus slack while
+    // staying inside the suite's 30s test budget.
+    const notice = dialog.getByTestId("print-setup-notice");
+    await expect(notice).toBeVisible({ timeout: 15_000 });
+    await expect(notice).toContainText("Print started");
+    await expect(notice).toContainText("not being recorded");
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    expect(mock.rpcCalls()).toContain("printer.print.start");
+    // The write was attempted (and recorded) before it hung.
+    expect(mock.timelapseWrites()).toEqual([
+      { enabled: true, mode: "hyperlapse" },
+    ]);
+
+    await assertNoBrokenReadouts(page, "timelapse write hang");
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    mock.assertSealed();
+  });
 });
 
 test.describe("Per-print timelapse — RECORDING honesty", () => {
