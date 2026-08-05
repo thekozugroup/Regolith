@@ -1164,6 +1164,42 @@ all green. The print-start regression test (no `PRINT_START`,
 - ~~`deploy.sh` can fail mid-run when dropbear refuses an SSH auth under memory pressure (209 MB total RAM).~~ Addressed: read-only and idempotent steps now retry twice on ssh exit 255 (see "Deployment and rollback"). Mutating steps still fail closed by design, so a refusal landing exactly on the backup, swap, or rollback swap will still abort the run — rerun it. A single reused SSH connection (`ControlMaster`) would remove the remaining exposure but was not attempted here.
 - The `Filament_Swatch_PLA-CF_18m36s.gcode` job used for the print-start proof is now recorded on the printer as `cancelled`. That is expected and not a fault.
 
+## Final gate validation — 2026-08-04, HEAD `a89ccd4`
+
+Independent pre-deploy gate, tree quiet first (only the always-untracked
+`scripts/`, `.a5c/`, `.claude/`, `CLAUDE.md`, and caches present; nothing
+else outstanding). `main` even with `origin/main` at `a89ccd4`, on the
+rewritten lineage from `a140447` — no rebase, no reset, no force-push used.
+
+- `bun run lint` — 0 problems.
+- `bun run test` — `bun test tests` 295 pass / 0 fail (3480 expect calls),
+  `tests/deploy.test.sh` 19/19 ok, `tests/setup.test.sh` passed.
+- `bun run build` — `tsc -b && vite build` clean.
+- `bunx playwright test`, run in isolation after killing every stray
+  Chromium/vite-preview process from earlier overlapping attempts (two
+  concurrent `playwright test` invocations against the same port 4173 had
+  been silently killing each other's `vite preview` server and producing
+  9–25 `ERR_CONNECTION_REFUSED` false failures) — **174/174 passed clean in
+  8.0m**, meeting the 153 e2e floor with no shrink. The false failures were
+  self-inflicted process contamination from this verification pass, not a
+  product regression; recorded here so a future run doesn't waste time
+  rediscovering it — never run two `playwright test` invocations against the
+  same `webServer` port concurrently.
+- `d065693`..`a89ccd4` changes `working.md` only (61 insertions, no code),
+  so the functional verification at `d065693` (print-start regression,
+  square dial modules ≥148px, no SVG `<text>` in gauges, no residual
+  instrument-tile fills or dial/lamp glow, Tune truth fixes, light toggle
+  degrade-without-pin, no app-side off-timer) carries forward unchanged to
+  this HEAD.
+- No literal printer password in any tracked file at this HEAD (grep swept;
+  only prose references to "the printer password" and test fixture strings
+  like `runtime-only-secret` matched).
+- `safety.ts`, `moonraker.ts`, `printerActions.ts`, `deploy.sh`,
+  `tests/deploy.test.sh` — no working-tree diff against HEAD; untouched by
+  this pass.
+
+**SAFE TO DEPLOY: YES**
+
 ## User-owned files
 
 - `scripts/light-watchdog.py`
