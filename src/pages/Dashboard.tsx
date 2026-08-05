@@ -372,7 +372,15 @@ function MetricTile({
 }) {
   return (
     <div
-      className={cn("flex min-h-11 items-center justify-between gap-3", warn && "text-[var(--color-warning)]")}
+      className={cn(
+        // flex-wrap + content-start packs the single flex line to the TOP of
+        // the grid-stretched box (telemetry row law: a tile's internal layout
+        // must not depend on the row's height); items-center keeps the 11px
+        // label optically centred against the 13px value, exactly as
+        // SegmentGauge's header row does.
+        "flex min-h-11 flex-wrap content-start items-center justify-between gap-3",
+        warn && "text-[var(--color-warning)]",
+      )}
     >
       <span className="instrument-label text-[11px]">
         {label}

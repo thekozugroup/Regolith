@@ -465,15 +465,17 @@
   }
   @container (min-width: 400px) {
     .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    /* odd tile count: let the last tile span so no dead half-cell remains */
-    .telemetry-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   }
   @container (min-width: 640px) {
     .telemetry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .telemetry-grid > :last-child:nth-child(odd) { grid-column: auto; }
-    .telemetry-grid > :last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
-    .telemetry-grid > :last-child:nth-child(3n + 2) { grid-column: span 2; }
   }
+  /* The old :last-child column-span rules ("no dead half-cell") are DELETED —
+     they were a boxed-tile-era leftover. With 13 expert tiles the remainder
+     is unavoidable in 2- and 3-col chrome, and since the flatten pass an
+     unoccupied cell is invisible whitespace, whereas the stretched
+     preserveAspectRatio="none" Bed Power strip they produced rendered each
+     segment ~3x wider than its peers' — a different instrument, and false
+     precision on a 0-100% PWM duty. Every tile now occupies one column. */
 
   /* The SD1 instrument-well recession is DELETED (flatten pass, owner:
      "remove the backgrounds on each element so it is cleaner, instead

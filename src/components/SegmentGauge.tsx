@@ -62,7 +62,7 @@ export function SegmentGauge({
       aria-label={`${label} ${known ? display : "unavailable"}`}
       aria-description={description}
       data-lit={lit}
-      className="segment-gauge flex min-h-11 min-w-0 flex-col justify-center gap-1.5"
+      className="segment-gauge flex min-h-11 min-w-0 flex-col justify-start gap-1.5"
       style={{ color: stateColor } as CSSProperties}
     >
       <div className="flex items-center justify-between gap-3">
