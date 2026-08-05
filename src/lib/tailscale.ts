@@ -415,11 +415,23 @@ export function describeTailscale(
   const signIn = reading.status.signInRequired && backend !== "running";
   const shown = signIn ? BACKEND_DISPLAY["needs-login"] : base;
 
+  // Self.Online outranks BackendState's optimism: Running means the local
+  // daemon is up, while Online=false is the coordination server saying this
+  // node currently has no working path. The panel must not assert "on your
+  // tailnet" from a document that says otherwise. The identity rows stay —
+  // the address is real, only its reachability is in doubt — and an ABSENT
+  // field (online === null) still reads as Connected: absence is not
+  // contradiction, and Online can flicker false during a netmap re-poll, so
+  // this is a qualified warn rather than an alarm.
+  const unseen = backend === "running" && reading.status.online === false;
+
   return {
     state: signIn ? "needs-login" : backend,
-    label: shown.label,
-    tone: shown.tone,
-    detail: shown.detail,
+    label: unseen ? "Running, not seen" : shown.label,
+    tone: unseen ? "warn" : shown.tone,
+    detail: unseen
+      ? "tailscaled is running, but your tailnet does not currently see this machine — remote access may not work until it reconnects."
+      : shown.detail,
     showsIdentity: backend === "running",
     ageMs,
     stale: false,

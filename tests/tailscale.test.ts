@@ -277,6 +277,39 @@ describe("what the panel is allowed to claim", () => {
     expect(display.stale).toBe(false);
   });
 
+  // Self.Online is the coordination server's verdict, and it outranks the
+  // local daemon's optimism: Running + Online:false is a machine whose
+  // tailscaled is up but which the tailnet cannot currently reach. The panel
+  // must not print "The printer is on your tailnet." from a document that
+  // says otherwise. The address stays visible — it is real identity, only
+  // its reachability is in doubt.
+  test("running but not seen by the tailnet is a qualified warn, never Connected", () => {
+    const display = describeTailscale(
+      ready(statusDocument({ Self: { TailscaleIPs: [NODE_IPV4], Online: false } })),
+      NOW,
+    );
+    expect(display.state).toBe("running");
+    expect(display.label).not.toBe("Connected");
+    expect(display.tone).toBe("warn");
+    expect(display.detail).not.toContain("is on your tailnet");
+    expect(display.detail).toContain("does not currently see");
+    expect(display.showsIdentity).toBe(true);
+    expect(display.stale).toBe(false);
+  });
+
+  // Absence is not contradiction: a document without Self.Online (older
+  // tailscale, junk field degraded to null by the parser) still reads as
+  // Connected rather than inventing a doubt the document never expressed.
+  test("a running document without an Online field still reads Connected", () => {
+    const display = describeTailscale(
+      ready(statusDocument({ Self: { TailscaleIPs: [NODE_IPV4] } })),
+      NOW,
+    );
+    expect(display.label).toBe("Connected");
+    expect(display.tone).toBe("ok");
+    expect(display.showsIdentity).toBe(true);
+  });
+
   // THE RULE THIS MODULE EXISTS FOR. A cockpit that says "Connected" from a
   // document nobody has refreshed in an hour is worse than one that admits it
   // does not know.
