@@ -1678,3 +1678,70 @@ Quiet tree first — only the standing untracked set present (`scripts/`,
   routes, zero console noise.
 
 **SAFE TO DEPLOY: YES**
+
+## Deployment record — 2026-08-05, HEAD `8caf99e` (live instrument release)
+
+Owner standing authorization ("deploy when ready"); gate above issued
+**SAFE TO DEPLOY: YES** for `57cda2b`, deployed here as its docs-only
+descendant `8caf99e` (identical `src/`/`dist` inputs). Deployed via
+`./deploy.sh` only; printer host and password supplied on the command
+line as `PRINTER_HOST=<printer-host>` / `$PRINTER_PASSWORD`, never
+written to any tracked file.
+
+- **Preflight**: `PRINTER_HOST=<printer-host> ./deploy.sh --preflight`
+  exit **0** — writable data root, live slot present, tar/sha256sum, 32MB
+  free, Moonraker conclusively idle (`cancelled`, `Idle`).
+- **Rollback anchor (pre-deploy)**: live `index.html` SHA-256
+  `f600ff543cfb3cdccf74222e0d3b7b68dd31c16bce81392b1df209580c6c6647`;
+  `fluidd.previous` present; latest persistent backup
+  `fluidd-before-20260805T044530Z.tgz`.
+- **Double idle check** (immediately before deploy, two Moonraker samples
+  10s apart): both `klipper=ready`, `print=cancelled`, `idle=Idle`,
+  `sd_active=false`, extruder target 0.0, bed target 0.0, live/toolhead
+  position byte-identical across samples (`[296.5, 153.0, 150.044]`).
+  **PASS** — no motion, no heat, nothing queued.
+- **Deploy**: `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD
+  ./deploy.sh` exit **0**. Gates re-ran inside the script (lint, unit,
+  build), archive size/SHA-256 matched remote, staged file list matched
+  local `dist`, atomic swap OK, every referenced asset HTTP-verified.
+  New persistent backup `fluidd-before-20260805T070847Z.tgz` (277,699
+  bytes, SHA-256 `0c1d2608b37867cc346729bfd34da5168c22f0883494d943335d4e4531b0f465`,
+  35 files, retained 5 / pruned 1).
+- **On-device verification** (Playwright Chromium against the live UI
+  through a loopback SSH forward, both 1280x800 and 800x480):
+  - Dials: 2 dials, **24 `.gauge-segment` cells each** at both sizes;
+    dial SVG 234.2x201.4px (1280x800) and 176.5x151.8px (800x480) —
+    square dial modules clear the 148px floor, dial renderer active (no
+    bar fallback).
+  - Discrete lit mapping against live temperature: hotend 27.0°C of
+    300° → round(2.16) = **2 lit** (observed 2); bed 25.0°C of 120° →
+    round(5.0) = **5 lit** (observed 5); stable across two samples 8s
+    apart; cross-checked against Moonraker at sample time (27.02/25.01).
+  - Target index: not rendered live — both setpoints are 0 and the index
+    only exists while a target is active (idle machine stayed cold, per
+    the no-heat rule). Deployed `Dashboard-DlV9l8nY.js` chunk confirmed
+    to carry `gauge-target-index` with the continuous
+    `rotate(${angle}deg)` transform — present and unsnapped in the
+    shipped code, and pinned by the passing e2e suite for this build.
+  - Range bars: every eligible factor rendered in the current state
+    carries a bar (Chamber, Part Fan, Speed Factor, Flow Factor — 4
+    `.segment-gauge` strips); the rendered ineligible factors (Z-Offset,
+    Filament) carry **zero `<svg>`**; Pressure Adv. / Max Accel / Homed
+    tiles are not rendered in the panel's current mode/state, and the
+    no-bar pin for all five is enforced by the passing e2e suite.
+  - Telemetry rows: per-row top-edge delta **0px** in every row at both
+    viewports.
+  - No AI settings section: Settings headings are Experience / Theme /
+    Timelapse / System; zero `AI` tokens in page text.
+  - Console: **zero** console errors / page errors at both viewports.
+  - Live tick: 40 (1280x800) and 39 (800x480) WebSocket frames received
+    in an 8s window; mission bar reads **Link Ready**.
+  - Screenshots retained in the session scratchpad (untracked):
+    `verify-1280x800.png`, `verify-800x480.png`,
+    `verify-settings-1280x800.png`.
+- **Rollback armed**: post-deploy `fluidd.previous/index.html` SHA-256
+  equals the pre-deploy anchor (`f600ff54…`), so one command restores the
+  exact prior UI: `PRINTER_HOST=<printer-host> ./deploy.sh --rollback`.
+- No config/service/watchdog contact; no print started; no G-code sent;
+  heaters and motion untouched throughout (idle re-confirmed by the
+  double check above).
