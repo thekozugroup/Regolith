@@ -32,6 +32,17 @@ describe("litSegments", () => {
     expect(litSegments(25, 50, 150)).toBe(0);
   });
 
+  test("the segmented dial rides the same quantizer at count 24", () => {
+    // One law, one code path: the dial calls litSegments(v, 0, maxTemp, 24)
+    // so the strip and the dial quantize identically. Fixture arithmetic the
+    // e2e suite pins against the rendered DOM:
+    expect(litSegments(219.8, 0, 300, 24)).toBe(18); // printing-midjob hotend
+    expect(litSegments(60.1, 0, 120, 24)).toBe(12); // printing-midjob bed
+    expect(litSegments(48.3, 0, 300, 24)).toBe(4); // heating hotend value
+    expect(litSegments(220, 0, 300, 24)).toBe(18); // heating hotend target
+    expect(litSegments(null, 0, 300, 24)).toBe(0); // unknown lights nothing
+  });
+
   test("unknown values and degenerate scales light nothing", () => {
     expect(litSegments(null, 0, 100)).toBe(0);
     expect(litSegments(undefined, 0, 100)).toBe(0);

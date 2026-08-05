@@ -10,9 +10,29 @@
  * renderer instead.
  */
 
+import { litSegments } from "@/components/segmentScale";
+
 const SWEEP_START = 150; // deg — SVG polar, 0° = +x, clockwise/screen-down
 const SWEEP_TOTAL = 240; // deg
 const TRACK_R = 74;
+
+/**
+ * Value channel: 24 discrete segments of 10° (segmented-dials spec §1.1).
+ * 24, not the strip's 20, because 10° divides the 30° major graduation
+ * exactly three times — every major tick lands on a segment boundary and
+ * every major division reads as a countable triplet. (20 → 12° segments,
+ * 2.5 per major division: half the majors would bisect a segment.) What
+ * matches the strip is the APPARENT segment size: at the 148px floor a lit
+ * segment is 6.69px — within a pixel of the strip's own smallest — and the
+ * 70/30 duty cycle is identical.
+ *
+ * The count NEVER changes with container width: segment count IS the
+ * displayed resolution, and a scale that changes resolution with layout
+ * width lies about itself. 24 clears the 148px floor without slivers.
+ */
+const DIAL_SEGMENT_COUNT = 24;
+const SEGMENT_PITCH = SWEEP_TOTAL / DIAL_SEGMENT_COUNT; // 10°
+const SEGMENT_GAP = 1.5; // deg each side → 7° lit / 3° gap, the strip's 70/30 duty
 
 const polar = (r: number, deg: number): [number, number] => {
   const a = (deg * Math.PI) / 180;
@@ -47,6 +67,19 @@ const TICKS = Array.from({ length: 41 }, (_, i) => {
   return { deg, major, line: tickLine(deg, 64, major ? 56 : 60) };
 });
 
+/**
+ * Segment geometry is fixed like TICKS: built once at module load. Two dials
+ * refreshing at the telemetry cadence must not reallocate 24 path strings
+ * four times a second to draw arcs that never move — only their ink changes.
+ */
+const SEGMENTS = Array.from({ length: DIAL_SEGMENT_COUNT }, (_, i) =>
+  arcPath(
+    TRACK_R,
+    SWEEP_START + SEGMENT_PITCH * i + SEGMENT_GAP,
+    SWEEP_START + SEGMENT_PITCH * (i + 1) - SEGMENT_GAP,
+  ),
+);
+
 export interface DialProps {
   actual: number | null | undefined;
   target: number;
@@ -60,14 +93,22 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
   const active = target > 0;
   const heating = active && value < target - 2;
   const cooling = active && value > target + 2;
-  const t = Math.max(0, Math.min(1, value / maxTemp));
   const trackD = arcPath(TRACK_R, SWEEP_START, SWEEP_START + SWEEP_TOTAL);
-  const valueAngle = angleFor(value, maxTemp);
   const targetAngle = angleFor(target, maxTemp);
+  /* Strictly discrete — the same exported quantizer as the strip, so "70%"
+     lights the same fraction on both instruments. No partial-lit terminal
+     segment: that would be the continuous arc in a segment costume, implying
+     sub-segment precision the grid does not have. The dominant HTML readout
+     (1 dp) is the precision channel; the segments are the scale-position
+     channel. */
+  const litValue = litSegments(hasActual ? value : null, 0, maxTemp, DIAL_SEGMENT_COUNT);
+  const litTarget = litSegments(active ? target : null, 0, maxTemp, DIAL_SEGMENT_COUNT);
   const showDelta = active && hasActual && Math.abs(value - target) >= 2;
-  const deltaD = showDelta
-    ? arcPath(TRACK_R, Math.min(valueAngle, targetAngle), Math.max(valueAngle, targetAngle))
-    : null;
+  /* Delta band, per-segment: both endpoints come from litSegments(), so the
+     shaded count is exactly the displayed segment distance — the band can
+     never disagree with the segments it spans. Lit always wins. */
+  const deltaFrom = Math.min(litValue, litTarget);
+  const deltaTo = Math.max(litValue, litTarget);
   const targetIndexStyle = {
     transform: `rotate(${targetAngle}deg)`,
     transformOrigin: "100px 100px",
@@ -87,24 +128,36 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
       >
         {/* Track */}
         <path d={trackD} pathLength={1000} fill="none" stroke="var(--color-gauge-track)" strokeWidth={12} strokeLinecap="butt" />
-        {/* Delta band — static, no animation */}
-        {deltaD && (
-          <path d={deltaD} fill="none" stroke="color-mix(in oklab, var(--gauge-stroke) 22%, transparent)" strokeWidth={12} strokeLinecap="butt" />
-        )}
-        {/* Value arc */}
-        <path
-          d={trackD}
-          pathLength={1000}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={12}
-          strokeLinecap="butt"
-          style={{
-            color: "var(--gauge-stroke)",
-            strokeDasharray: `${t * 1000} 1000`,
-            transition: "stroke-dasharray var(--dur-base) linear, stroke var(--dur-base) linear",
-          }}
-        />
+        {/* Value channel — 24 discrete segments. Lit rides currentColor from
+            the same state machine as before (byte-identical colouring); the
+            delta band renders per-segment in the same 22% ink, static, no
+            animation. strokeLinecap stays "butt": round caps would eat the
+            1.5° gaps and soften the flat grammar. */}
+        <g style={{ color: "var(--gauge-stroke)" }}>
+          {SEGMENTS.map((d, index) => {
+            const lit = index < litValue;
+            const delta = !lit && showDelta && index >= deltaFrom && index < deltaTo;
+            return (
+              <path
+                key={index}
+                d={d}
+                className="gauge-segment transition-[stroke] duration-150 ease-linear"
+                data-lit={lit ? "true" : "false"}
+                data-delta={delta ? "true" : undefined}
+                fill="none"
+                stroke={
+                  lit
+                    ? "currentColor"
+                    : delta
+                      ? "color-mix(in oklab, var(--gauge-stroke) 22%, transparent)"
+                      : "var(--color-segment-unlit)"
+                }
+                strokeWidth={12}
+                strokeLinecap="butt"
+              />
+            );
+          })}
+        </g>
         {/* Ticks — minor hidden on small dials via .dial-ticks-minor */}
         {TICKS.map(({ deg, major, line }) => (
           <line
@@ -115,11 +168,17 @@ export function Dial({ actual, target, power, maxTemp }: DialProps) {
             strokeWidth={major ? 2 : 1}
           />
         ))}
-        {/* Target index */}
+        {/* Target index — UNSNAPPED, at its true angle: snapping to a segment
+            boundary would misstate the setpoint by up to ±3.75°C on a 300°
+            scale, and the setpoint is a number the user typed. Restyled to
+            the strip's index grammar: a 2-wide radial bar spanning r 64→84,
+            over-running the 68–80 segment band exactly as the strip's
+            centerIndex over-runs its segments (a second, geometric channel).
+            The --color-surface backing keeps it legible on a lit segment. */}
         {active && (
           <g style={targetIndexStyle}>
-            <line x1={166} y1={100} x2={182} y2={100} stroke="var(--color-surface)" strokeWidth={7} />
-            <line x1={166} y1={100} x2={182} y2={100} stroke="var(--color-gauge-target)" strokeWidth={4} />
+            <line x1={164} y1={100} x2={184} y2={100} stroke="var(--color-surface)" strokeWidth={5} />
+            <line x1={164} y1={100} x2={184} y2={100} className="gauge-target-index" stroke="var(--color-gauge-target)" strokeWidth={2} />
           </g>
         )}
       </svg>

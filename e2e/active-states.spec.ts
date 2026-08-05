@@ -230,12 +230,15 @@ test.describe("Regolith — live printer states", () => {
     expect(hotend, "heater power must be shown as a percentage").toContain("Pwr 100%");
     expect(hotend).not.toContain("▼");
 
-    // Target index + the delta band spanning actual → target.
+    // Target index + the delta band spanning actual → target. The band is
+    // per-segment now: hotend 48.3° of 300° lights round(48.3/300*24) = 4
+    // segments, target 220° indexes at round(220/300*24) = 18, so exactly
+    // 18 − 4 = 14 segments carry the 22% delta ink.
     await expect(hotendGauge(page).locator('line[stroke="var(--color-gauge-target)"]')).toHaveCount(1);
     await expect(
       hotendGauge(page).locator('path[stroke*="var(--gauge-stroke) 22%"]'),
       "the gap between actual and target must be drawn",
-    ).toHaveCount(1);
+    ).toHaveCount(14);
 
     const job = await readPanelText(missionCard(page));
     expect(job).toContain("Layer 1 / 180");
@@ -667,15 +670,16 @@ test.describe("Regolith — live printer states", () => {
       page.locator('.gauge-dial path[stroke="var(--color-gauge-track)"]'),
       "the dial track must survive forced colors",
     ).toHaveCount(2);
-    // De-glow (owner-directed): the dial value arcs are the owner's
+    // De-glow (owner-directed): the dial's lit segments are the owner's
     // at-a-glance heat signal and must stay rendered in high-contrast mode —
     // as plain geometry, with no filter anywhere. (A previous rule set
     // `display: none` on the old glow class and blanked all of them; the
     // class is gone, the never-hide-geometry lesson stays. The status lamps
     // that used to be swept alongside them are deleted — see the
-    // engine-light test below.)
+    // engine-light test below. The continuous value arc is replaced by 24
+    // discrete segments, so the sweep targets the lit segment paths.)
     const litGeometry = await page
-      .locator('.gauge-dial path[stroke="currentColor"]')
+      .locator('.gauge-dial .gauge-segment[data-lit="true"]')
       .evaluateAll((items) =>
         items.map((item) => {
           const style = getComputedStyle(item);
@@ -690,15 +694,15 @@ test.describe("Regolith — live printer states", () => {
       );
     expect(
       litGeometry.length,
-      "a printing machine must draw its value arcs under forced colors",
+      "a printing machine must draw its lit segments under forced colors",
     ).toBeGreaterThan(0);
     expect(
       litGeometry.filter((part) => !part.shown || !part.sized),
-      "every value arc must stay rendered under forced colors",
+      "every lit segment must stay rendered under forced colors",
     ).toEqual([]);
     expect(
       litGeometry.filter((part) => !part.unfiltered),
-      "no filter may ride the arcs",
+      "no filter may ride the segments",
     ).toEqual([]);
     await assertOwnerTrust(page, "printing @ forced-colors + reduced-motion");
     mock.assertSealed();
@@ -849,17 +853,18 @@ test.describe("Regolith — live printer states", () => {
     mock.assertSealed();
   });
 
-  test("a live dial draws its value arc and lit lamps in normal colors", async ({ page }) => {
+  test("a live dial draws its lit segments and lit lamps in normal colors", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 480 });
     const mock = await openDashboard(page);
     await loadScenario(page, mock, "printing-midjob");
 
-    // The value arc is the thing distinguishing a hot printer from a cold
-    // one at a glance. Pin it here in the mode the owner normally runs (the
-    // forced-colors test above pins the same parts under high contrast).
-    // Selected directly — the glow class that once marked them is deleted.
+    // The lit segments are the thing distinguishing a hot printer from a
+    // cold one at a glance. Pin them here in the mode the owner normally
+    // runs (the forced-colors test above pins the same parts under high
+    // contrast). Selected directly — the glow class that once marked the
+    // old continuous arc is deleted, and the arc itself is now 24 segments.
     const litParts = await page
-      .locator('.gauge-dial path[stroke="currentColor"]')
+      .locator('.gauge-dial .gauge-segment[data-lit="true"]')
       .evaluateAll((items) =>
         items.map((item) => {
           const style = getComputedStyle(item);
@@ -871,7 +876,7 @@ test.describe("Regolith — live printer states", () => {
           };
         }),
       );
-    expect(litParts.length, "a printing machine must draw its value arcs").toBeGreaterThan(0);
+    expect(litParts.length, "a printing machine must draw its lit segments").toBeGreaterThan(0);
     expect(
       litParts.filter((part) => !part.shown || !part.sized),
       "every lit indicator on a hot printer must actually render",

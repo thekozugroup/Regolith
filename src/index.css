@@ -750,6 +750,29 @@
       text-decoration: underline;
       text-underline-offset: 0.15em;
     }
+    /* Segmented dial (segmented-dials spec §1.6), modelled on .telltale-lamp:
+       outline always paints, lit fills. Unlit segments keep the scale
+       readable as 24 countable cells — hairline outline at reduced opacity;
+       lit segments restore the full 12-unit stroke. Delta segments have no
+       forced-colors channel and collapse to unlit — acceptable: the delta is
+       an affordance, the numbers are the truth. */
+    .gauge-segment {
+      stroke: CanvasText;
+      stroke-width: 1;
+      fill: none;
+      opacity: 0.45;
+    }
+    .gauge-segment[data-lit="true"] {
+      stroke: CanvasText;
+      stroke-width: 12;
+      opacity: 1;
+    }
+    /* The target index keeps a second, geometric channel (it over-runs the
+       segment band radially), so it stays distinguishable even if Highlight
+       resolves close to CanvasText. */
+    .gauge-target-index {
+      stroke: Highlight;
+    }
   }
 
   /* Mission media split: thumbnail rail only when the Card itself is wide
