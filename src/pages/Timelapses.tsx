@@ -5,12 +5,21 @@ import { buttonClassName } from "@/components/buttonStyles";
 import { ActionConfirmDialog } from "@/components/ActionConfirmDialog";
 import { Film, Download, Trash2, Play, RefreshCw } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
+import { useTimelapse } from "@/lib/useTimelapse";
 
 interface TimelapseFile {
   path: string;
   size: number;
   modified: number;
 }
+
+/** The plugin's terminal render states, in the owner's words. */
+const RENDER_WORD: Record<string, string> = {
+  running: "Rendering video",
+  success: "Video ready",
+  skipped: "Render skipped",
+  error: "Render failed",
+};
 
 export function Timelapses() {
   const [files, setFiles] = useState<TimelapseFile[]>([]);
@@ -19,6 +28,8 @@ export function Timelapses() {
   const [selected, setSelected] = useState<TimelapseFile | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TimelapseFile | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { activity, recording } = useTimelapse();
+  const render = activity.render;
 
   const load = async () => {
     setLoading(true);
@@ -43,6 +54,15 @@ export function Timelapses() {
   useEffect(() => {
     void load();
   }, []);
+
+  // A finished render means a NEW file exists on the printer. Refreshing on
+  // that edge is what turns this page from a snapshot into a live library —
+  // without it the owner watches a render reach 100% and then stares at a
+  // list that still says the video is not there.
+  useEffect(() => {
+    if (render?.status !== "success") return;
+    void load();
+  }, [render?.status, render?.filename]);
 
   // In-app confirmation, never `window.confirm`: the native dialog blocks
   // the main thread, so the HealthAlerts watchdog (and every live readout)
@@ -89,6 +109,63 @@ export function Timelapses() {
               ? "Timelapses could not be loaded."
               : `${files.length} timelapses available.`}
         </div>
+        {/* Live capture / render state. Rendered ONLY when something is
+            actually happening — an idle machine gets no dead complication,
+            the same law the mission bar follows. */}
+        {(render || recording) && (
+          <div
+            data-testid="timelapse-activity"
+            role="status"
+            aria-live="polite"
+            className="mb-[var(--stack)] rounded-inner border border-[var(--color-border)] p-3"
+          >
+            {render ? (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="instrument-label text-[11px]">
+                    {RENDER_WORD[render.status]}
+                  </span>
+                  {render.progress !== null && (
+                    <span className="instrument-value text-[12px] font-semibold tabular-nums">
+                      {`${Math.round(render.progress)}%`}
+                    </span>
+                  )}
+                </div>
+                {render.status === "running" && (
+                  <div
+                    aria-hidden="true"
+                    className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--color-elevated)]"
+                  >
+                    <div
+                      data-testid="timelapse-render-bar"
+                      className="h-full bg-[var(--color-accent)] transition-[width] duration-300"
+                      style={{ width: `${render.progress ?? 0}%` }}
+                    />
+                  </div>
+                )}
+                {(render.filename || render.message) && (
+                  <div className="mt-1.5 text-[11px] leading-relaxed text-[var(--color-fg-muted)] break-all">
+                    {render.filename ?? render.message}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-baseline justify-between gap-3">
+                {/* Lit by FRAMES ARRIVING, never by the plugin's global
+                    `enabled` flag — that flag is true on printers that have
+                    never captured anything. */}
+                <span className="instrument-label text-[11px] text-[var(--color-accent)]">
+                  Recording
+                </span>
+                <span className="instrument-value text-[12px] font-semibold tabular-nums">
+                  {activity.frames === 1
+                    ? "1 frame"
+                    : `${activity.frames ?? 0} frames`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         <div aria-busy={loading}>
         {err && (
           <div className="text-[12px] text-[var(--color-error)] py-3 text-center">
@@ -101,8 +178,11 @@ export function Timelapses() {
             <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
               No timelapses yet
             </div>
+            {/* This line used to point at a control that did not exist
+                anywhere in the app. The switch is in the print dialog, on
+                the print confirmation, and it is off by default. */}
             <div className="text-[11px] text-[var(--color-fg-subtle)] mt-1">
-              Enable per-print on the Files page.
+              Turn on “Record timelapse” when you start a print.
             </div>
           </div>
         )}

@@ -14,7 +14,16 @@ import {
 import { useAiFeatureReady } from "@/lib/ai/flags";
 import { computeJobTiming } from "@/lib/jobProgress";
 import { useJobHistory } from "@/lib/useJobHistory";
+import { useTimelapse } from "@/lib/useTimelapse";
 import { formatDuration, cn, recentMeaningfulLines } from "@/lib/utils";
+
+/** Terminal render states, in the owner's words. */
+const TIMELAPSE_RENDER_WORD: Record<string, string> = {
+  running: "Rendering",
+  success: "Video ready",
+  skipped: "Skipped",
+  error: "Render failed",
+};
 
 /**
  * The assistant is opt-in and ships OFF, but it was reaching the glass on
@@ -168,6 +177,12 @@ export function MissionTimeline() {
   const filamentMm = ps?.filament_used ?? 0;
   const layerText = formatLayer(ps?.info?.current_layer, ps?.info?.total_layer);
   const reason = jobReason(ps?.message);
+  // Timelapse capture, reported as an OBSERVATION. `recording` is true only
+  // while frames are actually advancing — never because the plugin's global
+  // `enabled` flag says so, which it does on machines that have never
+  // captured anything (see lib/timelapse.ts).
+  const { activity: timelapse, recording } = useTimelapse();
+  const timelapseRender = timelapse.render;
 
   const dispatch = async (action: PrinterAction) => {
     setActionBusy(action.type);
@@ -483,6 +498,30 @@ export function MissionTimeline() {
                 filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"
               }
             />
+            {/* Recording, and then rendering — each shown only while it is
+                actually happening. No dead "Timelapse —" complication sits
+                here on a job that is not being recorded. */}
+            {recording && (
+              <Stat
+                label="Recording"
+                value={
+                  timelapse.frames === 1
+                    ? "1 frame"
+                    : `${timelapse.frames ?? 0} frames`
+                }
+                accent
+              />
+            )}
+            {!recording && timelapseRender && (
+              <Stat
+                label="Timelapse"
+                value={
+                  timelapseRender.status === "running"
+                    ? `Rendering ${Math.round(timelapseRender.progress ?? 0)}%`
+                    : TIMELAPSE_RENDER_WORD[timelapseRender.status]
+                }
+              />
+            )}
           </div>
         </div>
       </div>

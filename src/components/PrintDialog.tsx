@@ -10,7 +10,14 @@ import {
   kampEnabledFromStorage,
   runPrinterAction,
   type PrinterAction,
+  type PrintSetupOption,
 } from "@/lib/printerActions";
+import {
+  TIMELAPSE_MODE_STORAGE_KEY,
+  TIMELAPSE_STORAGE_KEY,
+  timelapseEnabledFromStorage,
+  timelapseModeFromStorage,
+} from "@/lib/timelapse";
 import {
   X,
   Play,
@@ -18,6 +25,7 @@ import {
   Layers,
   HardDrive,
   Layers3,
+  Film,
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
@@ -67,9 +75,25 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     writeStoredFlag(KAMP_STORAGE_KEY, value);
     setKamp(value);
   };
+  // Recording defaults OFF — it consumes printer storage and re-encodes video
+  // on the host at the end of every job. Sticky, like the KAMP choice.
+  const [timelapse, setTimelapse] = useState(() =>
+    timelapseEnabledFromStorage(readStored(TIMELAPSE_STORAGE_KEY)),
+  );
+  const updateTimelapse = (value: boolean) => {
+    writeStoredFlag(TIMELAPSE_STORAGE_KEY, value);
+    setTimelapse(value);
+  };
+  // The owner's PINNED capture mode, if they set one in Settings. Read when
+  // the dialog opens, because Settings may have changed it since mount.
+  const [timelapseMode, setTimelapseMode] = useState(() =>
+    timelapseModeFromStorage(readStored(TIMELAPSE_MODE_STORAGE_KEY)),
+  );
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Optional setup that did NOT happen, on a print that DID start. */
+  const [notices, setNotices] = useState<string[]>([]);
   const [thumbFailed, setThumbFailed] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
@@ -82,18 +106,33 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     ? thumbnailUrlFor(file.path, previewRelative)
     : null;
 
+  const setup: PrintSetupOption[] = [];
+  if (profile.features.kamp) setup.push(kamp ? "kamp-on" : "kamp-off");
+  // Written on EVERY start, in BOTH directions. Moonraker holds one global
+  // timelapse flag shared with Fluidd and the stock touchscreen, so whatever
+  // it currently holds is never safe to assume — "do not record this one"
+  // has to be asserted just as explicitly as "record this one".
+  if (profile.features.timelapse) {
+    setup.push({ kind: "timelapse", enabled: timelapse, mode: timelapseMode });
+  }
   const action: PrinterAction = {
     type: "start-print",
     filename: file.path,
-    setup: profile.features.kamp ? [kamp ? "kamp-on" : "kamp-off"] : [],
+    setup,
   };
   const preflight = guardPrinterAction(state, connected, action);
+  // layermacro captures ONLY when the sliced file itself calls
+  // TIMELAPSE_TAKE_FRAME. Most files do not, so a toggle left unqualified
+  // here would promise a recording this file cannot produce.
+  const mayCaptureNothing = timelapse && timelapseMode === "layermacro";
 
   useEffect(() => {
     if (!open) return;
     setAcknowledged(false);
     setError(null);
+    setNotices([]);
     setThumbFailed(false);
+    setTimelapseMode(timelapseModeFromStorage(readStored(TIMELAPSE_MODE_STORAGE_KEY)));
   }, [open, file.path]);
 
   if (!open) return null;
@@ -101,11 +140,19 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   const start = async () => {
     setBusy(true);
     setError(null);
+    setNotices([]);
     try {
       const result = await runPrinterAction(action, {
         confirm: () => acknowledged,
       });
-      if (result.executed) onClose();
+      // The print is running either way. When an OPTIONAL step could not be
+      // carried out, the dialog stays up to say so rather than closing on a
+      // silent half-success — it is a notice, never an error.
+      if (result.executed && result.notices?.length) {
+        setNotices(result.notices);
+      } else if (result.executed) {
+        onClose();
+      }
     } catch (e) {
       setError(
         e instanceof Error
@@ -128,11 +175,17 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
       describedBy={descriptionId}
       onDismiss={onClose}
       dismissLocked={busy}
-      panelClassName="max-h-[calc(100dvh-2rem)]"
+      /* The BODY scrolls, not the panel. With the whole panel as the scroll
+         region, a dialog taller than a phone viewport pushed its own footer
+         out of the panel's box — the START control drifted off the corner it
+         is supposed to sit concentric to, and on a short screen it could be
+         scrolled away entirely. Header and footer are pinned; only the
+         reviewable content moves. */
+      panelClassName="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden"
     >
         {/* p-4 = --modal-pad: the corner close button keeps the strict
             concentric gap (radius-modal − pad = control radius). */}
-        <header className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+        <header className="flex shrink-0 items-center justify-between p-4 border-b border-[var(--color-border)]">
           <h2 id={titleId} className="text-[17px] font-semibold tracking-tight">
             Ready to print?
           </h2>
@@ -146,7 +199,7 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </button>
         </header>
 
-        <div className="p-4 space-y-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
           <p id={descriptionId} className="text-[14px] leading-relaxed text-[var(--color-fg-muted)]">
             Review file and printer area. Regolith checks live printer state again immediately before starting.
           </p>
@@ -237,18 +290,51 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
           </div>
 
           {/* Pre-print options */}
-          {profile.features.kamp && (
+          {(profile.features.kamp || profile.features.timelapse) && (
             <div className="space-y-1.5 pt-3 border-t border-[var(--color-border)]">
               <div className="text-[12px] text-[var(--color-fg-muted)] font-semibold mb-1">
                 Print setup
               </div>
-              <Toggle
-                icon={<Layers3 className="w-4 h-4" />}
-                label="Adaptive bed mesh"
-                description="Probe only this model’s print area before printing. Skipped if this printer does not support it; the print still starts."
-                checked={kamp}
-                onChange={updateKamp}
-              />
+              {profile.features.kamp && (
+                <Toggle
+                  icon={<Layers3 className="w-4 h-4" />}
+                  label="Adaptive bed mesh"
+                  description="Probe only this model’s print area before printing. Skipped if this printer does not support it; the print still starts."
+                  checked={kamp}
+                  onChange={updateKamp}
+                />
+              )}
+              {profile.features.timelapse && (
+                <>
+                  <Toggle
+                    testId="timelapse-toggle"
+                    icon={<Film className="w-4 h-4" />}
+                    label="Record timelapse"
+                    description={
+                      timelapseMode === "hyperlapse"
+                        ? "Capture frames on a timer while this job runs; the video renders on the printer when it finishes."
+                        : "Capture on layer change, driven by your slicer’s TIMELAPSE_TAKE_FRAME command."
+                    }
+                    checked={timelapse}
+                    onChange={updateTimelapse}
+                  />
+                  {mayCaptureNothing && (
+                    <div
+                      role="status"
+                      data-testid="timelapse-mode-warning"
+                      className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-inner"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+                      <span className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+                        Capture mode is set to layer macro, so frames are taken only
+                        where this file’s g-code calls TIMELAPSE_TAKE_FRAME. A file
+                        sliced without it records nothing. Choose hyperlapse in
+                        Settings to record any file.
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -289,22 +375,51 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
               </span>
             </div>
           )}
+
+          {/* The print IS running. An optional step that did not happen is a
+              notice, not a failure — the only wrong answer here would be to
+              close silently and let the owner believe a recording exists. */}
+          {notices.length > 0 && (
+            <div
+              role="status"
+              data-testid="print-setup-notice"
+              className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-inner"
+            >
+              <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+              <span className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+                Print started. {notices.join(" ")}
+              </span>
+            </div>
+          )}
         </div>
 
-        <footer className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 border-t border-[var(--color-border)]">
+        <footer className="flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2 p-4 border-t border-[var(--color-border)]">
           <div className="grid grid-cols-2 gap-2 sm:flex">
-            <Button size="md" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              size="md"
-              variant="primary"
-              onClick={start}
-              disabled={busy || !acknowledged || !preflight.allowed}
-            >
-              <Play className="w-3.5 h-3.5" />
-              {busy ? "Checking printer…" : "Start print"}
-            </Button>
+            {notices.length > 0 ? (
+              <Button
+                size="md"
+                variant="primary"
+                onClick={onClose}
+                className="col-span-2"
+              >
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button size="md" variant="ghost" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  size="md"
+                  variant="primary"
+                  onClick={start}
+                  disabled={busy || !acknowledged || !preflight.allowed}
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  {busy ? "Checking printer…" : "Start print"}
+                </Button>
+              </>
+            )}
           </div>
         </footer>
     </ModalSurface>
@@ -339,18 +454,22 @@ function Toggle({
   description,
   checked,
   onChange,
+  testId,
 }: {
   icon: React.ReactNode;
   label: string;
   description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      data-testid={testId}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
         "press-flat w-full min-h-11 flex items-center gap-3 p-3 rounded-inner border text-left transition-colors",

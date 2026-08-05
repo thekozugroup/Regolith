@@ -13,6 +13,7 @@ import { BackupSettings } from "@/components/BackupSettings";
 import { ProfileSettings } from "@/components/ProfileSettings";
 import { ExperienceSettings } from "@/components/ExperienceSettings";
 import { AiSettings } from "@/components/AiSettings";
+import { TimelapseSettings } from "@/components/TimelapseSettings";
 import { useActionConfirm } from "@/components/useActionConfirm";
 import { usePrinter } from "@/lib/usePrinter";
 import { useExperienceMode } from "@/lib/useExperienceMode";
@@ -36,7 +37,7 @@ interface SystemInfo {
 }
 
 export function SettingsPage() {
-  const { state, connected } = usePrinter();
+  const { state, connected, profile } = usePrinter();
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
   const [info, setInfo] = useState<Partial<SystemInfo>>({});
@@ -138,6 +139,10 @@ export function SettingsPage() {
           belongs behind Expert, like its neighbours above. Basic stays the
           safe default surface. */}
       {isExpert && <AiSettings />}
+      {/* Capture mode is not an expert control: choosing it wrong is the
+          difference between a timelapse and an empty folder, so it belongs
+          wherever the owner turns recording on. */}
+      {profile.features.timelapse && <TimelapseSettings />}
 
       <Card title="System" icon={<Cog />} className="lg:col-span-2">
         <div className="space-y-[var(--stack)]">
