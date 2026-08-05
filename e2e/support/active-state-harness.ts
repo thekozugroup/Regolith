@@ -39,6 +39,26 @@ const MOCK_CAMERA_FRAME = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" 
 
 export type MockPrinterState = Record<string, unknown>;
 
+/** moonraker-timelapse's stock config, trimmed to what the app reads. */
+const TIMELAPSE_SETTINGS: Record<string, unknown> = {
+  enabled: false,
+  mode: "hyperlapse",
+  hyperlapse_cycle: 30,
+  autorender: true,
+  parkhead: false,
+  output_framerate: 30,
+  blockedsettings: ["snapshoturl"],
+};
+
+/** Klipper objects the K1 Max reports — KAMP is an output pin, not a macro. */
+const KLIPPER_OBJECTS = [
+  "print_stats",
+  "toolhead",
+  "virtual_sdcard",
+  "gcode_macro START_PRINT",
+  "output_pin ADAPTIVE_BED_MESH",
+];
+
 export interface ActiveMockOptions {
   /** Live printer objects returned from `printer.objects.subscribe`. */
   state: MockPrinterState;
@@ -46,6 +66,22 @@ export interface ActiveMockOptions {
   camera?: "ok" | "absent";
   /** Serve a gcode thumbnail so the job panel renders its <img> branch. */
   thumbnail?: boolean;
+  /** What `GET /machine/timelapse/settings` reports; "absent" 404s it. */
+  timelapseSettings?: Record<string, unknown> | "absent";
+  /**
+   * Endpoints this test intends to exercise FOR REAL.
+   *
+   * The default is total seal: every write and every non-subscribe RPC is
+   * recorded and aborted. A test that needs to prove what a print start puts
+   * on the wire opts in here, and the calls are recorded rather than
+   * forwarded — nothing ever reaches a printer either way.
+   */
+  permit?: {
+    /** `printer.objects.list`, `printer.gcode.script`, `printer.print.start`. */
+    printStart?: boolean;
+    /** `POST /machine/timelapse/settings`. "fail" answers HTTP 500. */
+    timelapseWrite?: "ok" | "fail";
+  };
 }
 
 export interface ActiveMock {
@@ -62,6 +98,11 @@ export interface ActiveMock {
    */
   push: (diff: MockPrinterState) => void;
   /**
+   * Push a `notify_timelapse_event` — the moonraker-timelapse plugin's own
+   * notification, carrying either `{action:"newframe"}` or `{action:"render"}`.
+   */
+  pushTimelapse: (event: Record<string, unknown>) => void;
+  /**
    * Server-side close of every open socket — simulates a dropped link. The
    * app's own backoff reconnects to the still-installed route.
    */
@@ -69,6 +110,10 @@ export interface ActiveMock {
   /** Fails the test if the browser talked to anything outside the fixture. */
   assertSealed: () => void;
   cameraRequests: () => number;
+  /** Bodies POSTed to `/machine/timelapse/settings`, in order. */
+  timelapseWrites: () => Array<Record<string, unknown>>;
+  /** RPC methods permitted and recorded, in order. */
+  rpcCalls: () => string[];
 }
 
 export async function installActiveMock(
@@ -78,9 +123,21 @@ export async function installActiveMock(
   const writes: string[] = [];
   const escaped: string[] = [];
   const subscriptions: string[] = [];
+  const rpcs: string[] = [];
+  const timelapseWrites: Array<Record<string, unknown>> = [];
   const sockets = new Set<WebSocketRoute>();
   let cameraRequestCount = 0;
   let options = initial;
+
+  /** RPCs a test has opted into, answered locally and recorded. */
+  const permittedRpc = (method: string): unknown | undefined => {
+    if (!options.permit?.printStart) return undefined;
+    if (method === "printer.objects.list") return { objects: KLIPPER_OBJECTS };
+    if (method === "printer.gcode.script" || method === "printer.print.start") {
+      return "ok";
+    }
+    return undefined;
+  };
 
   await page.routeWebSocket("**/websocket", (socket) => {
     sockets.add(socket);
@@ -93,7 +150,16 @@ export async function installActiveMock(
         method?: string;
       };
       if (request.method !== "printer.objects.subscribe") {
-        writes.push(`rpc:${request.method ?? "unknown"}`);
+        const method = request.method ?? "unknown";
+        const permitted = permittedRpc(method);
+        if (permitted !== undefined) {
+          rpcs.push(method);
+          socket.send(
+            JSON.stringify({ jsonrpc: "2.0", id: request.id, result: permitted }),
+          );
+          return;
+        }
+        writes.push(`rpc:${method}`);
         socket.close({ code: 1008, reason: "Strict mock permits subscriptions only" });
         return;
       }
@@ -112,6 +178,39 @@ export async function installActiveMock(
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
+
+    // The one write a test may opt into. It is RECORDED and answered here —
+    // never forwarded — so the assertion is about what the app decided to
+    // send, and nothing reaches a printer.
+    if (
+      method === "POST" &&
+      url.pathname === "/machine/timelapse/settings" &&
+      options.permit?.timelapseWrite
+    ) {
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+      } catch {
+        body = { unparseable: request.postData() ?? null };
+      }
+      timelapseWrites.push(body);
+      if (options.permit.timelapseWrite === "fail") {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "timelapse component failed" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: { ...TIMELAPSE_SETTINGS, ...body },
+        }),
+      });
+      return;
+    }
 
     if (method !== "GET" && method !== "HEAD") {
       writes.push(`${method} ${url.origin}${url.pathname}`);
@@ -184,6 +283,24 @@ export async function installActiveMock(
       return;
     }
 
+    // moonraker-timelapse's config. Present on this printer; a host without
+    // the component is simulated with "absent", which 404s exactly as the
+    // real Moonraker does.
+    if (url.pathname === "/machine/timelapse/settings") {
+      if (options.timelapseSettings === "absent") {
+        await route.fulfill({ status: 404, body: "timelapse component not loaded" });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: { ...TIMELAPSE_SETTINGS, ...(options.timelapseSettings ?? {}) },
+        }),
+      });
+      return;
+    }
+
     if (url.pathname === "/printer/info") {
       await route.fulfill({
         status: 200,
@@ -231,6 +348,14 @@ export async function installActiveMock(
       });
       for (const socket of sockets) socket.send(message);
     },
+    pushTimelapse: (event) => {
+      const message = JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notify_timelapse_event",
+        params: [event],
+      });
+      for (const socket of sockets) socket.send(message);
+    },
     dropLink: () => {
       for (const socket of sockets) {
         socket.close({ code: 1001, reason: "fixture link drop" });
@@ -238,6 +363,8 @@ export async function installActiveMock(
       sockets.clear();
     },
     cameraRequests: () => cameraRequestCount,
+    timelapseWrites: () => timelapseWrites,
+    rpcCalls: () => rpcs,
     assertSealed: () => {
       expect(escaped, "browser traffic escaped the local fixture").toEqual([]);
       expect(writes, "test attempted a printer write or non-subscribe RPC").toEqual([]);
