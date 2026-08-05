@@ -55,6 +55,13 @@ export function SegmentGauge({
   const known = value != null && Number.isFinite(value);
   const lit = litSegments(value, min, max);
   const zoneFrom = zoneStartIndex(warnFrom, min, max);
+  /* Over-range honesty (segmented-dials spec §2.5): factor scales are
+     DISPLAY CLAMPS, not printer bounds — M220 S200 is legal, and a clamped
+     full strip is indistinguishable from a true 150%. A value beyond the
+     scale gets a warning caret past the corresponding end plus a ›/‹ affix
+     on the readout, so a pinned strip never reads as a true maximum. */
+  const over = known && value > max;
+  const under = known && value < min;
 
   return (
     <div
@@ -71,7 +78,13 @@ export function SegmentGauge({
           className="instrument-value text-[13px] font-semibold"
           style={{ color: stateColor === IDLE_COLOR ? "var(--color-fg)" : stateColor }}
         >
+          {under && (
+            <span aria-hidden="true" className="mr-0.5 text-[var(--color-warning)]">‹</span>
+          )}
           {display}
+          {over && (
+            <span aria-hidden="true" className="ml-0.5 text-[var(--color-warning)]">›</span>
+          )}
         </span>
       </div>
       <svg
@@ -100,6 +113,14 @@ export function SegmentGauge({
         ))}
         {centerIndex && (
           <rect x={SEGMENT_COUNT * 5 - 1} y={0} width={2} height={24} fill="var(--color-gauge-target)" />
+        )}
+        {/* Over/under-range caret — a 2-unit warning bar in the trailing/
+            leading gap, over-height like the center index. */}
+        {over && (
+          <rect data-over-range="true" x={SEGMENT_COUNT * 10 - 2} y={0} width={2} height={24} fill="var(--color-warning)" />
+        )}
+        {under && (
+          <rect data-under-range="true" x={0} y={0} width={2} height={24} fill="var(--color-warning)" />
         )}
       </svg>
     </div>

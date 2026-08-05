@@ -56,6 +56,12 @@ export function Dashboard() {
     pressureAdvance: state.extruder?.pressure_advance,
     liveVelocity: state.motion_report?.live_velocity,
     maxAccel: state.toolhead?.max_accel,
+    // Range sources for the honest bars (segmented-dials spec §2.1). None of
+    // these move at telemetry cadence — max_velocity and the axis limits are
+    // config-static — so the memo boundaries stay effective.
+    maxVelocity: state.toolhead?.max_velocity,
+    axisMinZ: state.toolhead?.axis_minimum?.[2],
+    axisMaxZ: state.toolhead?.axis_maximum?.[2],
     posX: state.toolhead?.position?.[0],
     posY: state.toolhead?.position?.[1],
     posZ: state.toolhead?.position?.[2],
@@ -130,6 +136,11 @@ export function Dashboard() {
             pressureAdvance={t.pressureAdvance}
             liveVelocity={t.liveVelocity}
             maxAccel={t.maxAccel}
+            maxVelocity={t.maxVelocity}
+            axisMinZ={t.axisMinZ}
+            axisMaxZ={t.axisMaxZ}
+            profileZMin={profile.bounds?.min[2]}
+            profileZMax={profile.bounds?.max[2]}
             posZ={t.posZ}
             homedAxes={t.homedAxes}
             hotendPower={t.extPower}
@@ -251,6 +262,11 @@ const TelemetryPanel = memo(function TelemetryPanel({
   pressureAdvance,
   liveVelocity,
   maxAccel,
+  maxVelocity,
+  axisMinZ,
+  axisMaxZ,
+  profileZMin,
+  profileZMax,
   posZ,
   homedAxes,
   hotendPower,
@@ -267,20 +283,49 @@ const TelemetryPanel = memo(function TelemetryPanel({
   pressureAdvance?: number;
   liveVelocity?: number;
   maxAccel?: number;
+  maxVelocity?: number;
+  axisMinZ?: number;
+  axisMaxZ?: number;
+  profileZMin?: number;
+  profileZMax?: number;
   posZ?: number;
   homedAxes?: string;
   hotendPower?: number;
   bedPower?: number;
 }) {
-  const chamberMax = chamber?.maxTemp ?? 80;
+  /* DEGRADATION LAW (segmented-dials spec §2.4): an unknown range yields NO
+     BAR — never a default, never a "sane" fallback. The old `?? 80` here
+     drew a fabricated 0–80° chamber scale for any profile that omits
+     maxTemp. Do NOT borrow safety.ts's `?? [300,300,300,0]` for the Z scale
+     either: that default makes a MOTION CLAMP fail safe (a smaller assumed
+     volume is conservative); as a DISPLAY scale it would report the toolhead
+     at a fraction of a travel the printer does not have. Fail-safe defaults
+     and display truth are different problems. */
+  const chamberMax = chamber?.maxTemp;
   const chamberWarn =
     chamber?.warnAbove != null && chamberTemp != null && chamberTemp >= chamber.warnAbove;
+  const velocityMax = maxVelocity != null && maxVelocity > 0 ? maxVelocity : undefined;
+  const zMin = axisMinZ ?? profileZMin;
+  const zMax = axisMaxZ ?? profileZMax;
+  /* Position Z is additionally homing-gated: an unhomed position[2] is a raw
+     stepper coordinate with no relation to the build volume. Unknown homing
+     (no toolhead telemetry) must never render as a "not homed" claim — the
+     same rule as .telltale-axis-unknown. */
+  const zHomed = homedAxes != null && homedAxes.toLowerCase().includes("z");
+  const zKnownUnhomed = homedAxes != null && !homedAxes.toLowerCase().includes("z");
+  const zBar = zHomed && zMin != null && zMax != null && zMax > zMin;
   /* Segment strips (SD1 spec §2.1) carry the stepped quantities — duty
      cycles, factor offsets, the bounded chamber with its warn-zone cap.
-     Scalar readouts (Z-offset, filament, MCU temp) stay numeric tiles: a
-     strip for an unbounded number would be false precision. */
+     Factors with no published range (Z-offset, filament, pressure advance,
+     max accel, homed) stay bar-less ON PRINCIPLE — a bar would invent a
+     ceiling, the exact pressure-advance incident class — and their tiles
+     carry NO filler: no ghost track, no neutral rule. A ghost track reads
+     as "0% of something", i.e. a false ceiling, and filler would reverse
+     the flatten pass; top-alignment already carries the layout. */
   return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
-    {chamber && <SegmentGauge label={chamber.label} display={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} value={chamberTemp} max={chamberMax} warnFrom={chamber.warnAbove} stateColor={chamberWarn ? "var(--color-warning)" : undefined} description={`Scale 0 to ${chamberMax} degrees Celsius${chamber.warnAbove != null ? `, warning above ${chamber.warnAbove}` : ""}.`} />}
+    {chamber && (chamberMax != null
+      ? <SegmentGauge label={chamber.label} display={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} value={chamberTemp} max={chamberMax} warnFrom={chamber.warnAbove} stateColor={chamberWarn ? "var(--color-warning)" : undefined} description={`Scale 0 to ${chamberMax} degrees Celsius${chamber.warnAbove != null ? `, warning above ${chamber.warnAbove}` : ""}.`} />
+      : <MetricTile label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} warn={chamberWarn} />)}
     <SegmentGauge label="Part Fan" display={`${(fanSpeed * 100).toFixed(0)}%`} value={fanSpeed * 100} max={100} stateColor={fanSpeed > 0 ? "var(--color-accent)" : undefined} description="Duty cycle, 0 to 100 percent." />
     {/* Strict !==1 latched a permanent false warning off M220/M221 float
         noise (0.9999999 renders as "100%" yet warned forever). The epsilon
@@ -289,15 +334,25 @@ const TelemetryPanel = memo(function TelemetryPanel({
         The old `?? 1` lit a full-confidence 100% strip off no telemetry at
         all — and did it in BASIC mode. null flows through to SegmentGauge's
         own em-dash unknown state, the same way hotendPower already does. */}
-    <SegmentGauge label="Speed Factor" display={speedFactor != null ? `${(speedFactor * 100).toFixed(0)}%` : "—"} value={speedFactor != null ? speedFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
-    <SegmentGauge label="Flow Factor" display={flowFactor != null ? `${(flowFactor * 100).toFixed(0)}%` : "—"} value={flowFactor != null ? flowFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100." />
+    <SegmentGauge label="Speed Factor" display={speedFactor != null ? `${(speedFactor * 100).toFixed(0)}%` : "—"} value={speedFactor != null ? speedFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />
+    <SegmentGauge label="Flow Factor" display={flowFactor != null ? `${(flowFactor * 100).toFixed(0)}%` : "—"} value={flowFactor != null ? flowFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />
     <MetricTile label="Z-Offset" value={formatZOffset(zHome)} />
     <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
     {isExpert && <>
+      {/* Pressure advance has NO universal range (direct drive ~0–0.1,
+          bowden up to ~1.0) — a bar implying a ceiling here is the invented
+          `?? 0.04` incident in graphical form. Never a bar. */}
       <MetricTile label="Pressure Adv." value={pressureAdvance?.toFixed(4) ?? "—"} />
-      <MetricTile label="Live Vel." value={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} active={(liveVelocity ?? 0) > 1} />
+      {velocityMax != null
+        ? <SegmentGauge label="Live Vel." display={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} value={liveVelocity} max={velocityMax} stateColor={(liveVelocity ?? 0) > 1 ? "var(--color-accent)" : undefined} description={`Scale 0 to ${velocityMax} millimetres per second.`} />
+        : <MetricTile label="Live Vel." value={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} active={(liveVelocity ?? 0) > 1} />}
+      {/* Max accel IS the limit — there is no honest ceiling above a
+          ceiling, and configfile is deliberately not subscribed. Never a
+          bar. */}
       <MetricTile label="Max Accel" value={maxAccel ? `${(maxAccel / 1000).toFixed(1)}k` : "—"} />
-      <MetricTile label="Position Z" value={posZ?.toFixed(3) ?? "—"} />
+      {zBar
+        ? <SegmentGauge label="Position Z" display={posZ?.toFixed(3) ?? "—"} value={posZ} min={zMin} max={zMax} description={`Scale ${zMin} to ${zMax} millimetres.`} />
+        : <MetricTile label="Position Z" value={posZ?.toFixed(3) ?? "—"} affix={zKnownUnhomed ? "unhomed" : undefined} />}
       <MetricTile label="Homed" value={homedAxes?.toUpperCase() || "none"} active={!!homedAxes} />
       {/* Heater power IS a PWM duty strip — the spec's clearest segment case. */}
       <SegmentGauge label="Hotend Power" display={hotendPower != null ? `${Math.round(hotendPower * 100)}%` : "—"} value={hotendPower != null ? hotendPower * 100 : null} max={100} stateColor={(hotendPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />
@@ -362,11 +417,15 @@ function AuxRow({
 function MetricTile({
   label,
   value,
+  affix,
   active,
   warn,
 }: {
   label: string;
   value: string;
+  /** Muted explanatory word beside the value — an information channel for a
+   *  data-conditional absence (Position Z's "unhomed"), never decoration. */
+  affix?: string;
   active?: boolean;
   warn?: boolean;
 }) {
@@ -393,6 +452,11 @@ function MetricTile({
         )}
       >
         {value}
+        {affix && (
+          <span className="ml-1.5 text-[11px] font-normal text-[var(--color-fg-muted)]">
+            {affix}
+          </span>
+        )}
       </span>
     </div>
   );

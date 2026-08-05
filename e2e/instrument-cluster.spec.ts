@@ -463,8 +463,10 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     await page.goto("/");
     await expect(page.locator(".gauge-dial:visible")).toHaveCount(2);
     await assertNoBrokenReadouts(page, "segment gauges mid-print");
-    // Expert adds the two PWM heater-power strips to the four basic ones.
-    await expect(page.locator(".segment-gauge")).toHaveCount(6);
+    // Expert adds the two PWM heater-power strips plus the two new
+    // printer-published ranges (Live Vel. against toolhead.max_velocity,
+    // Position Z against the homed axis limits) to the four basic ones.
+    await expect(page.locator(".segment-gauge")).toHaveCount(8);
     const gauges = await page.locator(".segment-gauge").evaluateAll((items) =>
       items.map((item) => ({
         label: item.querySelector(".instrument-label")?.textContent?.trim() ?? "",
@@ -511,6 +513,14 @@ test.describe("Regolith Instrument Cluster — strict local mock", () => {
     expect(byLabel["Hotend Power"].lit).toBe(8);
     expect(byLabel["Bed Power"].value).toBe("28%");
     expect(byLabel["Bed Power"].lit).toBe(6);
+    // Live velocity against the printer's own published ceiling:
+    // 148.3 of 600 mm/s → round(4.94) = 5.
+    expect(byLabel["Live Vel."].value).toBe("148 mm/s");
+    expect(byLabel["Live Vel."].lit).toBe(5);
+    // Position Z against the homed axis limits (−10..305):
+    // (23.6 + 10) / 315 · 20 → round(2.13) = 2.
+    expect(byLabel["Position Z"].value).toBe("23.600");
+    expect(byLabel["Position Z"].lit).toBe(2);
 
     mock.assertSealed();
   });

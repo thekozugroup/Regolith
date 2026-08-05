@@ -283,3 +283,290 @@ test.describe("Segmented dials — 24-cell value channel", () => {
     mock.assertSealed();
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * PART 2 — range bars, honestly.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * A schema-valid custom profile that publishes NO chamber ceiling and NO
+ * bounds — the degradation fixtures. Injected through the app's own custom-
+ * profile door (localStorage), exactly as an owner-uploaded profile would be.
+ */
+const SPARSE_PROFILE = {
+  schema: 1,
+  id: "sparse-fixture",
+  name: "Sparse fixture",
+  heaters: [
+    { klipper: "extruder", label: "Hotend", maxTemp: 300, controllable: true },
+    { klipper: "heater_bed", label: "Bed", maxTemp: 120, controllable: true },
+  ],
+  sensors: [
+    // Deliberately NO maxTemp: the profile publishes no chamber ceiling.
+    { klipper: "temperature_sensor chamber_temp", label: "Chamber", warnAbove: 60 },
+    { klipper: "temperature_sensor mcu_temp", label: "MCU", maxTemp: 90, warnAbove: 70 },
+  ],
+  fans: [
+    { klipper: "temperature_fan chamber_fan", label: "Chamber Fan", role: "chamber" },
+    { klipper: "temperature_fan soc_fan", label: "SoC Fan", role: "controller" },
+  ],
+  macros: [],
+  features: {},
+  // Deliberately NO bounds.
+};
+
+async function useSparseProfile(page: Page) {
+  await page.addInitScript((profile) => {
+    localStorage.setItem("regolith.profile.custom", JSON.stringify([profile]));
+    localStorage.setItem("regolith.profile.active", "sparse-fixture");
+  }, SPARSE_PROFILE);
+}
+
+/** A telemetry tile located by its label — blind to tile type. The label is
+ *  matched case-insensitively because `.instrument-label` renders through
+ *  `text-transform: uppercase` and the text engine matches rendered text. */
+const telemetryTile = (page: Page, label: string) =>
+  page.locator(".telemetry-grid > *").filter({
+    has: page.locator(".instrument-label", {
+      hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    }),
+  });
+
+const NO_BAR_EVER = ["Z-Offset", "Filament", "Pressure Adv.", "Max Accel", "Homed"];
+
+test.describe("Telemetry range bars — real ranges only", () => {
+  test("every rendered strip's fill is exact integer arithmetic on value/range", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await openScenario(page, "printing-midjob", { experience: "expert" });
+    // Fixture truths, straight from the scenario state and the K1 Max
+    // profile: data-lit === round(clamp((v − min)/(max − min)) · 20), zero
+    // tolerance.
+    const expected: Array<{ label: string; value: number; min: number; max: number }> = [
+      { label: "Chamber", value: 38.6, min: 0, max: 80 },
+      { label: "Part Fan", value: 100, min: 0, max: 100 },
+      { label: "Speed Factor", value: 100, min: 50, max: 150 },
+      { label: "Flow Factor", value: 100, min: 50, max: 150 },
+      { label: "Hotend Power", value: 42, min: 0, max: 100 },
+      { label: "Bed Power", value: 28, min: 0, max: 100 },
+      { label: "Live Vel.", value: 148.3, min: 0, max: 600 },
+      { label: "Position Z", value: 23.6, min: -10, max: 305 },
+    ];
+    await expect(page.locator(".segment-gauge")).toHaveCount(expected.length);
+    for (const strip of expected) {
+      const lit = Math.round(
+        Math.min(1, Math.max(0, (strip.value - strip.min) / (strip.max - strip.min))) * 20,
+      );
+      await expect(
+        telemetryTile(page, strip.label),
+        `${strip.label}: data-lit must be ${lit}`,
+      ).toHaveAttribute("data-lit", String(lit));
+    }
+    mock.assertSealed();
+  });
+
+  test("a profile without a chamber ceiling gets a number, never a bar", async ({ page }) => {
+    // The old `?? 80` fallback drew a fabricated 0–80° scale here. An
+    // unknown range yields NO <svg> at all.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useSparseProfile(page);
+    const mock = await openScenario(page, "printing-midjob");
+    const chamber = telemetryTile(page, "Chamber");
+    await expect(chamber.getByText("38.6°C")).toBeVisible();
+    await expect(chamber.locator("svg"), "no invented chamber ceiling").toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("an absent max_velocity leaves Live Vel. as a numeric tile", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const sc = scenario("printing-midjob");
+    const toolhead = { ...(sc.state.toolhead as Record<string, unknown>) };
+    delete toolhead.max_velocity;
+    const mock = await openScenario(page, "printing-midjob", {
+      experience: "expert",
+      state: { ...sc.state, toolhead },
+    });
+    const tile = telemetryTile(page, "Live Vel.");
+    await expect(tile.getByText("148 mm/s")).toBeVisible();
+    await expect(tile.locator("svg"), "no guessed velocity ceiling").toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("absent axis limits + a boundless profile leave Position Z bar-less", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useSparseProfile(page);
+    const sc = scenario("printing-midjob");
+    const toolhead = { ...(sc.state.toolhead as Record<string, unknown>) };
+    delete toolhead.axis_minimum;
+    delete toolhead.axis_maximum;
+    const mock = await openScenario(page, "printing-midjob", {
+      experience: "expert",
+      state: { ...sc.state, toolhead },
+    });
+    const tile = telemetryTile(page, "Position Z");
+    await expect(tile.getByText("23.600")).toBeVisible();
+    await expect(tile.locator("svg"), "no borrowed Z travel").toHaveCount(0);
+    // Z IS homed here — the tile must not claim otherwise.
+    await expect(tile.getByText("unhomed")).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("an unhomed Z gets the muted word, not a bar on a meaningless number", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const sc = scenario("printing-midjob");
+    const toolhead = { ...(sc.state.toolhead as Record<string, unknown>), homed_axes: "xy" };
+    const mock = await openScenario(page, "printing-midjob", {
+      experience: "expert",
+      state: { ...sc.state, toolhead },
+    });
+    const tile = telemetryTile(page, "Position Z");
+    await expect(tile.locator("svg"), "an unhomed Z has no scale position").toHaveCount(0);
+    await expect(tile.getByText("unhomed"), "the absence is explained in words").toBeVisible();
+    mock.assertSealed();
+  });
+
+  test("the five bar-less factors carry zero svg in every state — the PA pin", async ({
+    page,
+  }) => {
+    // Anti-regression pin for the invented-pressure-advance incident class:
+    // this must fail loudly if anyone later "fills the gap" with a strip,
+    // ghost track, or rule rendered as svg.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.addInitScript(() =>
+      localStorage.setItem("forge.experience-mode", "expert"),
+    );
+    const mock = await installActiveMock(page, {
+      state: scenario("printing-midjob").state,
+      camera: "ok",
+    });
+    for (const id of ["printing-midjob", "tuning-macro", "cancelled"]) {
+      mock.use({ state: scenario(id).state, camera: "ok" });
+      await visit(page, "/");
+      for (const label of NO_BAR_EVER) {
+        await expect(
+          telemetryTile(page, label).locator("svg"),
+          `${id}: ${label} must never carry a bar`,
+        ).toHaveCount(0);
+      }
+    }
+    mock.assertSealed();
+  });
+
+  test("mixed bar / no-bar rows share a top edge, and blank space stays blank", async ({
+    page,
+  }) => {
+    // The telemetry row law must survive the new tile mix, and a bar-less
+    // tile's CONTENT must be strictly shorter than a bar tile's in the same
+    // row — proving the space below it is empty, not padded with a filler
+    // rule.
+    await page.setViewportSize({ width: 2560, height: 1440 });
+    const mock = await openScenario(page, "printing-midjob", { experience: "expert" });
+    const tiles = await page.locator(".telemetry-grid > *").evaluateAll((items) =>
+      items
+        .filter((tile) => tile.getClientRects().length > 0)
+        .map((tile) => {
+          const box = tile.getBoundingClientRect();
+          let contentBottom = box.top;
+          for (const child of Array.from(tile.children)) {
+            const childBox = child.getBoundingClientRect();
+            if (childBox.height > 0) contentBottom = Math.max(contentBottom, childBox.bottom);
+          }
+          return {
+            label: tile.querySelector(".instrument-label")?.textContent?.trim() ?? "?",
+            top: box.top,
+            hasBar: tile.querySelector("svg") != null,
+            contentHeight: contentBottom - box.top,
+          };
+        }),
+    );
+    expect(tiles.length).toBeGreaterThanOrEqual(12);
+    // Cluster into grid rows by top edge (row heights dwarf the tolerance).
+    const rows: Array<typeof tiles> = [];
+    for (const tile of [...tiles].sort((a, b) => a.top - b.top)) {
+      const row = rows.find((candidate) => Math.abs(candidate[0].top - tile.top) <= 8);
+      if (row) row.push(tile);
+      else rows.push([tile]);
+    }
+    let mixedRows = 0;
+    for (const row of rows) {
+      const tops = row.map((tile) => tile.top);
+      expect(
+        Math.max(...tops) - Math.min(...tops),
+        `row [${row.map((tile) => tile.label).join(", ")}] shares a top edge`,
+      ).toBeLessThanOrEqual(1);
+      const barTiles = row.filter((tile) => tile.hasBar);
+      const bareTiles = row.filter((tile) => !tile.hasBar);
+      if (barTiles.length > 0 && bareTiles.length > 0) {
+        mixedRows += 1;
+        for (const bare of bareTiles) {
+          for (const bar of barTiles) {
+            expect(
+              bare.contentHeight,
+              `${bare.label} must be strictly shorter than ${bar.label} — no filler`,
+            ).toBeLessThan(bar.contentHeight);
+          }
+        }
+      }
+    }
+    expect(mixedRows, "the mixed case must be genuinely exercised").toBeGreaterThanOrEqual(1);
+    mock.assertSealed();
+  });
+
+  test("a factor beyond its display clamp is marked, never silently pinned", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const sc = scenario("printing-midjob");
+    const mock = await openScenario(page, "printing-midjob", {
+      state: {
+        ...sc.state,
+        gcode_move: {
+          ...(sc.state.gcode_move as Record<string, unknown>),
+          speed_factor: 2.0,
+        },
+      },
+    });
+    const speed = telemetryTile(page, "Speed Factor");
+    await expect(speed.getByText("200%")).toBeVisible();
+    await expect(
+      speed.locator("[data-over-range]"),
+      "M220 S200 must draw the over-range caret",
+    ).toHaveCount(1);
+    await expect(speed.getByText("›")).toBeVisible();
+    mock.assertSealed();
+  });
+
+  test("a nominal factor carries no over-range mark", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await openScenario(page, "printing-midjob");
+    const speed = telemetryTile(page, "Speed Factor");
+    await expect(speed.getByText("100%")).toBeVisible();
+    await expect(speed.locator("[data-over-range]")).toHaveCount(0);
+    await expect(speed.locator("[data-under-range]")).toHaveCount(0);
+    await expect(speed.getByText("›")).toHaveCount(0);
+    mock.assertSealed();
+  });
+
+  test("every telemetry tile, bar or not, keeps the 44px floor", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await openScenario(page, "printing-midjob", { experience: "expert" });
+    const heights = await page.locator(".telemetry-grid > *").evaluateAll((items) =>
+      items
+        .filter((tile) => tile.getClientRects().length > 0)
+        .map((tile) => ({
+          label: tile.querySelector(".instrument-label")?.textContent?.trim() ?? "?",
+          height: tile.getBoundingClientRect().height,
+        })),
+    );
+    expect(heights.length).toBeGreaterThanOrEqual(12);
+    for (const tile of heights) {
+      expect(tile.height, `${tile.label} keeps min-h-11`).toBeGreaterThanOrEqual(44);
+    }
+    mock.assertSealed();
+  });
+});
