@@ -152,7 +152,20 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
           and column. It is the accessible truth; the heat map is the
           at-a-glance view of it. Rows are named FRONT-first, matching both
           klipper's [row][col] indexing and the rendered orientation. */}
-      <table className="sr-only">
+      {/* The `sr-only` clip lives on a DIV, never on the <table> itself.
+          `sr-only` works by pinning a box to 1x1 and clipping it, but the
+          table layout algorithm treats width as a minimum and expands to
+          min-content anyway — so an `sr-only` table lays out at its full
+          natural width (measured 1012px for an 11x11 mesh), stays in flow,
+          and drags the document's scrollWidth out past the viewport. That
+          is invisible ink that still pushes the page sideways. A div is not
+          laid out by the table algorithm, so it honours the 1x1 clip and
+          contains the table for real.
+          This only ever bit on a printer with a REAL probed mesh: the
+          fixture publishes no mesh, so the table never renders and the
+          no-overflow laws saw nothing to catch. */}
+      <div className="sr-only">
+        <table>
         <caption>
           Probed bed mesh {rows} by {cols}, profile {mesh.profile_name}. Minimum{" "}
           {num(min, 3)} millimetres, maximum {num(max, 3)} millimetres, range
@@ -180,7 +193,8 @@ function MeshGrid({ mesh }: { mesh: BedMeshData }) {
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
 
       {/* The grid */}
       <div aria-hidden="true" className="rounded-inner border border-[var(--color-border)] overflow-hidden bg-black p-2">
