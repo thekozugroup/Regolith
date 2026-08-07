@@ -472,16 +472,45 @@
      surface — separation is SPACE, and the gap equals the card's padding so
      tile-to-tile and tile-to-edge distance are one number (flatten pass;
      the former 1px hairline table over the border color is deleted). */
+  /* TWO ZONES, one rhythm (density pass). A bar-less tile sharing a row with
+     a 49.5px segment gauge left a bar-shaped 27–33px void — and a
+     bar-shaped void reads as a MISSING bar, the one thing it must never look
+     like. The hole is REMOVED, not filled: the scaled factors keep the
+     original column rhythm, and the bar-less readings pack denser at their
+     natural size. Nothing new is drawn to occupy space, so no ceiling is
+     implied and the flatten pass stands. The two zones stack with the same
+     --card-pad as the tiles, so tile-to-tile, tile-to-edge and zone-to-zone
+     distance remain one number. */
   .telemetry-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-pad);
+  }
+  .telemetry-zone {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--card-pad);
   }
   @container (min-width: 400px) {
-    .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .telemetry-zone[data-zone="scaled"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @container (min-width: 640px) {
-    .telemetry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .telemetry-zone[data-zone="scaled"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  /* Readings auto-fill from their OWN content width rather than borrowing
+     the gauges' column count: a label/value pair needs far less track than a
+     24-segment strip (200px max-content), so a wide panel fits more of them
+     per row.
+     The 12rem floor is not a taste number — it is the wrap threshold. The
+     widest pair measured 155px (PRESSURE ADV. + its 4-dp value) and Position
+     Z adds an "unhomed" affix on top of that; below the floor the pair wraps,
+     and a wrapped tile puts its value on a second line while its unwrapped
+     row-mates keep theirs on the first — the telemetry row law's shared
+     baseline, broken. 12rem clears the widest pair with room for a longer
+     label, and the row law is the standing guard: if a future label outgrows
+     it, the baseline clauses fail loudly rather than the rows going ragged. */
+  .telemetry-zone[data-zone="readings"] {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
   }
   /* The old :last-child column-span rules ("no dead half-cell") are DELETED —
      they were a boxed-tile-era leftover. With 13 expert tiles the remainder

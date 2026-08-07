@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Card } from "@/components/Card";
 import { SegmentGauge } from "@/components/SegmentGauge";
 import { TellTaleCluster } from "@/components/TellTaleCluster";
@@ -241,7 +241,7 @@ const AuxSensors = memo(function AuxSensors({ profile }: { profile: PrinterProfi
 });
 
 function Trend({ label, value, color }: { label: string; value?: number; color?: string }) {
-  return <div><div className="instrument-label mb-1 flex items-center justify-between text-[11px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} color={color} /></div>;
+  return <div><div className="instrument-label mb-1 flex items-center justify-between text-[11px]"><span>{label}</span><span className="tabular-nums">{value?.toFixed(1) ?? "—"}°</span></div><Sparkline value={value} quantity={label} unit="degrees Celsius" color={color} /></div>;
 }
 
 /** Z-offset (babystep) per spec §2 row 17: signed, 3 dp, mm — `—` when unknown. */
@@ -322,42 +322,70 @@ const TelemetryPanel = memo(function TelemetryPanel({
      carry NO filler: no ghost track, no neutral rule. A ghost track reads
      as "0% of something", i.e. a false ceiling, and filler would reverse
      the flatten pass; top-alignment already carries the layout. */
+  /* ZONES (density pass). Bar-less tiles used to share the gauges' 49.5px
+     grid rows, so each left a bar-shaped 27–33px void — the hole read as a
+     MISSING bar, which is the one thing it must never look like. The fix
+     removes the hole rather than filling it: the SCALED factors keep their
+     own zone and column rhythm, and the bar-less READINGS get a denser zone
+     that packs at their natural size. Nothing new is drawn to occupy space,
+     so no ceiling is implied and the flatten pass is preserved.
+     A tile's zone follows what it actually RENDERS, not its label — Live
+     Vel. and Position Z are bars only when their range is known, so they
+     move zones with the telemetry rather than lying about their type. */
+  const scaled: ReactNode[] = [];
+  const readings: ReactNode[] = [];
+
+  if (chamber) {
+    if (chamberMax != null) scaled.push(<SegmentGauge key="chamber" label={chamber.label} display={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} value={chamberTemp} max={chamberMax} warnFrom={chamber.warnAbove} stateColor={chamberWarn ? "var(--color-warning)" : undefined} description={`Scale 0 to ${chamberMax} degrees Celsius${chamber.warnAbove != null ? `, warning above ${chamber.warnAbove}` : ""}.`} />);
+    else readings.push(<MetricTile key="chamber" label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} warn={chamberWarn} />);
+  }
+  scaled.push(<SegmentGauge key="fan" label="Part Fan" display={`${(fanSpeed * 100).toFixed(0)}%`} value={fanSpeed * 100} max={100} stateColor={fanSpeed > 0 ? "var(--color-accent)" : undefined} description="Duty cycle, 0 to 100 percent." />);
+  /* Strict !==1 latched a permanent false warning off M220/M221 float noise
+     (0.9999999 renders as "100%" yet warned forever). The epsilon in
+     factorDeviates matches the display resolution instead.
+     TRUTHFULNESS: an absent gcode_move is UNKNOWN, not "nominal 100%". The
+     old `?? 1` lit a full-confidence 100% strip off no telemetry at all —
+     and did it in BASIC mode. null flows through to SegmentGauge's own
+     em-dash unknown state, the same way hotendPower already does. */
+  scaled.push(<SegmentGauge key="speed" label="Speed Factor" display={speedFactor != null ? `${(speedFactor * 100).toFixed(0)}%` : "—"} value={speedFactor != null ? speedFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />);
+  scaled.push(<SegmentGauge key="flow" label="Flow Factor" display={flowFactor != null ? `${(flowFactor * 100).toFixed(0)}%` : "—"} value={flowFactor != null ? flowFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />);
+  /* Z-OFFSET carries a trend: it is constant except during live
+     babystepping, and during babystepping the trend IS the thing the
+     operator is watching. The line auto-scales to its own samples — no
+     axis, no endpoints, no track — so it states a shape, never a ceiling. */
+  readings.push(<MetricTile key="zoffset" label="Z-Offset" value={formatZOffset(zHome)} trend={zHome} trendQuantity="Z-offset" trendUnit="millimetres" />);
+  /* FILAMENT gets NO trend on purpose: it is monotonic, so auto-scaling
+     renders every extrusion rate as the same ~45° ramp — a slope that
+     carries no information while looking like it does. */
+  readings.push(<MetricTile key="filament" label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />);
+  if (isExpert) {
+    /* Pressure advance has NO universal range (direct drive ~0–0.1, bowden
+       up to ~1.0) — a bar implying a ceiling here is the invented `?? 0.04`
+       incident in graphical form. Never a bar. And no trend either: it is
+       flat >99% of the time, and buildSparklineGeometry floors the range at
+       2, so a constant PA renders as a dead line pinned mid-box — noise that
+       invites "is it broken?". */
+    readings.push(<MetricTile key="pa" label="Pressure Adv." value={pressureAdvance?.toFixed(4) ?? "—"} />);
+    if (velocityMax != null) scaled.push(<SegmentGauge key="vel" label="Live Vel." display={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} value={liveVelocity} max={velocityMax} stateColor={(liveVelocity ?? 0) > 1 ? "var(--color-accent)" : undefined} description={`Scale 0 to ${velocityMax} millimetres per second.`} />);
+    else readings.push(<MetricTile key="vel" label="Live Vel." value={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} active={(liveVelocity ?? 0) > 1} />);
+    /* Max accel IS the limit — there is no honest ceiling above a ceiling,
+       and configfile is deliberately not subscribed. Never a bar. It does
+       earn a trend: Orca/Klipper emit SET_VELOCITY_LIMIT ACCEL=… per
+       feature, so it genuinely steps during a print. */
+    readings.push(<MetricTile key="accel" label="Max Accel" value={maxAccel ? `${(maxAccel / 1000).toFixed(1)}k` : "—"} trend={maxAccel} trendQuantity="Max accel" trendUnit="millimetres per second squared" />);
+    if (zBar) scaled.push(<SegmentGauge key="posz" label="Position Z" display={posZ?.toFixed(3) ?? "—"} value={posZ} min={zMin} max={zMax} description={`Scale ${zMin} to ${zMax} millimetres.`} />);
+    else readings.push(<MetricTile key="posz" label="Position Z" value={posZ?.toFixed(3) ?? "—"} affix={zKnownUnhomed ? "unhomed" : undefined} />);
+    /* HOMED is a per-axis boolean set, not a scalar — a trend of it is not
+       a weak signal, it is undefined. */
+    readings.push(<MetricTile key="homed" label="Homed" value={homedAxes?.toUpperCase() || "none"} active={!!homedAxes} />);
+    /* Heater power IS a PWM duty strip — the spec's clearest segment case. */
+    scaled.push(<SegmentGauge key="hotendpwr" label="Hotend Power" display={hotendPower != null ? `${Math.round(hotendPower * 100)}%` : "—"} value={hotendPower != null ? hotendPower * 100 : null} max={100} stateColor={(hotendPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />);
+    scaled.push(<SegmentGauge key="bedpwr" label="Bed Power" display={bedPower != null ? `${Math.round(bedPower * 100)}%` : "—"} value={bedPower != null ? bedPower * 100 : null} max={100} stateColor={(bedPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />);
+  }
+
   return <Card title="Telemetry" icon={<Wind />}><div className="telemetry-grid">
-    {chamber && (chamberMax != null
-      ? <SegmentGauge label={chamber.label} display={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} value={chamberTemp} max={chamberMax} warnFrom={chamber.warnAbove} stateColor={chamberWarn ? "var(--color-warning)" : undefined} description={`Scale 0 to ${chamberMax} degrees Celsius${chamber.warnAbove != null ? `, warning above ${chamber.warnAbove}` : ""}.`} />
-      : <MetricTile label={chamber.label} value={chamberTemp != null ? `${chamberTemp.toFixed(1)}°C` : "—"} warn={chamberWarn} />)}
-    <SegmentGauge label="Part Fan" display={`${(fanSpeed * 100).toFixed(0)}%`} value={fanSpeed * 100} max={100} stateColor={fanSpeed > 0 ? "var(--color-accent)" : undefined} description="Duty cycle, 0 to 100 percent." />
-    {/* Strict !==1 latched a permanent false warning off M220/M221 float
-        noise (0.9999999 renders as "100%" yet warned forever). The epsilon
-        in factorDeviates matches the display resolution instead. */}
-    {/* TRUTHFULNESS: an absent gcode_move is UNKNOWN, not "nominal 100%".
-        The old `?? 1` lit a full-confidence 100% strip off no telemetry at
-        all — and did it in BASIC mode. null flows through to SegmentGauge's
-        own em-dash unknown state, the same way hotendPower already does. */}
-    <SegmentGauge label="Speed Factor" display={speedFactor != null ? `${(speedFactor * 100).toFixed(0)}%` : "—"} value={speedFactor != null ? speedFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(speedFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />
-    <SegmentGauge label="Flow Factor" display={flowFactor != null ? `${(flowFactor * 100).toFixed(0)}%` : "—"} value={flowFactor != null ? flowFactor * 100 : null} min={50} max={150} centerIndex stateColor={factorDeviates(flowFactor) ? "var(--color-warning)" : undefined} description="Scale 50 to 150 percent, index at nominal 100; values beyond the scale are marked." />
-    <MetricTile label="Z-Offset" value={formatZOffset(zHome)} />
-    <MetricTile label="Filament" value={filamentMm > 0 ? `${(filamentMm / 1000).toFixed(2)} m` : "—"} />
-    {isExpert && <>
-      {/* Pressure advance has NO universal range (direct drive ~0–0.1,
-          bowden up to ~1.0) — a bar implying a ceiling here is the invented
-          `?? 0.04` incident in graphical form. Never a bar. */}
-      <MetricTile label="Pressure Adv." value={pressureAdvance?.toFixed(4) ?? "—"} />
-      {velocityMax != null
-        ? <SegmentGauge label="Live Vel." display={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} value={liveVelocity} max={velocityMax} stateColor={(liveVelocity ?? 0) > 1 ? "var(--color-accent)" : undefined} description={`Scale 0 to ${velocityMax} millimetres per second.`} />
-        : <MetricTile label="Live Vel." value={liveVelocity != null ? `${liveVelocity.toFixed(0)} mm/s` : "—"} active={(liveVelocity ?? 0) > 1} />}
-      {/* Max accel IS the limit — there is no honest ceiling above a
-          ceiling, and configfile is deliberately not subscribed. Never a
-          bar. */}
-      <MetricTile label="Max Accel" value={maxAccel ? `${(maxAccel / 1000).toFixed(1)}k` : "—"} />
-      {zBar
-        ? <SegmentGauge label="Position Z" display={posZ?.toFixed(3) ?? "—"} value={posZ} min={zMin} max={zMax} description={`Scale ${zMin} to ${zMax} millimetres.`} />
-        : <MetricTile label="Position Z" value={posZ?.toFixed(3) ?? "—"} affix={zKnownUnhomed ? "unhomed" : undefined} />}
-      <MetricTile label="Homed" value={homedAxes?.toUpperCase() || "none"} active={!!homedAxes} />
-      {/* Heater power IS a PWM duty strip — the spec's clearest segment case. */}
-      <SegmentGauge label="Hotend Power" display={hotendPower != null ? `${Math.round(hotendPower * 100)}%` : "—"} value={hotendPower != null ? hotendPower * 100 : null} max={100} stateColor={(hotendPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />
-      <SegmentGauge label="Bed Power" display={bedPower != null ? `${Math.round(bedPower * 100)}%` : "—"} value={bedPower != null ? bedPower * 100 : null} max={100} stateColor={(bedPower ?? 0) > 0 ? "var(--color-accent)" : undefined} description="PWM duty, 0 to 100 percent." />
-    </>}
+    {scaled.length > 0 && <div className="telemetry-zone" data-zone="scaled">{scaled}</div>}
+    {readings.length > 0 && <div className="telemetry-zone" data-zone="readings">{readings}</div>}
   </div></Card>;
 });
 
@@ -420,6 +448,9 @@ function MetricTile({
   affix,
   active,
   warn,
+  trend,
+  trendQuantity,
+  trendUnit,
 }: {
   label: string;
   value: string;
@@ -428,16 +459,25 @@ function MetricTile({
   affix?: string;
   active?: boolean;
   warn?: boolean;
+  /** Live scalar to trend. A trend is an INFORMATION decision, not a filler:
+   *  pass it only where the shape over time is itself a signal. The line
+   *  auto-scales to its own samples — it draws no axis, no endpoints and no
+   *  track, so it never encodes a value against an invented range. */
+  trend?: number | null;
+  trendQuantity?: string;
+  trendUnit?: string;
 }) {
+  const showTrend = trend != null && trendQuantity != null && trendUnit != null;
   return (
     <div
       className={cn(
-        // flex-wrap + content-start packs the single flex line to the TOP of
-        // the grid-stretched box (telemetry row law: a tile's internal layout
-        // must not depend on the row's height); items-center keeps the 11px
-        // label optically centred against the 13px value, exactly as
-        // SegmentGauge's header row does.
-        "flex min-h-11 flex-wrap content-start items-center justify-between gap-3",
+        // flex-wrap + content-start packs the flex lines to the TOP of the
+        // box (telemetry row law: a tile's internal layout must not depend
+        // on the row's height); items-center keeps the 11px label optically
+        // centred against the 13px value, exactly as SegmentGauge's header
+        // row does. The row gap is tight so a trended tile still fits inside
+        // the 44px module rather than pushing its zone's rows taller.
+        "flex min-h-11 flex-wrap content-start items-center justify-between gap-x-3 gap-y-1",
         warn && "text-[var(--color-warning)]",
       )}
     >
@@ -458,6 +498,11 @@ function MetricTile({
           </span>
         )}
       </span>
+      {showTrend && (
+        <div className="w-full">
+          <Sparkline value={trend} quantity={trendQuantity} unit={trendUnit} height={20} />
+        </div>
+      )}
     </div>
   );
 }

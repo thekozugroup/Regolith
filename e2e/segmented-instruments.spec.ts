@@ -494,7 +494,7 @@ async function useSparseProfile(page: Page) {
  *  matched case-insensitively because `.instrument-label` renders through
  *  `text-transform: uppercase` and the text engine matches rendered text. */
 const telemetryTile = (page: Page, label: string) =>
-  page.locator(".telemetry-grid > *").filter({
+  page.locator(".telemetry-zone > *").filter({
     has: page.locator(".instrument-label", {
       hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
     }),
@@ -598,12 +598,22 @@ test.describe("Telemetry range bars — real ranges only", () => {
     mock.assertSealed();
   });
 
-  test("the five bar-less factors carry zero svg in every state — the PA pin", async ({
+  test("the five bar-less factors carry zero proportional track in every state — the PA pin", async ({
     page,
   }) => {
     // Anti-regression pin for the invented-pressure-advance incident class:
     // this must fail loudly if anyone later "fills the gap" with a strip,
-    // ghost track, or rule rendered as svg.
+    // ghost track, tick rule or endpoint — anything whose geometry encodes a
+    // value against a range.
+    //
+    // The pin is on `[data-range-track]`, not on "an svg". Two of these five
+    // now carry an AUTO-SCALED trend line, which draws no axis, no endpoints
+    // and no track: it scales to its own samples, so it asserts a shape and
+    // never a maximum. Pinning svg-count would have made this law fire on an
+    // honest mark and, worse, would have tempted the next author to strip the
+    // marker instead of the ceiling. So the law states the real rule, and a
+    // second clause keeps it from going soft: EVERY svg in these tiles must
+    // declare itself auto-scaled, so nothing can slip in unlabelled.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.addInitScript(() =>
       localStorage.setItem("forge.experience-mode", "expert"),
@@ -616,25 +626,47 @@ test.describe("Telemetry range bars — real ranges only", () => {
       mock.use({ state: scenario(id).state, camera: "ok" });
       await visit(page, "/");
       for (const label of NO_BAR_EVER) {
+        const tile = telemetryTile(page, label);
         await expect(
-          telemetryTile(page, label).locator("svg"),
-          `${id}: ${label} must never carry a bar`,
+          tile,
+          `${id}: ${label} must render exactly once`,
+        ).toHaveCount(1);
+        await expect(
+          tile.locator("[data-range-track]"),
+          `${id}: ${label} must never carry a proportional track`,
         ).toHaveCount(0);
+        await expect(
+          tile.locator("[data-lit]"),
+          `${id}: ${label} must never publish a segment fill count`,
+        ).toHaveCount(0);
+        const svgs = await tile.locator("svg").count();
+        const autoscaled = await tile.locator("svg[data-autoscale]").count();
+        expect(
+          autoscaled,
+          `${id}: ${label} carries ${svgs} svg but only ${autoscaled} declare ` +
+            `themselves auto-scaled — an undeclared mark is an unproven ceiling`,
+        ).toBe(svgs);
       }
     }
     mock.assertSealed();
   });
 
-  test("mixed bar / no-bar rows share a top edge, and blank space stays blank", async ({
+  test("rows share a top edge, and bar-less blank space stays blank", async ({
     page,
   }) => {
-    // The telemetry row law must survive the new tile mix, and a bar-less
-    // tile's CONTENT must be strictly shorter than a bar tile's in the same
-    // row — proving the space below it is empty, not padded with a filler
+    // Grid rows still share a top edge, and a bar-less tile's CONTENT is
+    // still strictly shorter than a track-bearing tile's — proving the space
+    // it does not use stays empty rather than being padded with a filler
     // rule.
+    //
+    // The comparison used to be per-row, because bar and bar-less tiles
+    // shared rows. The density pass separated them into zones, so the pair
+    // is now drawn ACROSS zones: every readings tile against every scaled
+    // tile. That is a strictly larger sample than the old one mixed row, so
+    // the clause got stronger, not weaker, when it stopped being row-local.
     await page.setViewportSize({ width: 2560, height: 1440 });
     const mock = await openScenario(page, "printing-midjob", { experience: "expert" });
-    const tiles = await page.locator(".telemetry-grid > *").evaluateAll((items) =>
+    const tiles = await page.locator(".telemetry-zone > *").evaluateAll((items) =>
       items
         .filter((tile) => tile.getClientRects().length > 0)
         .map((tile) => {
@@ -646,8 +678,9 @@ test.describe("Telemetry range bars — real ranges only", () => {
           }
           return {
             label: tile.querySelector(".instrument-label")?.textContent?.trim() ?? "?",
+            zone: tile.parentElement?.getAttribute("data-zone") ?? "?",
             top: box.top,
-            hasBar: tile.querySelector("svg") != null,
+            hasBar: tile.querySelector("[data-range-track]") != null,
             contentHeight: contentBottom - box.top,
           };
         }),
@@ -660,28 +693,33 @@ test.describe("Telemetry range bars — real ranges only", () => {
       if (row) row.push(tile);
       else rows.push([tile]);
     }
-    let mixedRows = 0;
     for (const row of rows) {
       const tops = row.map((tile) => tile.top);
       expect(
         Math.max(...tops) - Math.min(...tops),
         `row [${row.map((tile) => tile.label).join(", ")}] shares a top edge`,
       ).toBeLessThanOrEqual(1);
-      const barTiles = row.filter((tile) => tile.hasBar);
-      const bareTiles = row.filter((tile) => !tile.hasBar);
-      if (barTiles.length > 0 && bareTiles.length > 0) {
-        mixedRows += 1;
-        for (const bare of bareTiles) {
-          for (const bar of barTiles) {
-            expect(
-              bare.contentHeight,
-              `${bare.label} must be strictly shorter than ${bar.label} — no filler`,
-            ).toBeLessThan(bar.contentHeight);
-          }
-        }
+    }
+    // A tile carries a proportional track only in the scaled zone — the
+    // zoning is what the readings zone MEANS, and it must not drift.
+    for (const tile of tiles) {
+      expect(
+        tile.hasBar,
+        `${tile.label} sits in the "${tile.zone}" zone`,
+      ).toBe(tile.zone === "scaled");
+    }
+    const barTiles = tiles.filter((tile) => tile.hasBar);
+    const bareTiles = tiles.filter((tile) => !tile.hasBar);
+    expect(barTiles.length, "track-bearing tiles must exist").toBeGreaterThanOrEqual(1);
+    expect(bareTiles.length, "bar-less tiles must exist").toBeGreaterThanOrEqual(1);
+    for (const bare of bareTiles) {
+      for (const bar of barTiles) {
+        expect(
+          bare.contentHeight,
+          `${bare.label} must be strictly shorter than ${bar.label} — no filler`,
+        ).toBeLessThan(bar.contentHeight);
       }
     }
-    expect(mixedRows, "the mixed case must be genuinely exercised").toBeGreaterThanOrEqual(1);
     mock.assertSealed();
   });
 
@@ -732,7 +770,7 @@ test.describe("Telemetry range bars — real ranges only", () => {
   test("every telemetry tile, bar or not, keeps the 44px floor", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const mock = await openScenario(page, "printing-midjob", { experience: "expert" });
-    const heights = await page.locator(".telemetry-grid > *").evaluateAll((items) =>
+    const heights = await page.locator(".telemetry-zone > *").evaluateAll((items) =>
       items
         .filter((tile) => tile.getClientRects().length > 0)
         .map((tile) => ({

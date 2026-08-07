@@ -1,14 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildSparklineGeometry } from "@/lib/sparkline";
 
-/** Lightweight one-second rolling trend with no chart runtime. */
+/** Lightweight one-second rolling trend with no chart runtime.
+ *
+ *  HONESTY: the geometry AUTO-SCALES to the buffer's own min/max — there is
+ *  no axis, no endpoint and no track, so nothing here asserts a maximum the
+ *  app cannot know (the pressure-advance incident class). The only rule
+ *  drawn is a baseline at the bottom edge, which reads as a floor, never a
+ *  ceiling. The `data-autoscale` marker is the machine-readable statement of
+ *  that: a telemetry law asserts against it, so a future proportional track
+ *  cannot smuggle itself in as "just another svg".
+ *
+ *  The quantity and unit MUST be passed: the aria-label used to be hardcoded
+ *  to "Temperature … degrees Celsius", which would have announced a Z-offset
+ *  in mm as a temperature. */
 export function Sparkline({
   value,
+  quantity,
+  unit,
   bufferSize = 60,
   color = "var(--color-accent)",
   height = 28,
 }: {
   value: number | null | undefined;
+  /** What is being trended, e.g. "Nozzle" or "Z-Offset". */
+  quantity: string;
+  /** The unit, spelled out for a screen reader, e.g. "degrees Celsius". */
+  unit: string;
   bufferSize?: number;
   color?: string;
   height?: number;
@@ -42,7 +60,8 @@ export function Sparkline({
       <div
         style={{ height }}
         role="img"
-        aria-label="Temperature trend collecting data"
+        data-autoscale="true"
+        aria-label={`${quantity} trend collecting data`}
         className="flex items-center justify-center text-[11px] text-[var(--color-fg-muted)]"
       >
         ──
@@ -55,7 +74,8 @@ export function Sparkline({
       viewBox={`0 0 100 ${height}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label={`Temperature trend from ${geometry.min.toFixed(1)} to ${geometry.max.toFixed(1)} degrees Celsius`}
+      data-autoscale="true"
+      aria-label={`${quantity} trend from ${geometry.min.toFixed(1)} to ${geometry.max.toFixed(1)} ${unit}. Scaled to the samples themselves, not to any limit.`}
       className="block w-full"
       style={{ height }}
     >

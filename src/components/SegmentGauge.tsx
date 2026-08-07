@@ -87,10 +87,17 @@ export function SegmentGauge({
           )}
         </span>
       </div>
+      {/* data-range-track: the machine-readable statement that THIS svg is a
+          PROPORTIONAL track — it renders value against a declared min/max,
+          so drawing it is a claim that the maximum is known. Telemetry laws
+          assert on this marker rather than on "an svg", so an auto-scaled
+          trend line can coexist in a tile without the no-invented-ceiling
+          guard going blind or firing falsely. */}
       <svg
         viewBox={`0 0 ${SEGMENT_COUNT * 10} 24`}
         preserveAspectRatio="none"
         aria-hidden="true"
+        data-range-track="true"
         className="block h-6 w-full"
       >
         {Array.from({ length: SEGMENT_COUNT }, (_, index) => (
