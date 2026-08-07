@@ -112,10 +112,16 @@ export function ConsolePage() {
         // The body must be a flex column that is allowed to shrink: without
         // it the feed's flex-1 is inert and the column overflows the
         // overflow-hidden panel, clipping the G-code input and Send button
-        // out of reach on the K1 Max's own 800x480 panel. overflow-y-auto is
-        // the last-resort escape hatch — if a short viewport still cannot fit
-        // the fixed rows, the body scrolls instead of discarding the tail.
-        bodyClassName="flex min-h-0 flex-col overflow-y-auto"
+        // out of reach on the K1 Max's own 800x480 panel. The scroll escape
+        // hatch does NOT live here: when the whole body scrolled, a short
+        // viewport parked the command row at whatever offset the overflow
+        // left it — 9px past the clip edge at HEAD, flush with the panel's
+        // bottom-right corner (a corner the concentricity law then rightly
+        // measures) the moment the header slimmed. The feed/status region
+        // above the command row scrolls instead (see below), so the row
+        // always sits inside the body's own bottom pad — its corner keeps
+        // the designed --card-pad gap, and Send can never leave the glass.
+        bodyClassName="flex min-h-0 flex-col"
         action={
           <Button
             size="sm"
@@ -128,88 +134,101 @@ export function ConsolePage() {
           </Button>
         }
       >
-        <div className="mb-3 border border-[var(--color-border-strong)] bg-[var(--color-bg)] p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-2 min-w-0">
-              <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-warning)]" />
-              <div>
-                <div className="text-[13px] font-semibold">Expert commands</div>
-                <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
-                  Commands can move or heat the printer. Read-only diagnostics run directly; unknown and hardware commands require confirmation.
-                </p>
+        {/* Everything ABOVE the command row scrolls as one region. This is
+            the reachability law's escape hatch, moved off the body: if a
+            short viewport (the K1's 800x480 panel with the expert banner up)
+            cannot fit the fixed rows, THIS region gives up height and
+            scrolls, while the command row below stays pinned inside the
+            body's bottom pad — positioned by design, never by overflow.
+            The bleed + px pair cancels and restores the card pad so the
+            feed's and status row's own full-bleed edges still reach the
+            panel border without tripping horizontal overflow. */}
+        <div className="bleed flex min-h-0 flex-1 flex-col overflow-y-auto px-[var(--card-pad)]">
+          <div className="mb-3 border border-[var(--color-border-strong)] bg-[var(--color-bg)] p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2 min-w-0">
+                <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-warning)]" />
+                <div>
+                  <div className="text-[13px] font-semibold">Expert commands</div>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+                    Commands can move or heat the printer. Read-only diagnostics run directly; unknown and hardware commands require confirmation.
+                  </p>
+                </div>
               </div>
+              <Button
+                size="sm"
+                variant={expertMode ? "danger" : "default"}
+                aria-pressed={expertMode}
+                onClick={() => {
+                  setExpertMode((value) => !value);
+                  setError(null);
+                }}
+              >
+                {expertMode ? "Disable console" : "Enable console"}
+              </Button>
             </div>
-            <Button
-              size="sm"
-              variant={expertMode ? "danger" : "default"}
-              aria-pressed={expertMode}
-              onClick={() => {
-                setExpertMode((value) => !value);
-                setError(null);
-              }}
+          </div>
+
+          {/* Live feed — fills remaining height */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="bleed -mt-[var(--card-pad)] min-h-0 flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
+          >
+            {lines.length === 0 && (
+              <div className="text-[var(--color-fg-muted)] italic">
+                Waiting for klipper output…
+              </div>
+            )}
+            {lines.map((l, i) => (
+              <div key={i} className="flex gap-3">
+                <span className="text-[var(--color-fg-muted)] shrink-0 tabular-nums">
+                  {new Date(l.ts).toLocaleTimeString("en-US", { hour12: false })}
+                </span>
+                <span
+                  className={cn(
+                    l.type === "command" &&
+                      "text-[var(--color-accent)] font-semibold",
+                    l.type === "response" && "text-[var(--color-fg)]",
+                    l.text.startsWith("//") &&
+                      "text-[var(--color-fg-subtle)]",
+                    l.text.startsWith("!!") && "text-[var(--color-error)]",
+                  )}
+                >
+                  {l.type === "command" && "$ "}
+                  {l.text}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Status / autoscroll toggle */}
+          <div className="bleed flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[var(--card-pad)] py-1.5 text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+            <span>{lines.length} lines</span>
+            <button
+              type="button"
+              onClick={() => setAutoScroll((s) => !s)}
+              aria-pressed={autoScroll}
+              className={cn(
+                "press-flat flex min-h-11 min-w-11 items-center gap-1 rounded-inner p-2 hover:text-[var(--color-fg)]",
+                autoScroll && "text-[var(--color-accent)]",
+              )}
             >
-              {expertMode ? "Disable console" : "Enable console"}
-            </Button>
+              {/* Engine-light rule: no lamp chrome. The lamp encoded on/off in
+                  colour alone, so replacing it with the word costs nothing and
+                  gains a non-colour channel — the state is now legible without
+                  seeing a hue, and without relying on aria-pressed. */}
+              Autoscroll {autoScroll ? "on" : "off"}
+            </button>
           </div>
         </div>
 
-        {/* Live feed — fills remaining height */}
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="bleed -mt-[var(--card-pad)] min-h-0 flex-1 overflow-y-auto border-y border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-[12px] leading-relaxed"
-        >
-          {lines.length === 0 && (
-            <div className="text-[var(--color-fg-muted)] italic">
-              Waiting for klipper output…
-            </div>
-          )}
-          {lines.map((l, i) => (
-            <div key={i} className="flex gap-3">
-              <span className="text-[var(--color-fg-muted)] shrink-0 tabular-nums">
-                {new Date(l.ts).toLocaleTimeString("en-US", { hour12: false })}
-              </span>
-              <span
-                className={cn(
-                  l.type === "command" &&
-                    "text-[var(--color-accent)] font-semibold",
-                  l.type === "response" && "text-[var(--color-fg)]",
-                  l.text.startsWith("//") &&
-                    "text-[var(--color-fg-subtle)]",
-                  l.text.startsWith("!!") && "text-[var(--color-error)]",
-                )}
-              >
-                {l.type === "command" && "$ "}
-                {l.text}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Status / autoscroll toggle */}
-        <div className="bleed flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] px-[var(--card-pad)] py-1.5 text-[11px] uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
-          <span>{lines.length} lines</span>
-          <button
-            type="button"
-            onClick={() => setAutoScroll((s) => !s)}
-            aria-pressed={autoScroll}
-            className={cn(
-              "press-flat flex min-h-11 min-w-11 items-center gap-1 rounded-inner p-2 hover:text-[var(--color-fg)]",
-              autoScroll && "text-[var(--color-accent)]",
-            )}
-          >
-            {/* Engine-light rule: no lamp chrome. The lamp encoded on/off in
-                colour alone, so replacing it with the word costs nothing and
-                gains a non-colour channel — the state is now legible without
-                seeing a hue, and without relying on aria-pressed. */}
-            Autoscroll {autoScroll ? "on" : "off"}
-          </button>
-        </div>
-
-        {/* Input row — always visible above keyboard / below feed. No
-            negative bottom margin here: the row now sits against the panel's
-            bottom corner, and the concentricity law needs the full card pad
-            as its gap (inner = outer − gap). */}
+        {/* Input row — always visible above keyboard / below feed, and OUT
+            of the scroll region above: it is pinned by the flex column, so
+            no amount of feed/banner overflow can push it toward the clip
+            edge. No negative bottom margin here: the row sits a full
+            --card-pad above the panel's bottom corner, and the concentricity
+            law needs exactly that pad as its gap (inner = outer − gap). */}
         <div className="flex gap-2 pt-3">
           <span className="self-center text-[var(--color-accent)] font-mono select-none">
             ›
