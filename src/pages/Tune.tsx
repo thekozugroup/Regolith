@@ -315,102 +315,128 @@ export function Tune() {
         </div>
       </section>
 
-      {/* Pressure Advance — interactive card, bottom */}
-      <Card title="Pressure Advance" icon={<Sliders />} className="lg:col-span-4 xl:col-span-1">
-        <div className="space-y-[var(--stack-tight)]">
-          <div className="text-[12px] text-[var(--color-fg-muted)]">
-            Live tunable. Apply temporarily or save permanently.
-          </div>
-          <div className="flex items-center gap-3 py-2">
-            <label htmlFor={pressureAdvanceId} className="sr-only">
-              Pressure advance in seconds
-            </label>
-            <input
-              id={pressureAdvanceId}
-              type="range"
-              min="0"
-              max="0.2"
-              step="0.005"
-              // A range input must carry a number. When the machine value is
-              // unknown the control is disabled, so this position is inert —
-              // and aria-valuetext says "unknown" rather than announcing a
-              // number the printer never reported.
-              value={displayedPa ?? 0}
-              onChange={(e) => setPa(parseFloat(e.target.value))}
-              aria-describedby={pressureAdvanceHintId}
-              aria-valuetext={
-                displayedPa != null ? `${displayedPa.toFixed(4)} seconds` : "Unknown"
-              }
-              className="min-h-11 flex-1 accent-[var(--color-accent)]"
-              disabled={
-                !paKnown || !connected || isPrinting || !safety.klipperReady || !!running
-              }
-            />
-            <output
-              htmlFor={pressureAdvanceId}
-              className="w-24 text-right text-[14px] font-semibold tabular-nums"
-              aria-live="polite"
-              data-pa-known={paKnown ? "true" : "false"}
-            >
-              {displayedPa != null ? `${displayedPa.toFixed(4)} s` : "—"}
-            </output>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Button
-              size="sm"
-              disabled={
-                !paKnown ||
-                !connected ||
-                isPrinting ||
-                !safety.klipperReady ||
-                !!running ||
-                pa === null
-              }
-              onClick={() => applyPa(false)}
-            >
-              Apply
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={
-                !paKnown ||
-                !connected ||
-                isPrinting ||
-                !safety.klipperReady ||
-                !!running ||
-                pa === null
-              }
-              onClick={() => applyPa(true)}
-            >
-              Apply & Save
-            </Button>
-            {pa !== null && (
-              <Button size="sm" variant="ghost" disabled={!!running} onClick={() => setPa(null)}>
-                Reset
-              </Button>
-            )}
-          </div>
-          <div
-            id={pressureAdvanceHintId}
-            className="text-[11px] text-[var(--color-fg-muted)] pt-1"
-          >
-            {paKnown ? (
-              <>
-                Current:{" "}
-                <span className="tabular-nums">{currentPa.toFixed(4)}</span>
-              </>
-            ) : (
-              <>Current: unknown — waiting for extruder telemetry.</>
-            )}{" "}
-            · Typical PLA 0.03-0.05 · PETG 0.05-0.07 · TPU 0.10-0.20
-          </div>
-        </div>
-      </Card>
+      {/* The right rail. Pressure Advance used to be a bare grid item, a
+          SIBLING of the calibration <section> — so at xl it started where
+          that section's HEADING started, 38px above where Input Shaper's
+          card actually begins, and then absorbed the whole 768px row height
+          as internal slack (owner: "pressure advance … is too high" /
+          "wasted space in card"). Giving column 4 its own section, with the
+          identical 38px heading block, makes both first cards start at
+          Y₀+38 — the alignment is structural, not a tuned offset. The Bed
+          Mesh heatmap moves in below Pressure Advance, so the rail reads
+          calibrate → tune → mesh at every width.
 
-      <div className="md:col-span-2 lg:col-span-4 xl:col-span-3">
-        <BedMeshHeatmap />
-      </div>
+          The section is the grid item and takes the row stretch; its
+          children sit in an auto-rows grid and keep their natural heights,
+          so the residual lands in a transparent wrapper, never inside a
+          card. Below xl the rail spans full width and stacks under the
+          calibration section — item 2 is a no-op on the K1's own 800x480
+          panel. The children carry NO span classes on purpose: a stale
+          lg:col-span-4 inside this 1-column grid manufactures implicit
+          tracks and mis-sizes the card. */}
+      <section
+        aria-labelledby="live-tuning"
+        className="md:col-span-2 lg:col-span-4 xl:col-span-1"
+      >
+        <div className="mb-2 flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+          <h2 id="live-tuning" className="text-[14px] font-semibold">Live tuning</h2>
+          <span className="instrument-label">Machine state</span>
+        </div>
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)]">
+          <Card title="Pressure Advance" icon={<Sliders />}>
+            <div className="space-y-[var(--stack-tight)]">
+              <div className="text-[12px] text-[var(--color-fg-muted)]">
+                Live tunable. Apply temporarily or save permanently.
+              </div>
+              <div className="flex items-center gap-3 py-2">
+                <label htmlFor={pressureAdvanceId} className="sr-only">
+                  Pressure advance in seconds
+                </label>
+                <input
+                  id={pressureAdvanceId}
+                  type="range"
+                  min="0"
+                  max="0.2"
+                  step="0.005"
+                  // A range input must carry a number. When the machine value is
+                  // unknown the control is disabled, so this position is inert —
+                  // and aria-valuetext says "unknown" rather than announcing a
+                  // number the printer never reported.
+                  value={displayedPa ?? 0}
+                  onChange={(e) => setPa(parseFloat(e.target.value))}
+                  aria-describedby={pressureAdvanceHintId}
+                  aria-valuetext={
+                    displayedPa != null ? `${displayedPa.toFixed(4)} seconds` : "Unknown"
+                  }
+                  className="min-h-11 flex-1 accent-[var(--color-accent)]"
+                  disabled={
+                    !paKnown || !connected || isPrinting || !safety.klipperReady || !!running
+                  }
+                />
+                <output
+                  htmlFor={pressureAdvanceId}
+                  className="w-24 text-right text-[14px] font-semibold tabular-nums"
+                  aria-live="polite"
+                  data-pa-known={paKnown ? "true" : "false"}
+                >
+                  {displayedPa != null ? `${displayedPa.toFixed(4)} s` : "—"}
+                </output>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  disabled={
+                    !paKnown ||
+                    !connected ||
+                    isPrinting ||
+                    !safety.klipperReady ||
+                    !!running ||
+                    pa === null
+                  }
+                  onClick={() => applyPa(false)}
+                >
+                  Apply
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={
+                    !paKnown ||
+                    !connected ||
+                    isPrinting ||
+                    !safety.klipperReady ||
+                    !!running ||
+                    pa === null
+                  }
+                  onClick={() => applyPa(true)}
+                >
+                  Apply & Save
+                </Button>
+                {pa !== null && (
+                  <Button size="sm" variant="ghost" disabled={!!running} onClick={() => setPa(null)}>
+                    Reset
+                  </Button>
+                )}
+              </div>
+              <div
+                id={pressureAdvanceHintId}
+                className="text-[11px] text-[var(--color-fg-muted)] pt-1"
+              >
+                {paKnown ? (
+                  <>
+                    Current:{" "}
+                    <span className="tabular-nums">{currentPa.toFixed(4)}</span>
+                  </>
+                ) : (
+                  <>Current: unknown — waiting for extruder telemetry.</>
+                )}{" "}
+                · Typical PLA 0.03-0.05 · PETG 0.05-0.07 · TPU 0.10-0.20
+              </div>
+            </div>
+          </Card>
+          <BedMeshHeatmap />
+        </div>
+      </section>
 
       {/* Confirm modal */}
       {pending && (
