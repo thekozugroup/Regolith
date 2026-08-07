@@ -645,13 +645,23 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    /* The glyph is centred OVER its label (owner: "centre the icons above
+       their labels"). Alignment is in-cell only: the tracks are 1fr and the
+       rows are 1fr, so every cell stays the same module — the uniformity
+       assertion measures boxes, and no box moves. Nothing here paints, so
+       the engine-light rule survives untouched: still no lamp square, no
+       backdrop, the glyph itself is the lamp. The ACK affix and the detail
+       line are inline children of the label and centre with it, and the
+       latched cell is still the whole min-h-11 w-full <button>, so the tap
+       target keeps its shape. Under forced colors only ink and the label's
+       underline channel are rewritten — neither is alignment-sensitive. */
+    align-items: center;
     justify-content: center;
     gap: 4px;
     background: transparent;
     border: 0;
     font: inherit;
-    text-align: left;
+    text-align: center;
     color: var(--color-fg-muted);
   }
   button.telltale-cell { cursor: pointer; }

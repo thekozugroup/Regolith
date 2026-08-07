@@ -670,6 +670,101 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
     mock.assertSealed();
   });
 
+  /* ICON CENTRING LAW (owner: "centre the icons above their labels"). The
+     cells used to be align-items: flex-start, so every glyph sat hard-left
+     at x=0 — 45.7 to 48.2px left of its own cell centre — while the labels
+     ran left too, and only THERMAL RUNAWAY happened to fill its track and
+     read as centred.
+     Centring is an IN-CELL property, so this law is written to fail loudly
+     if anyone buys the centring with geometry that costs an invariant:
+       1. the glyph's centre matches its cell's centre (the owner's ask);
+       2. the label's centre matches it too, so the glyph sits OVER the word;
+       3. cell boxes stay one uniform module — this is the clause that fails
+          if centring is ever faked with per-cell padding or width;
+       4. the 44px module survives on every cell, latched ones included, so
+          the ACK button's tap target never shrinks;
+       5. nothing new paints — the glyph is still the lamp, with no backdrop,
+          no lamp square, no border and no shadow on the icon itself. */
+  test("every tell-tale glyph is centred over its label, in a still-uniform cell", async ({
+    page,
+  }) => {
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, { state: coldIdleUnhomed });
+
+    for (const width of [390, 800, 1280, 1920]) {
+      await page.setViewportSize({ width, height: width === 800 ? 480 : 900 });
+      await openSystems(page);
+      const cells = await page.locator(".telltale-cell").evaluateAll((items) =>
+        items
+          .filter((cell) => cell.getClientRects().length > 0)
+          .map((cell) => {
+            const box = cell.getBoundingClientRect();
+            const icon = cell.querySelector(".telltale-icon");
+            const label = cell.querySelector(".instrument-label");
+            const iconStyle = icon ? getComputedStyle(icon) : null;
+            const rect = (node: Element | null) =>
+              node ? node.getBoundingClientRect() : null;
+            const iconBox = rect(icon);
+            const labelBox = rect(label);
+            return {
+              id: cell.getAttribute("data-lamp"),
+              centre: box.left + box.width / 2,
+              width: box.width,
+              height: box.height,
+              iconCentre: iconBox ? iconBox.left + iconBox.width / 2 : null,
+              labelCentre: labelBox ? labelBox.left + labelBox.width / 2 : null,
+              iconBg: iconStyle?.backgroundColor ?? null,
+              iconBorder: iconStyle?.borderTopWidth ?? null,
+              iconShadow: iconStyle?.boxShadow ?? null,
+            };
+          }),
+      );
+
+      // Non-vacuity: the K1 Max table publishes eight lamps.
+      expect(cells.length, `${width}: lamps seen`).toBe(8);
+
+      for (const cell of cells) {
+        const at = `${width} · ${cell.id}`;
+        // (1) the glyph is centred in its own cell.
+        expect(cell.iconCentre, `${at}: glyph must render`).not.toBeNull();
+        expect(
+          Math.abs(cell.iconCentre! - cell.centre),
+          `${at}: glyph centre ${cell.iconCentre} vs cell centre ${cell.centre}`,
+        ).toBeLessThanOrEqual(1);
+        // (2) the label is centred under it — the glyph sits OVER the word.
+        expect(cell.labelCentre, `${at}: label must render`).not.toBeNull();
+        expect(
+          Math.abs(cell.labelCentre! - cell.centre),
+          `${at}: label centre ${cell.labelCentre} vs cell centre ${cell.centre}`,
+        ).toBeLessThanOrEqual(1.5);
+        // (4) the 44px module is untouched by the alignment change.
+        expect(cell.height, `${at}: cell keeps the 44px row module`).toBeGreaterThanOrEqual(
+          44,
+        );
+        expect(cell.width, `${at}: cell narrower than a finger`).toBeGreaterThanOrEqual(44);
+        // (5) the glyph IS the lamp — no backdrop, no square, no shadow.
+        expect(cell.iconBg, `${at}: glyph must not paint a backdrop`).toBe("rgba(0, 0, 0, 0)");
+        expect(cell.iconBorder, `${at}: glyph must not draw a lamp square`).toBe("0px");
+        expect(cell.iconShadow, `${at}: glyph must not cast a shadow`).toBe("none");
+      }
+
+      // (3) cells stay ONE module — centring must not be bought with
+      // per-cell padding or width.
+      const widths = cells.map((c) => c.width);
+      const heights = cells.map((c) => c.height);
+      expect(
+        Math.max(...widths) - Math.min(...widths),
+        `${width}: cell widths must stay uniform`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.max(...heights) - Math.min(...heights),
+        `${width}: cell heights must stay uniform`,
+      ).toBeLessThanOrEqual(1);
+    }
+
+    mock.assertSealed();
+  });
+
   test("bulb-test sweep: one discrete lit step on first connect, silent to SR, never re-run on reconnect", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await useExperience(page, "basic");
