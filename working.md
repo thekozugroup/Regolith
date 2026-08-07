@@ -1816,3 +1816,85 @@ password supplied on the command line as `PRINTER_HOST=<printer-host>` /
 - No config/service/watchdog contact; no print started; no G-code sent;
   no printer config touched; heaters and motion untouched throughout
   (idle re-confirmed by the double check above).
+
+---
+
+## Deploy — telemetry density (HD-4) + mesh table clip · 2026-08-07
+
+- **Shipped**: `6c17776` (telemetry density / HD-4) and `5807586` (bed mesh
+  accessible-table clip). `main == origin/main` at `5807586`, tracked tree
+  clean.
+- **Gates, real exit codes**: `bun run lint` **0**, `bun run test` **0**,
+  `bun run test:e2e` **0** — **240 passed** (baseline 235; +4 from the
+  density/reflow/telltale laws, +1 from the new mesh-table law), `bun run
+  build` **0**.
+- **HD-4 — the bar-shaped hole is removed, not filled.** `.telemetry-grid`
+  became two zones: a *scaled* zone keeping the gauges' column rhythm and a
+  *readings* zone that packs bar-less factors at their natural size. A tile
+  picks its zone from what it actually renders, not its label, so Live Vel.
+  and Position Z move zones with the telemetry rather than lying about their
+  type. Nothing new was drawn to occupy space.
+  - Trend (auto-scaled, no axis/endpoint/track): **Z-Offset**, **Max Accel**.
+  - No trend by design: **Pressure Adv.** (flat >99%, would render a dead
+    line), **Filament** (monotonic — every rate looks like the same ramp),
+    **Homed** (a per-axis boolean, not a scalar).
+  - Honesty marks: `[data-range-track]` = declared proportional track,
+    `[data-autoscale]` = self-scaled trend. The no-invented-ceiling law
+    asserts on the claim a mark makes rather than on "an svg", so it can
+    neither go blind nor fire falsely as tiles gain trends. Verified live:
+    **0 undeclared `<svg>`** in either zone at both viewports; the readings
+    zone carries **0 tracks**.
+- **Bed mesh table — an overflow that only existed on a real printer.** The
+  accessible `<table>` carried `sr-only` directly. Table layout treats width
+  as a minimum and expands to min-content, so the 1x1 clip was ignored: the
+  table laid out at its natural **1012px**, stayed in flow, and pushed
+  `documentElement.scrollWidth` past the viewport — **+232px @800x480** and
+  **+764px @1280** once the heatmap moved into the narrow live-tuning rail.
+  The clip now lives on a `<div>` wrapper, which table layout does not
+  govern. Every no-overflow law had been green because the fixture publishes
+  no mesh, so the table never rendered; `e2e/bed-mesh-a11y-table.spec.ts`
+  now publishes a real probed mesh and was confirmed to fail on the old
+  markup and pass on the new.
+- **Idle proof, both deploys**: two samples ~11s apart — `print_stats`
+  `complete`, `idle_timeout` `Idle`, klippy `ready`, extruder and bed targets
+  **0**, toolhead position byte-identical across samples. Preflight exit
+  **0** (read-only, key auth) before each.
+- **Deploy exit code 0** (twice; the second carries the mesh fix). Verified
+  live HTML and every referenced asset. Persistent backups written, retention
+  enforced (retained=5).
+- **On-device verification** at **1280x800** and **800x480**:
+  - Card headers: **62.59px** @1280 (pad 8.8) and **57.00px** @800x480 (pad
+    6.0) — identical across all six dashboard cards, zero spread; padding
+    equal on all four sides (even-inset holds); text gap 20.3/21.3 and
+    17.5/18.5 — optically balanced within 1px.
+  - Dial modules **square**: **234.2 x 234.2** @1280 and **176.5 x 176.5**
+    @800x480 — **Δ = 0.000%**, **24 segments** each, both above the 148px
+    floor. (The dial *art* keeps its own authored 0.86 viewBox ratio, as the
+    law allows — it is the module that must be square.)
+  - Tune: the live-tuning rail exists and is unique. At 1280 Pressure
+    Advance's card top **equals** Input Shaper's (**110.8 / 110.8, Δ=0.00**)
+    and Bed Mesh sits **below** it (418.78). PA's internal slack is **13.8px
+    against its own 12.8px pad** — one card-pad, no stretched glass. Below
+    xl the rail stacks (800x480: Δ=703.5), which is the intended no-op.
+  - Tell-tales: max glyph offset **0.01px**, max label offset **0.01px**
+    from cell centre across all 8 lamps at both viewports.
+  - Telemetry: readings zone has **no bars and no tracks**; scaled zone rows
+    are uniform; **0 undeclared `<svg>`**.
+  - **Zero horizontal overflow** on both Dashboard and Tune at both
+    viewports (Δ=0) — the mesh-table regression is gone.
+  - Console: **zero** errors and **zero** page errors with the camera live.
+  - Live tick: **60 WebSocket frames in 12s** at both viewports with the DOM
+    text changing across the window; mission bar reads **LINK READY**.
+  - Screenshots retained in the session scratchpad (untracked):
+    `final-dashboard-1280x800.png`, `final-dashboard-800x480.png`,
+    `final-tune-1280x800.png`, `final-tune-800x480.png`.
+- **Rollback armed**: `fluidd.previous/index.html` holds the exact
+  pre-deploy build, so one command restores the prior UI:
+  `PRINTER_HOST=<printer-host> ./deploy.sh --rollback`
+- **Load note**: repeated headless verification passes (each pulling the
+  MJPEG stream) drove the printer's load average to 15.5 and briefly timed
+  out Moonraker over HTTP. The live build was confirmed untouched by SSH
+  throughout; load settled to 3.4 and the final pass blocked the camera
+  stream. Worth throttling on-device verification on this SoC.
+- No config/service/watchdog contact; **no print started**; no G-code sent;
+  no printer config touched; heaters and motion untouched throughout.
