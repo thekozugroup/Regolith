@@ -289,14 +289,28 @@
     border-radius: max(0px, calc(var(--radius-panel) - var(--card-pad)));
     --radius-inner: max(0px, calc(var(--radius-panel) - var(--card-pad) - var(--group-pad)));
   }
-  /* Panel header slot: header controls now sit a full --card-pad from the
-     top, the side AND the header rule (owner: "spaced from the side of the
-     card evenly and follow concentricity"). With the inset uniform, the old
-     skew corner is gone and ONE radius satisfies every corner, so the slot
-     no longer overrides the cascade — it inherits .instrument-panel's
-     published inner radius, which is radius-panel − card-pad ≡
-     --radius-control (4px). Children still write rounded-inner, never a
-     literal. */
+  /* Panel header slot: a TIGHTER even inset than the body (owner: "shrink
+     the height of the card headers slightly — too much space above and
+     below the text"). The header publishes its own pad, one step
+     (--radius-control = 0.25rem) inside --card-pad and floored at 6px, and
+     Card.tsx reads it for BOTH the padding and the min-h formula
+     (44px tap floor + 2·pad + 1px rule), so:
+       · the header content box stays exactly 44px for ANY pad — the shrink
+         comes out of padding alone, never the tap floor (button law);
+       · the inset stays uniform on all four sides (even-inset law — the
+         probe reads the header's own computed padding, so it follows);
+       · every sibling header still resolves to one height at a given
+         viewport, --header-pad being derived from the single --card-pad
+         declaration (cross-card baseline sync).
+     Concentricity cascade: like .instrument-panel .control-group, the slot
+     republishes the inner radius its OWN inset leaves — radius-panel −
+     header-pad ≡ (card-pad + 4px) − (card-pad − 4px) = a constant 8px —
+     so header actions stay concentric at the tighter inset. Children still
+     write rounded-inner, never a literal. */
+  .panel-header {
+    --header-pad: max(0.375rem, calc(var(--card-pad) - 0.25rem));
+    --radius-inner: max(0px, calc(var(--radius-panel) - var(--header-pad)));
+  }
   /* Full-bleed strip inside a Card: cancels --card-pad so dividers and row
      hovers reach the panel edge. */
   .bleed { margin-inline: calc(-1 * var(--card-pad)); }

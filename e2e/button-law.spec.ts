@@ -493,3 +493,105 @@ test.describe("Even-inset law — header action clusters", () => {
     ).toBeGreaterThanOrEqual(INSET_SUBJECT_FLOOR);
   });
 });
+
+/**
+ * HEADER DENSITY LAW (owner: "shrink the height of the card headers
+ * slightly — too much space above and below the text"). The header's inset
+ * is --header-pad = max(6px, --card-pad − 4px), and its height is EXACTLY
+ * 44px (the tap floor) + 2·pad + the 1px rule:
+ *
+ *   1. measured height == 44 + 2·(computed padding) + border, ±1px — the
+ *      slimmer pad is real, and nothing re-inflates the header;
+ *   2. the pad really is one step inside the body's --card-pad (floored),
+ *      read from the sibling body's own computed padding — no hardcoded
+ *      clamp() value, so a retuned --card-pad is followed automatically;
+ *   3. the content box between the pads stays ≥ 44px — the shrink comes out
+ *      of padding, never the hit-target floor (button law);
+ *   4. EVERY visible header on the page resolves to ONE height (spread 0±1)
+ *      — actionless cards stay baseline-synced with Mission Status, the
+ *      exact desync trap Card.tsx documents.
+ */
+const HEADER_DENSITY_VIEWPORTS = [
+  { name: "390x844", width: 390, height: 844 },
+  { name: "800x480", width: 800, height: 480 },
+  { name: "1280x900", width: 1280, height: 900 },
+  { name: "1920x1080", width: 1920, height: 1080 },
+] as const;
+
+const HEADER_DENSITY_PROBE = () => {
+  const rows: {
+    card: string;
+    height: number;
+    pad: number;
+    bodyPad: number | null;
+    border: number;
+    contentBox: number;
+  }[] = [];
+  for (const header of Array.from(
+    document.querySelectorAll<HTMLElement>("section.instrument-panel > .panel-header"),
+  )) {
+    if (header.getClientRects().length === 0) continue;
+    const cs = getComputedStyle(header);
+    const padTop = parseFloat(cs.paddingTop);
+    const border = parseFloat(cs.borderBottomWidth) || 0;
+    const body = header.nextElementSibling;
+    rows.push({
+      card: header.querySelector("h2")?.textContent?.trim() ?? "?",
+      height: header.getBoundingClientRect().height,
+      pad: padTop,
+      bodyPad: body ? parseFloat(getComputedStyle(body).paddingTop) : null,
+      border,
+      // clientHeight excludes borders; subtract both pads for the content box.
+      contentBox: header.clientHeight - padTop - parseFloat(cs.paddingBottom),
+    });
+  }
+  return rows;
+};
+
+test.describe("Header density law — 44px floor + 2·header-pad + rule", () => {
+  test("every card header is exactly tap-floor + slim pad, in sync", async ({ page }) => {
+    test.setTimeout(240_000);
+    const sc = scenario("printing-midjob");
+    await installActiveMock(page, { state: sc.state, camera: "ok", thumbnail: true });
+    await fulfilFileApi(page);
+    await useExperience(page, "expert");
+    for (const viewport of HEADER_DENSITY_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      for (const route of ["/", "/tune"] as const) {
+        await visit(page, route);
+        const headers = (await page.evaluate(HEADER_DENSITY_PROBE)) as ReturnType<
+          typeof HEADER_DENSITY_PROBE
+        >;
+        const label = `${viewport.name} · ${route}`;
+        // Non-vacuity: the dashboard carries 6 headers, Tune ≥ 6.
+        expect(headers.length, `${label}: headers seen`).toBeGreaterThanOrEqual(6);
+        for (const h of headers) {
+          const where = `${label} · ${h.card}`;
+          // (1) height == 44 + 2·pad + border.
+          expect(
+            Math.abs(h.height - (44 + 2 * h.pad + h.border)),
+            `${where}: height ${h.height} must equal 44 + 2·${h.pad} + ${h.border}`,
+          ).toBeLessThanOrEqual(1);
+          // (2) pad is one step inside the body pad, floored at 6px.
+          if (h.bodyPad != null) {
+            expect(
+              Math.abs(h.pad - Math.max(6, h.bodyPad - 4)),
+              `${where}: header pad ${h.pad} must be max(6, card-pad ${h.bodyPad} − 4)`,
+            ).toBeLessThanOrEqual(0.5);
+          }
+          // (3) the 44px content box (the tap floor) survives any pad.
+          expect(
+            h.contentBox,
+            `${where}: content box ${h.contentBox} must keep the 44px floor`,
+          ).toBeGreaterThanOrEqual(43.5);
+        }
+        // (4) cross-card baseline sync: one height per viewport.
+        const heights = headers.map((h) => h.height);
+        expect(
+          Math.max(...heights) - Math.min(...heights),
+          `${label}: header heights must not desync (${heights.join(", ")})`,
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+});

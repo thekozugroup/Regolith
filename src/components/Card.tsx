@@ -29,12 +29,15 @@ export function Card({
         className
       )}
     >
-      {/* panel-header: one --card-pad inset on ALL four sides (even-inset
-          law), so header controls run concentric — see the cascade note in
-          index.css. The min-h is 44px (a control's tap floor) + 2·pad + the
-          1px border-b: headers WITHOUT an action must stay the same height
-          as headers with one, or the card titles stop sharing a baseline. */}
-      <header className="panel-header relative flex min-h-[calc(2.75rem+2*var(--card-pad)+1px)] items-center justify-between gap-3 border-b border-[var(--color-border)] p-[var(--card-pad)]">
+      {/* panel-header: one --header-pad inset on ALL four sides (even-inset
+          law) — the header's own, tighter rhythm, derived from --card-pad in
+          index.css — so header controls run concentric at the header's inset
+          (see the cascade note there). The min-h is 44px (a control's tap
+          floor) + 2·pad + the 1px border-b: the pad cancels out of the
+          content box, so the tap floor is untouched at any pad, and headers
+          WITHOUT an action must stay the same height as headers with one,
+          or the card titles stop sharing a baseline. */}
+      <header className="panel-header relative flex min-h-[calc(2.75rem+2*var(--header-pad)+1px)] items-center justify-between gap-3 border-b border-[var(--color-border)] p-[var(--header-pad)]">
         <div className="flex min-w-0 items-center gap-2 text-[14px] font-semibold tracking-[-0.01em]">
           {icon && (
             <span aria-hidden="true" className="text-[var(--color-accent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
