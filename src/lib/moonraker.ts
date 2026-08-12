@@ -867,6 +867,17 @@ export class Moonraker {
    * enough to shut Klipper down (see lib/timelapse RENDER_THREAD_CAP). The
    * caller is responsible for the gate — `timelapseRenderGate` — and for
    * warning the owner first.
+   *
+   * DELIBERATELY the one timelapse call with no abort deadline, unlike the
+   * settings read/write beside it. The plugin holds this request open for as
+   * long as ffmpeg runs, which on this hardware is minutes; a five-second
+   * abort would report "the printer did not start the render" about a render
+   * that started perfectly, on every successful pass. Aborting the fetch
+   * would not stop the encode either — the work is on the printer, not here.
+   * Nothing in the UI waits on this promise for its truth: the pending
+   * banner and the progress bar are both cleared by the plugin's own
+   * `notify_timelapse_event` stream, so a request that never settles costs a
+   * stale banner, not a frozen page.
    */
   async renderTimelapse(): Promise<void> {
     const response = await fetch(`${HTTP_BASE}/machine/timelapse/render`, {

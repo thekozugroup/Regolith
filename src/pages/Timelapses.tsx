@@ -25,16 +25,39 @@ interface TimelapseFile {
 const FRAME_FILE = /\.(jpe?g|png)$/i;
 
 /**
- * Deadline on the two SUPPORTING reads below.
+ * Deadline on EVERY read and write this page makes.
  *
- * Neither answer is essential — one says how many frames are queued, the
- * other how many jobs are — and a browser fetch has no default timeout. A
- * wedged Moonraker (a socket that accepts and never answers) would otherwise
- * hold this page in its loading skeleton forever, which is exactly the kind
- * of "looks like it is working" state this cockpit refuses to render. An
- * abort resolves to "unknown", which the page states plainly.
+ * A browser fetch has no default timeout, and a wedged Moonraker is not an
+ * error path — the socket accepts, then never answers, so no rejection ever
+ * arrives on its own. This printer has already been observed CPU-starved and
+ * unresponsive while still accepting connections, which is precisely that
+ * state. Without a deadline the page sits in its loading skeleton forever:
+ * the exact "looks like it is working" lie this cockpit refuses to render.
+ *
+ * The two supporting reads resolve an abort to "unknown", which the page
+ * states plainly. The list read has no such fallback — it is the page — so
+ * its abort surfaces as a named failure with a retry.
  */
-const SIDECAR_READ_TIMEOUT_MS = 5_000;
+const READ_TIMEOUT_MS = 5_000;
+
+/**
+ * A failed read, in the owner's words.
+ *
+ * Neither way a fetch rejects produces a message fit for an instrument: our
+ * own deadline aborts with browser boilerplate ("signal timed out"), and a
+ * dead link rejects with "Failed to fetch". An error this page threw itself
+ * already reads plainly and is passed through unchanged.
+ */
+function readFailure(error: unknown): string {
+  const err = error as { name?: string; message?: string } | null;
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+    return "The printer accepted the connection and then didn't answer within 5 seconds.";
+  }
+  if (err?.name === "TypeError" || !err?.message) {
+    return "The printer could not be reached.";
+  }
+  return err.message;
+}
 
 /**
  * Frames waiting on the printer, or null when this host does not expose the
@@ -43,7 +66,7 @@ const SIDECAR_READ_TIMEOUT_MS = 5_000;
 async function readFrameBacklog(): Promise<number | null> {
   try {
     const res = await fetch("/server/files/list?root=timelapse_frames", {
-      signal: AbortSignal.timeout(SIDECAR_READ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -63,7 +86,7 @@ async function readFrameBacklog(): Promise<number | null> {
 async function readQueuedJobs(): Promise<number | null> {
   try {
     const res = await fetch("/server/job_queue/status", {
-      signal: AbortSignal.timeout(SIDECAR_READ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -128,14 +151,20 @@ export function Timelapses() {
   const load = async () => {
     setLoading(true);
     try {
+      // The library read carries the same deadline as the two beside it. It
+      // is the one fetch on this page with no "unknown" to fall back to, so
+      // an unbounded one is the difference between an honest failure and a
+      // skeleton that never resolves.
       const [res, frames, queued] = await Promise.all([
-        fetch("/server/files/list?root=timelapse"),
+        fetch("/server/files/list?root=timelapse", {
+          signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        }),
         readFrameBacklog(),
         readQueuedJobs(),
       ]);
       setFrameBacklog(frames);
       setQueuedJobs(queued);
-      if (!res.ok) throw new Error(`Could not load timelapses (${res.status}).`);
+      if (!res.ok) throw new Error(`The printer answered HTTP ${res.status}.`);
       const data = await res.json();
       const list = (data.result ?? []) as TimelapseFile[];
       // Show only video files (mp4/avi/mov), sorted newest first
@@ -145,7 +174,7 @@ export function Timelapses() {
       setFiles(videos);
       setErr(null);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(readFailure(e));
     } finally {
       setLoading(false);
     }
@@ -197,17 +226,20 @@ export function Timelapses() {
     setPendingDelete(null);
     setDeleteError(null);
     try {
+      // Deadlined like every other call here: a delete that never settles
+      // leaves the owner watching a file that is neither gone nor reported.
       const res = await fetch(
         `/server/files/timelapse/${encodeURIComponent(file.path)}`,
-        { method: "DELETE" },
+        {
+          method: "DELETE",
+          signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+        },
       );
-      if (!res.ok) throw new Error(`the printer answered HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`The printer answered HTTP ${res.status}.`);
       setSelected(null);
       await load();
     } catch (e) {
-      setDeleteError(
-        `The timelapse wasn't deleted — ${(e as Error).message}.`,
-      );
+      setDeleteError(`The timelapse wasn't deleted. ${readFailure(e)}`);
     }
   };
 
@@ -361,9 +393,31 @@ export function Timelapses() {
           </Button>
         </div>
         <div aria-busy={loading}>
+        {/* THE HONEST FAILURE. A read that timed out is not a blank list and
+            not an eternal skeleton: it is a printer that did not answer, said
+            in those words, with the way out attached. */}
         {err && (
-          <div className="text-[12px] text-[var(--color-error)] py-3 text-center">
-            {err}
+          <div
+            role="alert"
+            data-testid="timelapse-list-error"
+            className="py-6 text-center"
+          >
+            <div className="text-[12px] font-medium text-[var(--color-error)]">
+              Couldn't reach the printer
+            </div>
+            <div className="mx-auto mt-1 max-w-[42ch] text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
+              {err} The timelapses on it are unknown, not gone.
+            </div>
+            <Button
+              size="sm"
+              className="mt-3"
+              data-testid="timelapse-list-retry"
+              onClick={load}
+              disabled={loading}
+            >
+              <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
+              Try again
+            </Button>
           </div>
         )}
         {!err && !loading && files.length === 0 && (

@@ -718,6 +718,66 @@ test.describe("Timelapses page — the owner-triggered render", () => {
   });
 });
 
+test.describe("Timelapses page — a host that accepts and never answers", () => {
+  test("a stalled list read ends in a stated failure with a way out, not an eternal skeleton", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page, { timelapses: [TIMELAPSE_FILE], queued: 0 });
+
+    // The state that is NOT an error path: the socket accepts the request and
+    // then goes silent. No HTTP status can model it and no rejection ever
+    // arrives on its own — only the read's own deadline can. This printer has
+    // been CPU-starved and unresponsive while still accepting connections, so
+    // this is a state it has actually been in. Registered after the file API
+    // so it wins; everything but the library root falls through untouched.
+    let answering = false;
+    await page.route("**/server/files/list*", async (route) => {
+      const root = new URL(route.request().url()).searchParams.get("root");
+      if (root !== "timelapse" || answering) {
+        await route.fallback();
+        return;
+      }
+      // Deliberately unanswered.
+    });
+
+    await page.goto("/timelapses");
+    // Before the deadline the page is honestly still loading. Asserted before
+    // the link handshake, because the skeleton only lives for those 5s.
+    await expect(page.getByTestId("timelapse-skeleton")).toBeVisible();
+    await awaitLink(page);
+
+    // After the deadline the skeleton is GONE and the page says what
+    // happened, in words an owner can act on. 15s
+    // allows the 5s abort plus slack inside the suite's test budget.
+    const failure = page.getByTestId("timelapse-list-error");
+    await expect(failure).toBeVisible({ timeout: 15_000 });
+    await expect(failure).toContainText("Couldn't reach the printer");
+    await expect(failure).toContainText("didn't answer within 5 seconds");
+    // Unknown, not empty: the page must not imply the printer holds no videos.
+    await expect(failure).toContainText("unknown, not gone");
+    await expect(page.getByTestId("timelapse-skeleton")).toHaveCount(0);
+    await expect(page.getByText("No timelapses yet")).toHaveCount(0);
+
+    // The way out works: the host comes back, the owner retries, the library
+    // arrives. A failure that can only be escaped by reloading the app is not
+    // a failure state, it is a dead end.
+    answering = true;
+    await page.getByTestId("timelapse-list-retry").click();
+    await expect(
+      page.getByRole("button", { name: /benchy_2026\.mp4/ }),
+    ).toBeVisible();
+    await expect(page.getByTestId("timelapse-list-error")).toHaveCount(0);
+
+    await assertNoBrokenReadouts(page, "stalled timelapse list");
+    mock.assertSealed();
+  });
+});
+
 test.describe("Timelapse settings — the mode, stated honestly", () => {
   test("both modes carry their tradeoff, and the printer's own value is shown", async ({
     page,
