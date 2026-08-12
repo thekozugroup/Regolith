@@ -45,11 +45,21 @@ function client(
   state: PrinterState;
   calls: string[];
   timelapseWrites: Array<Record<string, string | number | boolean>>;
+  /** What the plugin currently holds — read before the write, so an owner's
+   *  own `extraoutputparams` survives it. */
+  timelapseSettings: Record<string, unknown>;
+  settingsReads: number;
 } {
   return {
     state: initialState,
     calls: [],
     timelapseWrites: [],
+    timelapseSettings: {},
+    settingsReads: 0,
+    async getTimelapseSettings() {
+      this.settingsReads += 1;
+      return this.timelapseSettings;
+    },
     async writeTimelapseSettings(patch) {
       this.timelapseWrites.push(patch);
       this.calls.push(`timelapse:${JSON.stringify(patch)}`);
@@ -359,7 +369,14 @@ describe("per-print timelapse setup", () => {
       { type: "start-print", filename: "part.gcode", setup: [ON] },
       { confirm: () => true },
     );
-    expect(on.timelapseWrites).toEqual([{ enabled: true, mode: "hyperlapse" }]);
+    expect(on.timelapseWrites).toEqual([
+      {
+        enabled: true,
+        mode: "hyperlapse",
+        autorender: false,
+        extraoutputparams: "-threads 1",
+      },
+    ]);
     expect(on.calls.at(-1)).toBe("start:part.gcode");
 
     const off = client();
@@ -367,8 +384,71 @@ describe("per-print timelapse setup", () => {
       { type: "start-print", filename: "part.gcode", setup: [OFF] },
       { confirm: () => true },
     );
-    expect(off.timelapseWrites).toEqual([{ enabled: false }]);
+    expect(off.timelapseWrites).toEqual([
+      { enabled: false, autorender: false, extraoutputparams: "-threads 1" },
+    ]);
     expect(off.calls.at(-1)).toBe("start:part.gcode");
+  });
+
+  // THE INCIDENT: autorender fired unattended at the end of a 15h33m print,
+  // ffmpeg took both cores of a 2-core SoC, and Klipper shut down with
+  // "Rescheduled timer in the past". Regolith never arms recording without
+  // disarming autorender in the SAME write.
+  test("enabling recording disarms autorender in the same write", async () => {
+    const fake = client();
+    await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites).toHaveLength(1);
+    expect(fake.timelapseWrites[0].autorender).toBe(false);
+    expect(fake.timelapseWrites[0].extraoutputparams).toBe("-threads 1");
+    expect(fake.settingsReads).toBe(1);
+  });
+
+  test("an owner's own ffmpeg params survive the write; the disarm does not depend on them", async () => {
+    const fake = client();
+    fake.timelapseSettings = { extraoutputparams: "-crf 18" };
+    await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites).toEqual([
+      { enabled: true, mode: "hyperlapse", autorender: false },
+    ]);
+  });
+
+  // The read exists only to protect that one field. A host that cannot
+  // answer it still gets the write — the disarm is not negotiable on a GET.
+  test("an unreadable settings read still writes the disarm and the cap", async () => {
+    const fake = client();
+    fake.getTimelapseSettings = async () => {
+      throw new Error("HTTP 500");
+    };
+    const result = await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.timelapseWrites).toEqual([
+      {
+        enabled: true,
+        mode: "hyperlapse",
+        autorender: false,
+        extraoutputparams: "-threads 1",
+      },
+    ]);
+    expect(result.notices).toBeUndefined();
+  });
+
+  test("a client with no settings read at all still writes", async () => {
+    const fake = client();
+    delete (fake as { getTimelapseSettings?: unknown }).getTimelapseSettings;
+    await createPrinterActionRunner(fake)(
+      { type: "start-print", filename: "part.gcode", setup: [ON] },
+      { confirm: () => true },
+    );
+    expect(fake.timelapseWrites[0].autorender).toBe(false);
   });
 
   // Enabling from the UI must carry the mode with it, or the owner gets a
@@ -384,7 +464,12 @@ describe("per-print timelapse setup", () => {
       { confirm: () => true },
     );
     expect(fake.timelapseWrites).toEqual([
-      { enabled: true, mode: "layermacro" },
+      {
+        enabled: true,
+        mode: "layermacro",
+        autorender: false,
+        extraoutputparams: "-threads 1",
+      },
     ]);
   });
 
@@ -462,7 +547,14 @@ describe("per-print timelapse setup", () => {
       { type: "start-print", filename: "part.gcode", setup: ["kamp-on", ON] },
       { confirm: () => true },
     );
-    expect(fake.timelapseWrites).toEqual([{ enabled: true, mode: "hyperlapse" }]);
+    expect(fake.timelapseWrites).toEqual([
+      {
+        enabled: true,
+        mode: "hyperlapse",
+        autorender: false,
+        extraoutputparams: "-threads 1",
+      },
+    ]);
     // ...while the gcode step it COULD not confirm stays unsent.
     expect(fake.calls).not.toContain("gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1");
     expect(fake.calls).toContain("start:part.gcode");
@@ -476,7 +568,7 @@ describe("per-print timelapse setup", () => {
     );
     expect(fake.calls).toEqual([
       "gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1",
-      'timelapse:{"enabled":true,"mode":"hyperlapse"}',
+      'timelapse:{"enabled":true,"mode":"hyperlapse","autorender":false,"extraoutputparams":"-threads 1"}',
       "start:part.gcode",
     ]);
   });

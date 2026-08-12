@@ -813,8 +813,16 @@ export class Moonraker {
   // on — most importantly `applyPrintSetup`, which may never block a print.
   // `snapshoturl` is refused by the plugin itself and is never written here.
 
+  /**
+   * Current plugin config. Carries the same deadline as the write, because
+   * the pre-print path now reads before it writes (only to avoid clobbering
+   * an owner's own `extraoutputparams`) and a fetch with no timeout in front
+   * of `printer.print.start` would hold a print hostage on a wedged host.
+   */
   async getTimelapseSettings(): Promise<TimelapseSettings> {
-    const response = await fetch(`${HTTP_BASE}/machine/timelapse/settings`);
+    const response = await fetch(`${HTTP_BASE}/machine/timelapse/settings`, {
+      signal: AbortSignal.timeout(TIMELAPSE_WRITE_TIMEOUT_MS),
+    });
     if (!response.ok) {
       throw new Error(`Timelapse settings unavailable (HTTP ${response.status}).`);
     }
@@ -850,7 +858,16 @@ export class Moonraker {
     return data.result ?? {};
   }
 
-  /** Manual re-render. Autorender already fires on print completion. */
+  /**
+   * Render the captured frames into a video, NOW.
+   *
+   * This is the only way a render happens under Regolith: the pre-print
+   * write disarms the plugin's `autorender`, because an unattended ffmpeg
+   * pass over a completed print's frames starved this printer's CPU badly
+   * enough to shut Klipper down (see lib/timelapse RENDER_THREAD_CAP). The
+   * caller is responsible for the gate — `timelapseRenderGate` — and for
+   * warning the owner first.
+   */
   async renderTimelapse(): Promise<void> {
     const response = await fetch(`${HTTP_BASE}/machine/timelapse/render`, {
       method: "POST",
@@ -881,6 +898,9 @@ export interface TimelapseSettings {
   autorender?: boolean;
   parkhead?: boolean;
   output_framerate?: number;
+  /** Extra ffmpeg output arguments. Regolith writes the render thread cap
+   *  here unless the owner has put something of their own in it. */
+  extraoutputparams?: string;
   [key: string]: unknown;
 }
 

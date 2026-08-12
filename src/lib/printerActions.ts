@@ -1,6 +1,10 @@
 import { moonraker, type PrinterState } from "./moonraker";
 import { canJog, getSafetyState, type Axis } from "./safety";
-import { timelapseSettingsWrite, type TimelapseMode } from "./timelapse";
+import {
+  timelapseSettingsWrite,
+  type TimelapseMode,
+  type TimelapseRenderConfig,
+} from "./timelapse";
 
 /**
  * One optional pre-print setup choice.
@@ -79,7 +83,6 @@ const KAMP_STEPS: Record<"kamp-on" | "kamp-off", PrintSetupStep> = {
 function resolveSetupStep(option: PrintSetupOption): PrintSetupStep | null {
   if (option === "kamp-on" || option === "kamp-off") return KAMP_STEPS[option];
   if (option && typeof option === "object" && option.kind === "timelapse") {
-    const patch = timelapseSettingsWrite(option.enabled, option.mode);
     return {
       kind: "http",
       notice: option.enabled
@@ -89,7 +92,20 @@ function resolveSetupStep(option: PrintSetupOption): PrintSetupStep | null {
         // Absent on hosts without the timelapse component. Nothing to do,
         // and nothing to report: the feature simply is not there.
         if (!client.writeTimelapseSettings) return;
-        await client.writeTimelapseSettings(patch);
+        // Read first, for ONE reason: to see whether the owner has their own
+        // ffmpeg output params, which the write must not overwrite. A read
+        // that fails is not an error and never blocks the write — the
+        // autorender disarm is what keeps a 15h print from ending in a host
+        // that starves Klipper, and it is not negotiable on a GET.
+        let current: TimelapseRenderConfig | null;
+        try {
+          current = (await client.getTimelapseSettings?.()) ?? null;
+        } catch {
+          current = null;
+        }
+        await client.writeTimelapseSettings(
+          timelapseSettingsWrite(option.enabled, option.mode, current),
+        );
       },
     };
   }
@@ -177,6 +193,12 @@ export interface PrinterActionClient {
   writeTimelapseSettings?(
     patch: Record<string, string | number | boolean>,
   ): Promise<unknown>;
+  /**
+   * Optional: `GET /machine/timelapse/settings`. Read only to protect an
+   * owner's own `extraoutputparams` from being overwritten; a host that
+   * cannot answer it still gets the write.
+   */
+  getTimelapseSettings?(): Promise<TimelapseRenderConfig>;
 }
 
 export interface ActionCheck {

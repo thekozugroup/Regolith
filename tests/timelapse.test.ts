@@ -3,7 +3,11 @@ import {
   DEFAULT_TIMELAPSE_MODE,
   NO_TIMELAPSE_ACTIVITY,
   RECORDING_STALE_MS,
+  RENDER_CONFIRMATION,
+  RENDER_THREAD_CAP,
   isRecordingNow,
+  ownerRenderParams,
+  timelapseRenderGate,
   isTimelapseMode,
   reduceTimelapseEvent,
   timelapseEnabledFromStorage,
@@ -63,10 +67,14 @@ describe("the settings write", () => {
     expect(timelapseSettingsWrite(true, "hyperlapse")).toEqual({
       enabled: true,
       mode: "hyperlapse",
+      autorender: false,
+      extraoutputparams: RENDER_THREAD_CAP,
     });
     expect(timelapseSettingsWrite(true, "layermacro")).toEqual({
       enabled: true,
       mode: "layermacro",
+      autorender: false,
+      extraoutputparams: RENDER_THREAD_CAP,
     });
   });
 
@@ -75,10 +83,73 @@ describe("the settings write", () => {
   test("a disable asserts off and leaves the owner's pinned mode alone", () => {
     expect(timelapseSettingsWrite(false, "layermacro")).toEqual({
       enabled: false,
+      autorender: false,
+      extraoutputparams: RENDER_THREAD_CAP,
     });
     expect(timelapseSettingsWrite(false, "hyperlapse")).toEqual({
       enabled: false,
+      autorender: false,
+      extraoutputparams: RENDER_THREAD_CAP,
     });
+  });
+
+  // THE INCIDENT. Autorender ran ffmpeg over 1873 frames unattended on a
+  // 2-core SoC, load went 2 → 30, and Klipper shut down with "Rescheduled
+  // timer in the past". Enabling recording without disarming autorender is
+  // the bug, so the disarm rides in the SAME write — never a second one that
+  // could fail on its own.
+  test("every write disarms autorender, in both directions", () => {
+    for (const write of [
+      timelapseSettingsWrite(true, "hyperlapse"),
+      timelapseSettingsWrite(true, "layermacro"),
+      timelapseSettingsWrite(false, "hyperlapse"),
+      timelapseSettingsWrite(true, "hyperlapse", { extraoutputparams: "-crf 20" }),
+    ]) {
+      expect(write.autorender).toBe(false);
+    }
+  });
+
+  // ffmpeg honours the LAST -threads, so this overrides the component's
+  // hardcoded `-threads 2` without patching a third-party file.
+  test("the thread cap is written so a render cannot own both cores", () => {
+    expect(RENDER_THREAD_CAP).toBe("-threads 1");
+    expect(timelapseSettingsWrite(true, "hyperlapse").extraoutputparams).toBe(
+      "-threads 1",
+    );
+    // Nothing of the owner's to protect: absent, empty, whitespace, a
+    // non-string, or already our own cap.
+    for (const current of [
+      null,
+      undefined,
+      {},
+      { extraoutputparams: "" },
+      { extraoutputparams: "   " },
+      { extraoutputparams: 2 },
+      { extraoutputparams: RENDER_THREAD_CAP },
+    ]) {
+      expect(ownerRenderParams(current)).toBeNull();
+      expect(timelapseSettingsWrite(true, "hyperlapse", current).extraoutputparams).toBe(
+        RENDER_THREAD_CAP,
+      );
+    }
+  });
+
+  // `extraoutputparams` is one free-text string. Writing ours over theirs
+  // would silently delete work they did on purpose.
+  test("an owner's own output params are respected, never clobbered", () => {
+    const current = { extraoutputparams: "-crf 18 -preset veryslow" };
+    expect(ownerRenderParams(current)).toBe("-crf 18 -preset veryslow");
+    const write = timelapseSettingsWrite(true, "hyperlapse", current);
+    expect(write).toEqual({
+      enabled: true,
+      mode: "hyperlapse",
+      autorender: false,
+    });
+    expect(Object.keys(write)).not.toContain("extraoutputparams");
+    // ...and the disarm still happens, because that one is not a preference.
+    expect(write.autorender).toBe(false);
+    // Padding is not a different setting.
+    expect(ownerRenderParams({ extraoutputparams: "  -threads 1  " })).toBeNull();
   });
 
   test("never writes the blocked snapshoturl key", () => {
@@ -88,6 +159,76 @@ describe("the settings write", () => {
     ]) {
       expect(Object.keys(write)).not.toContain("snapshoturl");
     }
+  });
+});
+
+describe("the manual render gate", () => {
+  const IDLE = {
+    connected: true,
+    busyReason: null,
+    queuedJobs: 0,
+    rendering: false,
+  };
+
+  test("an idle, connected printer may render", () => {
+    expect(timelapseRenderGate(IDLE)).toEqual({ allowed: true, reason: null });
+    // Unknown is not blocked: the live print state is the authority.
+    expect(timelapseRenderGate({ ...IDLE, queuedJobs: null }).allowed).toBe(true);
+  });
+
+  // The whole point. A render during a print is the failure that hung this
+  // machine, with a live job attached.
+  test("a print in flight blocks it, and says why", () => {
+    for (const busyReason of [
+      "Printing now",
+      "Paused",
+      "Macro / calibration in progress",
+    ]) {
+      const gate = timelapseRenderGate({ ...IDLE, busyReason });
+      expect(gate.allowed).toBe(false);
+      expect(gate.reason).toContain(busyReason);
+      expect(gate.reason).toContain("starve Klipper");
+    }
+  });
+
+  test("a queued job blocks it too — it is about to become a print", () => {
+    const gate = timelapseRenderGate({ ...IDLE, queuedJobs: 2 });
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toContain("queued");
+  });
+
+  test("a render already running is not started twice", () => {
+    const gate = timelapseRenderGate({ ...IDLE, rendering: true });
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toContain("already running");
+  });
+
+  test("an offline printer cannot be asked", () => {
+    const gate = timelapseRenderGate({ ...IDLE, connected: false });
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toContain("offline");
+  });
+
+  // Every blocked answer must carry a reason the owner can read — a disabled
+  // control with no explanation is the thing this cockpit refuses to ship.
+  test("no silent refusals", () => {
+    for (const input of [
+      { ...IDLE, connected: false },
+      { ...IDLE, busyReason: "Printing now" },
+      { ...IDLE, queuedJobs: 1 },
+      { ...IDLE, rendering: true },
+    ]) {
+      const gate = timelapseRenderGate(input);
+      expect(gate.allowed).toBe(false);
+      expect(gate.reason?.length ?? 0).toBeGreaterThan(20);
+    }
+  });
+
+  test("the warning names the cost and the precondition", () => {
+    expect(RENDER_CONFIRMATION.message).toContain("CPU-heavy");
+    expect(RENDER_CONFIRMATION.message).toContain("long time");
+    expect(RENDER_CONFIRMATION.message).toContain("idle");
+    expect(RENDER_CONFIRMATION.risk).toBe("caution");
   });
 });
 

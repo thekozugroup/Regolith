@@ -124,6 +124,26 @@ const PRINT_READY: ActiveMockOptions = {
   permit: { printStart: true, timelapseWrite: "ok" },
 };
 
+/**
+ * What Regolith must put on the wire.
+ *
+ * `autorender: false` and the thread cap ride along in BOTH directions.
+ * Unattended autorender is what hung this printer: ffmpeg over 1873 frames
+ * with a hardcoded `-threads 2` on a 2-core SoC drove load to 30 and Klipper
+ * shut down with "Rescheduled timer in the past".
+ */
+const RECORDING_ON = {
+  enabled: true,
+  mode: "hyperlapse",
+  autorender: false,
+  extraoutputparams: "-threads 1",
+};
+const RECORDING_OFF = {
+  enabled: false,
+  autorender: false,
+  extraoutputparams: "-threads 1",
+};
+
 test.describe("Per-print timelapse — the write the toggle produces", () => {
   test("the toggle carries into the start, and off is asserted just as loudly", async ({
     page,
@@ -142,7 +162,7 @@ test.describe("Per-print timelapse — the write the toggle produces", () => {
     // shared with Fluidd and the stock touchscreen.
     await startPrintFrom(page, dialog);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(mock.timelapseWrites()).toEqual([{ enabled: false }]);
+    expect(mock.timelapseWrites()).toEqual([RECORDING_OFF]);
     expect(mock.rpcCalls()).toContain("printer.print.start");
 
     // Turning it on sticks across a reload and rides along with the mode
@@ -161,10 +181,7 @@ test.describe("Per-print timelapse — the write the toggle produces", () => {
     );
     await startPrintFrom(page, dialog);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(mock.timelapseWrites().at(-1)).toEqual({
-      enabled: true,
-      mode: "hyperlapse",
-    });
+    expect(mock.timelapseWrites().at(-1)).toEqual(RECORDING_ON);
 
     await assertNoBrokenReadouts(page, "timelapse toggle");
     mock.assertSealed();
@@ -193,7 +210,7 @@ test.describe("Per-print timelapse — the write the toggle produces", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     // Honoured, not silently overridden.
     expect(mock.timelapseWrites()).toEqual([
-      { enabled: true, mode: "layermacro" },
+      { ...RECORDING_ON, mode: "layermacro" },
     ]);
 
     mock.assertSealed();
@@ -262,9 +279,7 @@ test.describe("Per-print timelapse — the write the toggle produces", () => {
     await expect(dialog.getByRole("alert")).toHaveCount(0);
     expect(mock.rpcCalls()).toContain("printer.print.start");
     // The write was attempted (and recorded) before it hung.
-    expect(mock.timelapseWrites()).toEqual([
-      { enabled: true, mode: "hyperlapse" },
-    ]);
+    expect(mock.timelapseWrites()).toEqual([RECORDING_ON]);
 
     await assertNoBrokenReadouts(page, "timelapse write hang");
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
