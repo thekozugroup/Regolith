@@ -1898,3 +1898,78 @@ password supplied on the command line as `PRINTER_HOST=<printer-host>` /
   stream. Worth throttling on-device verification on this SoC.
 - No config/service/watchdog contact; **no print started**; no G-code sent;
   no printer config touched; heaters and motion untouched throughout.
+
+## Incident — autorender starved Klipper and hung the printer · 2026-08-12
+
+Shipped as `822fb7a` (the settings write) and `b48003b` (the manual
+render). Gates green on both: lint / unit / build exit 0, e2e **246
+passed** (baseline 240 + 6 new).
+
+**Severity: the machine had to be power-cycled.** Nothing was lost only
+because of when it happened.
+
+### What happened, on the owner's hardware
+
+A 15h33m print finished. moonraker-timelapse's `autorender` was still armed
+— the per-print timelapse feature Regolith shipped never touched it — so the
+component immediately started an ffmpeg pass over **1873 frames at
+1280x720**, with **`-threads 2` hardcoded** (`timelapse.py:684-694`: no
+`nice`, no `ionice`, no way to configure it) on a **2-core SoC**. Load
+average went **2 → 30**. **28 seconds later** Klipper shut down:
+
+```
+MCU 'rpi' shutdown: Rescheduled timer in the past
+```
+
+That is host CPU starvation, not a firmware fault: the Klipper host process
+could not schedule its own timers because ffmpeg owned both cores. The
+machine hung until it was power-cycled. **The print had just finished, so
+nothing was lost — the same starvation twenty minutes earlier would have
+killed a live 15-hour job.**
+
+### Root cause
+
+Regolith wrote `enabled: true` (and the capture mode) and stopped there. It
+treated the rest of a third-party component's configuration as somebody
+else's business. But `autorender` is the switch that decides whether the
+plugin gets to run an unbounded, unattended, un-niced encode on the printer
+the moment a print ends, and its default is ON. Enabling capture without
+disarming autorender is enabling the encode. The frame-clearing behaviour
+compounds it: **frames are deleted only after a render SUCCEEDS**, so a
+failed render leaves the whole backlog queued for the next one — each
+attempt bigger than the last.
+
+### The fix
+
+- **Every pre-print settings write now carries `autorender: false`**, in the
+  same body that arms recording, in both directions. Same body, never a
+  second write that could fail on its own; both directions, because the
+  value is one global shared with Fluidd and the stock touchscreen and
+  whatever last touched it is never safe to assume.
+- **`extraoutputparams: "-threads 1"`** rides along. ffmpeg honours the LAST
+  `-threads` on the command line, so this overrides the component's
+  hardcoded 2 without patching a third-party file. An owner who deliberately
+  set their own `extraoutputparams` keeps them untouched — the write reads
+  the current config first for that one field only, and a read that fails
+  still gets the disarm.
+- **Rendering became an explicit action** on the Timelapses page. It is
+  DISABLED with a stated reason while a print is printing, paused, mid-macro
+  or queued; it warns what it costs before it starts; it shows the plugin's
+  own progress and its terminal success / skipped / error state.
+- **The frame backlog is stated out loud** — how many frames are waiting,
+  and that they are cleared only by a render that succeeds.
+
+### The rules this buys
+
+1. **No unattended CPU-heavy work on the printer, ever, and absolutely not
+   while it prints.** The printer's CPU is Klipper's real-time budget.
+   Anything that competes with it is a motion fault waiting for a long
+   enough job. If work must happen on the host, the owner starts it, on an
+   idle machine, watching it.
+2. **Never assume a third-party component's defaults are safe on
+   constrained hardware.** They are tuned for a desktop-class host. When
+   Regolith turns a component on, it owns every setting of that component
+   that can hurt the printer — not just the one that sounds like the
+   feature.
+3. Corollary, already learned once (see the 2026-08-07 load note) and now
+   paid for: this SoC has no headroom. Two cores is the whole budget.
