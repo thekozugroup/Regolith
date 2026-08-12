@@ -86,6 +86,13 @@ export interface ActiveMockOptions {
      * exists for (a wedged Moonraker cannot be modelled by any HTTP status).
      */
     timelapseWrite?: "ok" | "fail" | "hang";
+    /**
+     * `POST /machine/timelapse/render` — the owner-triggered render. "fail"
+     * answers HTTP 500. Recorded and answered here; the real call would put
+     * ffmpeg on the printer's own CPU, which is the whole reason the action
+     * is gated and warned about.
+     */
+    timelapseRender?: "ok" | "fail";
   };
 }
 
@@ -117,6 +124,8 @@ export interface ActiveMock {
   cameraRequests: () => number;
   /** Bodies POSTed to `/machine/timelapse/settings`, in order. */
   timelapseWrites: () => Array<Record<string, unknown>>;
+  /** How many times a render was requested. */
+  timelapseRenders: () => number;
   /** RPC methods permitted and recorded, in order. */
   rpcCalls: () => string[];
 }
@@ -130,6 +139,7 @@ export async function installActiveMock(
   const subscriptions: string[] = [];
   const rpcs: string[] = [];
   const timelapseWrites: Array<Record<string, unknown>> = [];
+  let timelapseRenderCount = 0;
   const sockets = new Set<WebSocketRoute>();
   let cameraRequestCount = 0;
   let options = initial;
@@ -218,6 +228,27 @@ export async function installActiveMock(
         body: JSON.stringify({
           result: { ...TIMELAPSE_SETTINGS, ...body },
         }),
+      });
+      return;
+    }
+
+    // The owner-triggered render. Counted and answered locally: on real
+    // hardware this hands ffmpeg the printer's CPU, which is exactly what the
+    // gate and the warning in front of it exist to control.
+    if (
+      method === "POST" &&
+      url.pathname === "/machine/timelapse/render" &&
+      options.permit?.timelapseRender
+    ) {
+      timelapseRenderCount += 1;
+      await route.fulfill({
+        status: options.permit.timelapseRender === "fail" ? 500 : 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          options.permit.timelapseRender === "fail"
+            ? { error: "render failed to start" }
+            : { result: "ok" },
+        ),
       });
       return;
     }
@@ -311,6 +342,35 @@ export async function installActiveMock(
       return;
     }
 
+    // Two reads the Timelapses page makes that MUST NOT fall through to the
+    // catch-all: `vite preview` proxies every /server, /machine and /printer
+    // path at the real printer's address, so an unanswered one leaves the
+    // browser waiting on a LAN host that is not there — which is how a page
+    // ends up stuck in its loading skeleton in CI. Answered here as an idle
+    // machine with nothing queued; specs that care register their own route.
+    if (
+      url.pathname === "/server/files/list" &&
+      url.searchParams.get("root") === "timelapse_frames"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: [] }),
+      });
+      return;
+    }
+
+    if (url.pathname === "/server/job_queue/status") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: { queue_state: "ready", queued_jobs: [] },
+        }),
+      });
+      return;
+    }
+
     if (url.pathname === "/printer/info") {
       await route.fulfill({
         status: 200,
@@ -374,6 +434,7 @@ export async function installActiveMock(
     },
     cameraRequests: () => cameraRequestCount,
     timelapseWrites: () => timelapseWrites,
+    timelapseRenders: () => timelapseRenderCount,
     rpcCalls: () => rpcs,
     assertSealed: () => {
       expect(escaped, "browser traffic escaped the local fixture").toEqual([]);

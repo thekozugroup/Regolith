@@ -43,16 +43,65 @@ const TIMELAPSE_FILE = {
 /** File/history endpoints, registered after the harness so they win. */
 async function fulfilFileApi(
   page: Page,
-  options: { timelapses?: Array<typeof TIMELAPSE_FILE> } = {},
+  options: {
+    timelapses?: Array<typeof TIMELAPSE_FILE>;
+    /**
+     * Frames sitting in the plugin's working directory. "absent" 404s the
+     * root, as a host whose plugin never registered it does — unknown, which
+     * the page must not report as zero.
+     */
+    frames?: number | "absent";
+    /** Jobs waiting in Moonraker's queue; "absent" 404s the endpoint. */
+    queued?: number | "absent";
+  } = {},
 ) {
   let timelapses = options.timelapses ?? [];
+  const frames = options.frames ?? "absent";
+  const queued = options.queued ?? "absent";
   await page.route("**/server/files/list*", async (route) => {
     const root = new URL(route.request().url()).searchParams.get("root");
+    if (root === "timelapse_frames") {
+      if (frames === "absent") {
+        await route.fulfill({ status: 404, body: "no such root" });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: Array.from({ length: frames }, (_, index) => ({
+            path: `frame${String(index).padStart(6, "0")}.jpg`,
+            size: 90_000,
+            modified: 1_700_000_000,
+          })),
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         result: root === "timelapse" ? timelapses : [GCODE_FILE],
+      }),
+    });
+  });
+  await page.route("**/server/job_queue/status*", async (route) => {
+    if (queued === "absent") {
+      await route.fulfill({ status: 404, body: "job queue unavailable" });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          queue_state: "ready",
+          queued_jobs: Array.from({ length: queued }, (_, index) => ({
+            filename: `queued_${index}.gcode`,
+            job_id: `0000000${index}`,
+          })),
+        },
       }),
     });
   });
@@ -420,6 +469,251 @@ test.describe("Timelapses page — live render progress and arrival", () => {
     await expect(activity).toContainText("no frames captured");
 
     await assertNoBrokenReadouts(page, "skipped render");
+    mock.assertSealed();
+  });
+});
+
+/**
+ * The manual render — the action that replaced unattended autorender.
+ *
+ * Regolith disarms `autorender` on every print start because an unattended
+ * ffmpeg pass over 1873 frames drove this printer's load from 2 to 30 and
+ * shut Klipper down 28 seconds later ("Rescheduled timer in the past"). The
+ * replacement is an action the owner triggers — which means the gate, the
+ * warning, and the progress readout ARE the safety feature.
+ */
+test.describe("Timelapses page — the owner-triggered render", () => {
+  test("blocked while a print is live, and it says why", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("printing-midjob"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page, { frames: 1873 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+
+    const render = page.getByTestId("timelapse-render");
+    await expect(render).toBeVisible();
+    await expect(render).toBeDisabled();
+    const blocked = page.getByTestId("timelapse-render-blocked");
+    await expect(blocked).toContainText("Printing now");
+    await expect(blocked).toContainText("starve Klipper");
+
+    // The backlog is stated honestly rather than hidden: these frames
+    // survive a failed render and pile onto the next one.
+    await expect(page.getByTestId("timelapse-backlog")).toContainText(
+      "1,873 frames waiting on the printer",
+    );
+
+    // A disabled control cannot be talked into firing.
+    await render.click({ force: true });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.timelapseRenders()).toBe(0);
+
+    // Paused is not idle either — the job is still on the plate. Same
+    // filename, because a DIFFERENT one would read as a new job and fire the
+    // chamber-light auto-ON, which is a different feature's wire.
+    mock.push({
+      print_stats: {
+        state: "paused",
+        filename: "calibration/benchy_0.2mm_PLA_K1Max.gcode",
+      },
+    });
+    await expect(page.getByTestId("timelapse-render-blocked")).toContainText(
+      "Paused",
+    );
+    await expect(page.getByTestId("timelapse-render")).toBeDisabled();
+
+    await assertNoBrokenReadouts(page, "render blocked during print");
+    mock.assertSealed();
+  });
+
+  test("a queued job blocks it too — it is a print about to start", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page, { frames: 12, queued: 1 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    await expect(page.getByTestId("timelapse-render")).toBeDisabled();
+    await expect(page.getByTestId("timelapse-render-blocked")).toContainText(
+      "queued",
+    );
+    expect(mock.timelapseRenders()).toBe(0);
+
+    await assertNoBrokenReadouts(page, "render blocked by queue");
+    mock.assertSealed();
+  });
+
+  test("an idle printer renders — warned first, then watched to the end", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    const files = await fulfilFileApi(page, { frames: 1873, queued: 0 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    const render = page.getByTestId("timelapse-render");
+    await expect(render).toBeEnabled();
+    await expect(page.getByTestId("timelapse-render-blocked")).toHaveCount(0);
+
+    // THE WARNING. Nothing starts until the owner reads what it costs.
+    await render.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("CPU-heavy");
+    await expect(dialog).toContainText("long time");
+    await expect(dialog).toContainText("idle");
+    expect(mock.timelapseRenders()).toBe(0);
+
+    // Cancelling sends nothing at all.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.timelapseRenders()).toBe(0);
+
+    await render.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Render now" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.timelapseRenders()).toBe(1);
+
+    // Asked, not yet answered — and never claiming progress it does not have.
+    const activity = page.getByTestId("timelapse-activity");
+    await expect(activity).toContainText("Waiting for the printer");
+    // ...and it cannot be started twice while it is in flight.
+    await expect(page.getByTestId("timelapse-render")).toBeDisabled();
+
+    mock.pushTimelapse({ action: "render", status: "running", progress: 18 });
+    await expect(activity).toContainText("Rendering video");
+    await expect(activity).toContainText("18%");
+    await expect(page.getByTestId("timelapse-render-bar")).toBeAttached();
+    await expect(page.getByTestId("timelapse-render")).toBeDisabled();
+
+    // Terminal: the video lands, the list refreshes, the backlog is gone —
+    // frames are cleared only by a render that SUCCEEDS.
+    files.addTimelapse(TIMELAPSE_FILE);
+    await page.route("**/server/files/list*", async (route) => {
+      const root = new URL(route.request().url()).searchParams.get("root");
+      if (root !== "timelapse_frames") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: [] }),
+      });
+    });
+    mock.pushTimelapse({
+      action: "render",
+      status: "success",
+      filename: TIMELAPSE_FILE.path,
+      progress: 100,
+    });
+    await expect(activity).toContainText("Video ready");
+    await expect(
+      page.getByRole("button", { name: /benchy_2026\.mp4/ }),
+    ).toBeVisible();
+    await expect(page.getByTestId("timelapse-backlog")).toContainText(
+      "No frames are waiting",
+    );
+    await expect(page.getByTestId("timelapse-render")).toBeEnabled();
+
+    await assertNoBrokenReadouts(page, "manual render");
+    mock.assertSealed();
+  });
+
+  test("a render the printer refuses says so, and stays offerable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "fail" },
+    });
+    await fulfilFileApi(page, { frames: 40, queued: 0 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    await page.getByTestId("timelapse-render").click();
+    await page.getByRole("dialog").getByRole("button", { name: "Render now" }).click();
+
+    const error = page.getByTestId("timelapse-render-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText("did not start the render");
+    // A refusal is not a lock-out: the frames are still there to try again.
+    await expect(page.getByTestId("timelapse-render")).toBeEnabled();
+    await expect(page.getByTestId("timelapse-activity")).toHaveCount(0);
+
+    await assertNoBrokenReadouts(page, "render refused");
+    mock.assertSealed();
+  });
+
+  test("a failed render leaves the frames queued, and says so", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page, { frames: 620, queued: 0 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    mock.pushTimelapse({
+      action: "render",
+      status: "error",
+      msg: "ffmpeg exited 1",
+    });
+    const activity = page.getByTestId("timelapse-activity");
+    await expect(activity).toContainText("Render failed");
+    await expect(activity).toContainText("ffmpeg exited 1");
+
+    // THE COMPOUNDING. The frames are still on the printer, so the next
+    // render is bigger than this one — the page has to say that out loud.
+    await expect(page.getByTestId("timelapse-backlog")).toContainText(
+      "620 frames waiting on the printer",
+    );
+    await expect(page.getByTestId("timelapse-backlog")).toContainText(
+      "cleared only after a render succeeds",
+    );
+    await expect(page.getByTestId("timelapse-render")).toBeEnabled();
+
+    await assertNoBrokenReadouts(page, "failed render backlog");
+    mock.assertSealed();
+  });
+
+  test("a host with no frame directory says nothing it cannot see", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page);
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    // Unknown is not zero: with no frame root to read, the only honest
+    // number is the one this link has watched arrive.
+    mock.pushTimelapse({ action: "newframe", frame: 9 });
+    await expect(page.getByTestId("timelapse-backlog")).toContainText(
+      "9 frames captured on this link",
+    );
+
+    await assertNoBrokenReadouts(page, "frame root absent");
     mock.assertSealed();
   });
 });

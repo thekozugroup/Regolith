@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { buttonClassName } from "@/components/buttonStyles";
@@ -6,12 +6,76 @@ import { ActionConfirmDialog } from "@/components/ActionConfirmDialog";
 import { Film, Download, Trash2, Play, RefreshCw } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
 import { useTimelapse } from "@/lib/useTimelapse";
+import { usePrinterSelector } from "@/lib/usePrinter";
+import { getSafetyState } from "@/lib/safety";
+import { moonraker } from "@/lib/moonraker";
+import {
+  RENDER_CONFIRMATION,
+  timelapseRenderGate,
+  type TimelapseRender,
+} from "@/lib/timelapse";
 
 interface TimelapseFile {
   path: string;
   size: number;
   modified: number;
 }
+
+/** Frame files the plugin leaves in its working directory. */
+const FRAME_FILE = /\.(jpe?g|png)$/i;
+
+/**
+ * Deadline on the two SUPPORTING reads below.
+ *
+ * Neither answer is essential — one says how many frames are queued, the
+ * other how many jobs are — and a browser fetch has no default timeout. A
+ * wedged Moonraker (a socket that accepts and never answers) would otherwise
+ * hold this page in its loading skeleton forever, which is exactly the kind
+ * of "looks like it is working" state this cockpit refuses to render. An
+ * abort resolves to "unknown", which the page states plainly.
+ */
+const SIDECAR_READ_TIMEOUT_MS = 5_000;
+
+/**
+ * Frames waiting on the printer, or null when this host does not expose the
+ * plugin's frame directory. Unknown is reported as unknown — never as zero.
+ */
+async function readFrameBacklog(): Promise<number | null> {
+  try {
+    const res = await fetch("/server/files/list?root=timelapse_frames", {
+      signal: AbortSignal.timeout(SIDECAR_READ_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const list = (data.result ?? []) as Array<{ path?: string }>;
+    if (!Array.isArray(list)) return null;
+    return list.filter((file) => FRAME_FILE.test(file?.path ?? "")).length;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Jobs waiting in Moonraker's queue, or null when the host has no queue API.
+ * A queued job is a print that is about to start, and a render must not be
+ * running into it.
+ */
+async function readQueuedJobs(): Promise<number | null> {
+  try {
+    const res = await fetch("/server/job_queue/status", {
+      signal: AbortSignal.timeout(SIDECAR_READ_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const jobs = data.result?.queued_jobs;
+    return Array.isArray(jobs) ? jobs.length : null;
+  } catch {
+    return null;
+  }
+}
+
+const frameCount = (n: number) =>
+  n === 1 ? "1 frame" : `${n.toLocaleString()} frames`;
 
 /** The plugin's terminal render states, in the owner's words. */
 const RENDER_WORD: Record<string, string> = {
@@ -28,13 +92,49 @@ export function Timelapses() {
   const [selected, setSelected] = useState<TimelapseFile | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TimelapseFile | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [frameBacklog, setFrameBacklog] = useState<number | null>(null);
+  const [queuedJobs, setQueuedJobs] = useState<number | null>(null);
+  const [confirmingRender, setConfirmingRender] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  /** The render banner as it stood when the owner asked, or null if unasked. */
+  const [renderAsked, setRenderAsked] = useState<{
+    was: TimelapseRender | null;
+  } | null>(null);
+  const blockedId = useId();
   const { activity, recording } = useTimelapse();
   const render = activity.render;
+
+  // The printer's live state is the authority on whether a render may run:
+  // ffmpeg and Klipper share the same two cores, and the loser of that fight
+  // is the print. Flat bag of primitives so the selector gate holds.
+  const printer = usePrinterSelector((state, connected) => {
+    const safety = getSafetyState(state);
+    return {
+      connected,
+      busyReason: safety.isBusy ? (safety.busyReason ?? "Printer is busy") : null,
+    };
+  });
+
+  // The request is "pending" only until the plugin's own stream answers it —
+  // comparing identity means the NEXT event clears it, whatever it says.
+  const renderAsking = renderAsked !== null && render === renderAsked.was;
+  const gate = timelapseRenderGate({
+    connected: printer.connected,
+    busyReason: printer.busyReason,
+    queuedJobs,
+    rendering: render?.status === "running" || renderAsking,
+  });
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/server/files/list?root=timelapse");
+      const [res, frames, queued] = await Promise.all([
+        fetch("/server/files/list?root=timelapse"),
+        readFrameBacklog(),
+        readQueuedJobs(),
+      ]);
+      setFrameBacklog(frames);
+      setQueuedJobs(queued);
       if (!res.ok) throw new Error(`Could not load timelapses (${res.status}).`);
       const data = await res.json();
       const list = (data.result ?? []) as TimelapseFile[];
@@ -48,6 +148,31 @@ export function Timelapses() {
       setErr((e as Error).message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Ask the printer to render, having warned first.
+   *
+   * Re-gated at the moment of dispatch: a print can start while the warning
+   * sits open, and starting an ffmpeg pass into a live job is the exact
+   * failure this whole change exists to prevent.
+   */
+  const startRender = async () => {
+    setConfirmingRender(false);
+    setRenderError(null);
+    if (!gate.allowed) {
+      setRenderError(gate.reason);
+      return;
+    }
+    setRenderAsked({ was: render });
+    try {
+      await moonraker.renderTimelapse();
+    } catch (e) {
+      setRenderAsked(null);
+      setRenderError(
+        `The printer did not start the render — ${(e as Error).message}`,
+      );
     }
   };
 
@@ -89,6 +214,20 @@ export function Timelapses() {
   const downloadUrl = (file: TimelapseFile) =>
     `/server/files/timelapse/${encodeURIComponent(file.path)}`;
 
+  // Frames on the printer's disk are the honest backlog: the plugin clears
+  // them only after a SUCCESSFUL render, so a failed render leaves them
+  // queued for the next one. That compounding is what turned a single armed
+  // autorender into an unattended 1873-frame encode.
+  const sessionFrames = render?.status === "success" ? null : activity.frames;
+  const backlogLine =
+    frameBacklog !== null
+      ? frameBacklog > 0
+        ? `${frameCount(frameBacklog)} waiting on the printer, not yet rendered. Frames are cleared only after a render succeeds, so a failed one leaves them queued for the next.`
+        : "No frames are waiting to be rendered."
+      : sessionFrames && sessionFrames > 0
+        ? `${frameCount(sessionFrames)} captured on this link, with no video rendered from them yet.`
+        : "No frames are waiting to be rendered.";
+
   return (
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-8 lg:grid-cols-12">
       <Card
@@ -112,7 +251,7 @@ export function Timelapses() {
         {/* Live capture / render state. Rendered ONLY when something is
             actually happening — an idle machine gets no dead complication,
             the same law the mission bar follows. */}
-        {(render || recording) && (
+        {(render || recording || renderAsking) && (
           <div
             data-testid="timelapse-activity"
             role="status"
@@ -149,7 +288,7 @@ export function Timelapses() {
                   </div>
                 )}
               </>
-            ) : (
+            ) : recording ? (
               <div className="flex items-baseline justify-between gap-3">
                 {/* Lit by FRAMES ARRIVING, never by the plugin's global
                     `enabled` flag — that flag is true on printers that have
@@ -163,9 +302,64 @@ export function Timelapses() {
                     : `${activity.frames ?? 0} frames`}
                 </span>
               </div>
+            ) : (
+              /* Asked, not yet answered. The plugin's first event replaces
+                 this — it is never a claim that anything is encoding yet. */
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="instrument-label text-[11px]">
+                  Waiting for the printer to start rendering
+                </span>
+              </div>
             )}
           </div>
         )}
+        {/* THE MANUAL RENDER.
+            Regolith disarms the plugin's autorender on every print start,
+            because an unattended ffmpeg pass over a finished print's frames
+            drove this printer's load to 30 and shut Klipper down. Rendering
+            is therefore something the owner starts, on an idle printer,
+            watching it happen — and the backlog is stated plainly, because
+            frames survive a failed render and pile onto the next one. */}
+        <div className="mb-[var(--stack)] flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p
+              data-testid="timelapse-backlog"
+              className="text-[11px] leading-relaxed text-[var(--color-fg-muted)]"
+            >
+              {backlogLine}
+            </p>
+            {gate.reason && (
+              <p
+                id={blockedId}
+                data-testid="timelapse-render-blocked"
+                className="text-[11px] leading-relaxed text-[var(--color-warning)]"
+              >
+                {gate.reason}
+              </p>
+            )}
+            {renderError && (
+              <p
+                role="alert"
+                data-testid="timelapse-render-error"
+                className="text-[11px] leading-relaxed text-[var(--color-error)]"
+              >
+                {renderError}
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            data-testid="timelapse-render"
+            disabled={!gate.allowed}
+            aria-describedby={gate.reason ? blockedId : undefined}
+            onClick={() => {
+              setRenderError(null);
+              setConfirmingRender(true);
+            }}
+          >
+            <Film className="w-3 h-3" /> Render timelapse
+          </Button>
+        </div>
         <div aria-busy={loading}>
         {err && (
           <div className="text-[12px] text-[var(--color-error)] py-3 text-center">
@@ -291,6 +485,16 @@ export function Timelapses() {
           </div>
         )}
       </Card>
+
+      {/* The warning is not a formality: this is the operation that hung the
+          machine, and the owner has to know what it costs before it runs. */}
+      {confirmingRender && (
+        <ActionConfirmDialog
+          details={RENDER_CONFIRMATION}
+          onConfirm={() => void startRender()}
+          onCancel={() => setConfirmingRender(false)}
+        />
+      )}
 
       {pendingDelete && (
         <ActionConfirmDialog
