@@ -1973,3 +1973,81 @@ attempt bigger than the last.
    feature.
 3. Corollary, already learned once (see the 2026-08-07 load note) and now
    paid for: this SoC has no headroom. Two cores is the whole budget.
+
+## Deploy — a deadline on the timelapse library read · 2026-08-12, HEAD `9b4eae9`
+
+The video list was the one read on the Timelapses page with no abort
+deadline. A browser `fetch` has no default timeout, and a CPU-starved
+Moonraker is not an error path: the socket accepts and then never answers,
+so no rejection ever arrives on its own. This printer has already been
+observed in exactly that state (see the autorender incident above). The
+page sat in its loading skeleton forever — the "looks like it is working"
+lie this cockpit refuses to render.
+
+### What changed
+
+- **`/server/files/list?root=timelapse` now carries the same 5s deadline**
+  as the timelapse settings calls beside it. It is the one fetch on the
+  page with no "unknown" to fall back to — it *is* the page — so its abort
+  surfaces as a named failure rather than a fallback value.
+- **The DELETE carries it too.** A delete that never settles leaves the
+  owner watching a file that is neither gone nor reported.
+- **An honest failure replaced the eternal skeleton**: "Couldn't reach the
+  printer / The printer accepted the connection and then didn't answer
+  within 5 seconds. The timelapses on it are unknown, not gone." with a
+  **Try again** button. Unknown, never a false empty state — the page must
+  not imply the printer holds no videos when it simply did not answer.
+- **The render POST stays deliberately unbounded.** The plugin holds that
+  request open for as long as ffmpeg runs, which on this hardware is
+  minutes; a 5s abort would report "the render did not start" about a
+  render that started perfectly, and aborting the fetch would not stop the
+  encode anyway. Nothing in the UI takes its truth from that promise — the
+  banner and progress bar are cleared by `notify_timelapse_event`.
+
+Every fetch on the timelapse path was enumerated: the frames read and the
+job-queue read already had deadlines; the settings read/write already had
+theirs; `moonraker.listFiles()` is unbounded but is only used by Files.tsx
+with `root=gcodes`, off this path and out of scope.
+
+### Gates — all green, full runs
+
+`lint` 0 · `test` 0 · `build` 0 · `test:e2e` 0, **247 passed** (baseline
+246 plus the new regression: a list request that never resolves must end
+in the stated failure with a way out, not a skeleton).
+
+### Deploy
+
+`./deploy.sh` only, exit **0**, on a printer confirmed idle by two samples
+~10s apart (`standby`, both targets 0, toolhead position byte-identical).
+No print was started.
+
+- **Rollback anchor (pre-deploy)**: live `index.html` SHA-256 `08423b98…`
+- **Live now**: `index.html` SHA-256 `b42fbe4e…`, byte-for-byte the local
+  `dist/index.html`
+- **Rollback armed**: `fluidd.previous/index.html` is `08423b98…` — exactly
+  the pre-deploy build. Persistent backup also taken (28 files, 5 retained).
+  Rollback command:
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=<printer-password> ./deploy.sh --rollback`
+
+### On-device verification, 1280x800 and 800x480
+
+Dashboard healthy (READY · standby, live thermals ticking, square dials
+segmented, LINK READY, Connected). Timelapses renders; no overflow at
+either width. The Render action is present and **enabled**, which is
+correct: the gate keys on offline / busy / queued jobs / already-rendering,
+and the printer was idle with an empty queue. The disabled-with-reason
+state could not be exercised on-device without starting a print, which is
+forbidden — it stays covered by e2e.
+
+The shipped fix was proven against the **deployed bundle** by stalling only
+the timelapse list at a local proxy (client-side only; the printer was
+never touched). Both widths: no skeleton left behind, no false "No
+timelapses yet", the stated failure and the **Try again** affordance
+present. Zero console errors attributable to the app — the only errors were
+`ERR_CONNECTION_REFUSED` from `CameraStream`'s `http://<host>:8080` stream,
+an artifact of proxying through localhost, and it degrades honestly to
+"Camera unavailable. Retrying…".
+
+**Device state survived the deploy** (read-only check, before and after):
+`autorender: false` and `extraoutputparams: "-threads 1"` both intact. The
+printer was left in `standby`, idle, with both heaters at target 0.
