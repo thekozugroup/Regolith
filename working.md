@@ -2326,3 +2326,79 @@ throw on this optional path blanked the page and took the Start button with
 it. The hook and the verdict live INSIDE the boundary — a boundary around a
 prop the parent computed would catch nothing. **An optional warning must
 never be able to remove the control it is warning about.**
+
+## Final gate validation — 2026-08-12, HEAD `8df4904`
+
+An 8-hour print was running on the K1 Max for the whole of this pass.
+**Zero printer contact**: no ssh, no request to the printer's LAN/tailnet
+address, no browser automation against it, no deploy. All four gates ran
+against local code, a local `vite preview`, and a mocked e2e harness only.
+
+- **Gates, foreground, run to completion, real exit codes:**
+  - `bun run lint` — clean, exit 0.
+  - `bun run test` — 416 unit tests + 3862 `expect()` calls pass (`bun test
+    tests`), plus 19 shell assertions across `deploy.test.sh` and
+    `setup.test.sh` (no embedded secret, key-first auth, fail-closed
+    preflight, verified rollback, etc.) — exit 0.
+  - `bun run test:e2e` — **259/259 passed in 11.7m** (baseline 247 — grew,
+    did not shrink). The first attempt was killed by the harness's own
+    10-minute background-process timeout at test 118/259 (`SIGTERM`, not a
+    test failure); the rerun used a fully detached process
+    (`nohup … & disown`, stdin from `/dev/null`) so the run itself was never
+    time-boxed, and it completed clean.
+  - `bun run build` — `tsc -b && vite build` — clean, exit 0.
+- **Tree and remote:** the working tree carried uncommitted work from
+  concurrent sessions (classifier narrowing, e2e no-contact hardening, the
+  advisory containment, the dispatch-time render re-gate) when this pass
+  began. All four gates were run against that tree as staged; once stable
+  across repeated `git status` checks and the owning agents confirmed no
+  further edits, the 23 files were staged by explicit path (never
+  `git add -A`) and committed as `8df4904`. `scripts/`, `.a5c/`, `.claude/`,
+  `CLAUDE.md`, and the build/test caches were left untracked, as required.
+  `main` is pushed and even with `origin/main` as of this entry (see push
+  confirmation below).
+- **Frozen files:** `git diff` against `HEAD~1` shows zero changes to
+  `src/lib/safety.ts` or `deploy.sh`. `src/lib/printerActions.ts` was not
+  touched this pass; `src/lib/moonraker.ts` was touched only for the
+  console-epoch classifier fix and carries no change to any printer-action
+  path. The print-start regression suite (`bun run test`, the 19
+  `deploy.test.sh`/`setup.test.sh` assertions) passed after this commit.
+- **Pre-print advisory cannot block a print:** `e2e/host-health.spec.ts`
+  `Pre-print host advisory — advisory only, never a gate` — all three cases
+  passed: the advisory warns on a loaded host and the print still starts,
+  it is dismissible with a quiet host never warning, and a thrown error on
+  the advisory's own path cannot take the Start button down with it. Source
+  confirms this structurally: `PrintDialog.tsx`'s `start()` builds its
+  `PrinterAction` from `guardPrinterAction` alone — `HostLoadAdvisory`'s
+  verdict is never read by it.
+- **Shutdown classifier:** `tests/hostStarvation.test.ts` covers all three
+  real incident strings — `rescheduled timer in the past` /
+  `missed scheduling of next` family, the mid-operation
+  `Unable to obtain 'result_deal_avgs_prtouch' response` wording (the
+  2026-08-12 incident), and the stale/user-typed `// user asked: what does
+  'timer too close' mean?` line that must never be evidence — and separately
+  asserts `adc out of range`, `thermistor`, `not heating at expected rate` /
+  `verify_heater`, and a genuine fault sitting next to a stale starvation
+  line are never overturned into "not a hardware fault." All pass.
+- **Telemetry cadence:** unchanged from the existing design — `hostHealth`
+  subscribes to Moonraker's own `notify_proc_stat_update` push, already
+  arriving at ~1 Hz as the link heartbeat. No additional polling was added;
+  `e2e/host-health.spec.ts` samples that same cadence to build its warn/latch
+  windows.
+- **Layout laws and floors:** `e2e/concentricity-law.spec.ts`,
+  `button-law.spec.ts`, `swiss-grid.spec.ts`, `telemetry-rows.spec.ts`,
+  `telemetry-density.spec.ts`, `segmented-instruments.spec.ts`,
+  `console-clip.spec.ts` (reachability), and `light-control.spec.ts` are all
+  in the 259-test green run above. `swiss-grid.spec.ts` sweeps every 16px
+  from 320 to 2560 and separately asserts the floors hold exactly at 320,
+  800x480 (K1 panel), 1280, and 2560.
+- **Console hygiene:** `console-hygiene.spec.ts` and `console-clip.spec.ts`
+  are in the green run; zero console errors during the e2e pass (harness
+  fails a spec on any unexpected console error).
+- **Secrets:** `grep` across the staged diff and the new untracked files
+  (`preview-origin.ts`, `HostLoadAdvisory.tsx`, `hostFaultContext.test.ts`)
+  for password/IP/tailnet/API-key patterns — zero matches. No printer
+  password or LAN/tailnet address in any tracked file.
+
+Deployment remains deliberately deferred until the owner's print finishes.
+Nothing in this pass touched the printer.
