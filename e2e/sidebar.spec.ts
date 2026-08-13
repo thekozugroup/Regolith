@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { isPreviewUrl } from "./support/preview-origin";
+import { sealPrinterNamespace } from "./support/printer-seal";
 
 /**
  * Collapsible sidebar (owner request): the desk sidebar collapses to an ICON
@@ -61,6 +62,10 @@ async function installLocalMock(page: Page): Promise<{ escaped: string[]; writes
       return;
     }
     if (isPreviewUrl(url)) {
+      // Same origin, but the server behind it proxies the printer
+      // namespaces — seal them here rather than handing them down.
+      // Refusals land in `audit.escaped`, which the tests assert empty.
+      if (await sealPrinterNamespace(route, url, audit.escaped)) return;
       await route.continue();
       return;
     }

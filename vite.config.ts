@@ -2,7 +2,14 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { writeFileSync } from "node:fs";
 import { isValidDevelopmentPrinterHost } from "./src/lib/printerHost";
+import {
+  EGRESS_LOG_PATH,
+  isPrinterNamespace,
+  PRINTER_NAMESPACES,
+  recordEgress,
+} from "./e2e/support/printer-egress";
 
 /** The route the app opens on. Everyone pays its load; nobody chose it. */
 const LANDING_ROUTE_MODULE = "src/pages/Dashboard.tsx";
@@ -90,6 +97,67 @@ function preloadLandingRoute(): Plugin {
   };
 }
 
+/**
+ * GUARD 2, server half — count everything that reaches the preview server on
+ * a namespace the proxy would forward.
+ *
+ * The sink at 127.0.0.1:9 already makes a leak fail rather than succeed, but
+ * failing is not the same as being CAUGHT: an `ECONNREFUSED` line in the
+ * preview log only becomes a defect if a human happens to read it. This
+ * middleware is installed AHEAD of the proxy (adding it in the hook body
+ * rather than returning a post hook), records the request, and then hands it
+ * on untouched — so the log still says `ECONNREFUSED` and the run now also
+ * has a machine-readable tally that global teardown asserts on.
+ *
+ * Counting the request here, rather than grepping the proxy's error output,
+ * is deliberate: it observes the HTTP request itself. It cannot be defeated
+ * by a reworded Vite log line, and it keeps working if the sink is ever
+ * pointed somewhere that answers instead of refusing.
+ *
+ * The `armed` line proves the middleware ran. Teardown treats a ledger
+ * without it as a failure, so deleting this plugin can never read as "zero
+ * leaks".
+ */
+function previewEgressLedger(): Plugin {
+  return {
+    name: "regolith:preview-egress-ledger",
+    configurePreviewServer(server) {
+      // One ledger per server lifetime. Playwright will not start a test
+      // until this server answers on its URL, so this truncation always
+      // precedes any append from a browser-side route handler.
+      writeFileSync(EGRESS_LOG_PATH, "");
+      recordEgress({ stage: "armed" });
+
+      server.middlewares.use((request, _response, next) => {
+        const pathname = (request.url ?? "/").split("?")[0] ?? "/";
+        if (isPrinterNamespace(pathname)) {
+          recordEgress({
+            stage: "reached-preview-server",
+            method: request.method ?? "GET",
+            pathname,
+          });
+        }
+        next();
+      });
+
+      // WebSocket upgrades never touch the connect middleware stack — they
+      // are dispatched off the http server's own `upgrade` event, which is
+      // also where the proxy listens. An extra listener observes without
+      // interfering.
+      server.httpServer?.on("upgrade", (request) => {
+        const pathname = (request.url ?? "/").split("?")[0] ?? "/";
+        if (isPrinterNamespace(pathname)) {
+          recordEgress({
+            stage: "reached-preview-server",
+            method: "UPGRADE",
+            pathname,
+          });
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, process.cwd(), "");
   const printerHost = (
@@ -120,8 +188,31 @@ export default defineConfig(({ mode }) => {
   const sinkHttp = "http://127.0.0.1:9";
   const sinkWs = "ws://127.0.0.1:9";
 
+  /**
+   * The HTTP half of a proxy table, built from the one list of printer
+   * namespaces that `e2e/support/printer-egress.ts` also hands to the
+   * browser-side catch-all and to the leak ledger.
+   *
+   * Derived rather than retyped ON PURPOSE. The e2e seal is only as wide as
+   * the set of paths it refuses; if this table ever grew a prefix the
+   * refusal list did not have, that prefix would be forwarded by the server
+   * and waved through by the browser, which is precisely the shape of the
+   * bug this whole guard exists to prevent. One list, three consumers.
+   */
+  const proxyNamespaces = (target: string) =>
+    Object.fromEntries(
+      PRINTER_NAMESPACES.filter((namespace) => namespace !== "/websocket").map(
+        (namespace) => [namespace, target],
+      ),
+    );
+
   return {
-    plugins: [react(), tailwindcss(), preloadLandingRoute()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      preloadLandingRoute(),
+      previewEgressLedger(),
+    ],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
@@ -129,12 +220,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        "/printer": httpTarget,
-        "/server": httpTarget,
-        "/access": httpTarget,
-        "/machine": httpTarget,
-        "/api": httpTarget,
-        "/webcam": httpTarget,
+        ...proxyNamespaces(httpTarget),
         "/websocket": {
           target: wsTarget,
           ws: true,
@@ -179,12 +265,7 @@ export default defineConfig(({ mode }) => {
      */
     preview: {
       proxy: {
-        "/printer": sinkHttp,
-        "/server": sinkHttp,
-        "/access": sinkHttp,
-        "/machine": sinkHttp,
-        "/api": sinkHttp,
-        "/webcam": sinkHttp,
+        ...proxyNamespaces(sinkHttp),
         "/websocket": { target: sinkWs, ws: true },
       },
     },

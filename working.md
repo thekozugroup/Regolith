@@ -2596,3 +2596,135 @@ observing it fire three times at one-minute intervals, and removing it.
 **The rule: a health check that reads a quiet channel proves nothing, and
 "no news is good news" and "no news because it is dead" are the same
 bytes.** Assert on something the healthy path is obliged to produce.
+
+## Two standing guards for the e2e leak · 2026-08-13, from HEAD `df1088a`
+
+The leak itself was already fixed: `vite preview` used to inherit
+`server.proxy`, so the e2e gate's own web server held live routes to the
+printer, and `d9cf913` re-aimed the preview proxy at a discard sink at
+`127.0.0.1:9`. What was still missing is the part that makes the *next* leak
+someone else's problem instead of a rediscovery. Two things were true at
+`df1088a`:
+
+1. `assertSealed()` did not actually cover the printer namespaces. The
+   harness catch-all ended in `route.continue()` for anything same-origin,
+   and `/server/history/list` **is** same-origin — a relative URL resolves to
+   the preview origin by construction. The seal asserted "nothing left the
+   browser" while the escape was happening one layer below it.
+2. **Nothing failed the suite when a leak happened.** The sink made leaks
+   fail loudly *as HTTP*, but the only thing turning that into a defect was
+   a human reading `ECONNREFUSED 127.0.0.1:9` in a preview log. The last
+   recorded run said "**259/259 green**" and "**228 requests absorbed by the
+   sink**" in the same breath, and both were true.
+
+### Guard 1 — the catch-all refuses printer namespaces
+
+`e2e/support/printer-seal.ts` is what every browser-side catch-all now ends
+with, in two steps: `serveIdlePrinterRead` answers the reads whose honest
+fixture is "an idle machine with no history", and `refusePrinterNamespace`
+aborts anything else in a namespace the preview proxy would forward,
+recording the offending method, path and spec title.
+
+The namespace list is **not** restated anywhere. `PRINTER_NAMESPACES` in
+`e2e/support/printer-egress.ts` is the single source, matched with
+`startsWith` because that is exactly how `http-proxy`'s table matches — so
+the predicate answers "would the preview server forward this?" rather than
+approximating it. Both Vite proxy tables (dev at the printer, preview at the
+sink) are now **built from that same list**, and so are the browser-side
+seals. A prefix cannot be added to the server's forwarding table without
+simultaneously being added to what the browser refuses. `regolith.spec.ts`
+had grown its own hand-typed copy of the list; it now imports the shared
+predicate instead.
+
+Five fixtures ended in a bare same-origin `continue()` and were sealed:
+`active-state-harness.ts`, `accent.spec.ts`, `instrument-cluster.spec.ts`
+(`installStrictMock`), `light-control.spec.ts`, `sidebar.spec.ts`. Refusals
+land in each fixture's existing audit array, so the `expect(escaped)` /
+`assertSealed()` assertions those specs already make became real checks
+rather than origin theatre.
+
+Ten endpoints are answered by the shared idle-machine floor: `/printer/info`,
+`/printer/objects/query`, `/server/info`, `/server/files/list`,
+`/server/history/list`, `/server/history/totals`, `/server/job_queue/status`,
+`/machine/system_info`, `/machine/proc_stats`, `/machine/timelapse/settings`.
+Two payloads that were previously duplicated per-harness — the timelapse
+settings and `proc_stats` — now live in one place, which matters most for
+`proc_stats`: its whole point is the *absence* of `system_load_avg`, and a
+second copy is exactly where that would quietly grow back.
+
+**`/machine/proc_stats` was found by the guard, not by inspection.** It was
+not in the 228, because Settings fetches it only after `/machine/system_info`
+answers — and system_info was leaking to a 502, so the second read was never
+made. Sealing the first request uncovered a fixture gap that a failure had
+been hiding. That is the argument for refusing rather than forwarding, in one
+endpoint.
+
+### Guard 2 — the leak count fails the run
+
+A Vite plugin (`regolith:preview-egress-ledger`) installs middleware **ahead
+of** the proxy on the preview server, records every request on a proxied
+namespace, and hands it on untouched — the log still says `ECONNREFUSED`,
+and the run now also has a machine-readable tally. WebSocket upgrades never
+touch the connect stack, so the http server's own `upgrade` event is observed
+too. `e2e/support/assert-no-egress.ts` runs as Playwright's `globalTeardown`
+and throws, which exits the run non-zero (verified against a synthetic
+project before relying on it).
+
+Counting the HTTP request rather than grepping the proxy's error output is
+deliberate: it cannot be defeated by a reworded Vite log line, and it keeps
+working if the sink is ever pointed somewhere that answers instead of
+refusing.
+
+**Allowances, both 0**, in `assert-no-egress.ts`:
+
+- `PREVIEW_EGRESS_ALLOWANCE = 0` — requests that reached the preview server.
+  Nothing legitimately needs the server to forward a printer path; every read
+  is answerable in the browser. A non-zero number means some spec is relying
+  on the sink to swallow its traffic, which is safe only for as long as the
+  proxy happens to point somewhere harmless.
+- `HARNESS_REFUSAL_ALLOWANCE = 0` — requests refused at the browser. Not
+  dangerous, but an unmocked printer read means a spec is exercising the
+  app's error path by accident instead of the state it meant to pin.
+
+There is no residual to justify: **228 → 0**. The failure message names each
+endpoint, its count, and the specs it came from.
+
+An absent guard must not read as a clean run, so the ledger is evidence about
+*this* run or it is nothing: the plugin writes an `armed` record at boot, and
+teardown fails if that record is missing (plugin removed) **or** older than
+the current process (a stale file from an earlier `vite preview`). All four
+branches — stale, unarmed, leaky, clean — were exercised directly before
+being trusted.
+
+### Gates — foreground, run to completion
+
+`lint 0` · `test 416 pass / 0 fail` + 19 shell assertions · **`test:e2e`
+259/259 in 11.5m** (baseline 259, did not shrink) · `build 0`. One suite at a
+time on `REGOLITH_E2E_PORT=4273`, port confirmed free first. Ledger after the
+green run: **one line, `armed`** — zero leaks, zero refusals. `ECONNREFUSED`,
+`EHOSTUNREACH` and the printer's address appear **zero** times in the run log
+(228, 0 and 0 respectively before this pass).
+
+The intermediate run is the one worth recording: **259 passed, exit 1.** That
+is Guard 2 doing precisely its job — the tests were green and the run was not,
+because 228 requests had reached a server with a proxy table.
+
+`src/lib/safety.ts` and `deploy.sh` are byte-identical to `df1088a`. **Zero
+printer contact**: no ssh, no request to the printer's LAN/tailnet address, no
+browser automation against it, no deploy.
+
+### The principle
+
+**A seal must sit at the outermost layer that can egress, not at the layer
+that is convenient to assert.** The browser is convenient — `page.route` is
+where the fixture already lives — and it is one layer too high. Everything
+that reaches the preview origin is forwarded by the server itself, entirely
+outside Playwright's view, so the suite could report zero escaped requests
+while the server under it talked to a live machine. "Same origin as the app"
+must stop implying "safe to serve".
+
+**And a green suite must be evidence, not a vibe.** A failure that only
+appears in a log nobody is obliged to read is not caught, it is merely
+recorded. If the run does not fail, the check does not exist — so the count
+is asserted, the allowance is a named constant with a reason, and the guard
+must prove it was armed by this run before its zero counts for anything.

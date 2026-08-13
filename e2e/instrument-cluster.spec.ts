@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { isPreviewUrl } from "./support/preview-origin";
+import { sealPrinterNamespace } from "./support/printer-seal";
 import {
   assertNoBrokenReadouts,
   installActiveMock,
@@ -62,6 +63,12 @@ async function installStrictMock(page: Page): Promise<StrictMock> {
       return;
     }
     if (local) {
+      // Local is not the same as harmless: a relative printer path is
+      // same-origin by construction, and the preview server behind this
+      // origin proxies those namespaces. Answer the idle-machine floor and
+      // refuse the rest — a refusal lands in `audit.escaped`, which every
+      // test in this file already asserts empty.
+      if (await sealPrinterNamespace(route, url, audit.escaped)) return;
       await route.continue();
       return;
     }

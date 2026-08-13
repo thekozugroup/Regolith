@@ -10,6 +10,10 @@ import {
 // disagree. Override with REGOLITH_E2E_PORT when runs overlap.
 export default defineConfig({
   testDir: "./e2e",
+  // Guard 2. Runs after the last test and fails the run when anything
+  // reached the preview server on a printer namespace, or when the harness
+  // had to refuse an unmocked one. See e2e/support/assert-no-egress.ts.
+  globalTeardown: "./e2e/support/assert-no-egress.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,

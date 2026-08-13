@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { expect, test, type Page } from "@playwright/test";
 
 import { PREVIEW_ORIGIN } from "./support/preview-origin";
+import { isPrinterNamespace } from "./support/printer-egress";
 
 const CAMERA_ORIGIN = "http://127.0.0.1:8080";
 const PNG = Buffer.from(
@@ -141,16 +142,12 @@ async function isolateFromPrinter(
       return;
     }
 
-    const isPrinterApi = [
-      "/printer",
-      "/server",
-      "/machine",
-      "/access",
-      "/api",
-      "/webcam",
-    ].some((prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
-
-    if (url.origin === PREVIEW_ORIGIN && isPrinterApi) {
+    // The namespace list is not restated here on purpose: it comes from the
+    // same module the Vite proxy tables are built from, so this fixture
+    // cannot end up narrower than the set of paths the preview server would
+    // forward. A private copy that drifts by one prefix is exactly how a
+    // same-origin read reaches a printer.
+    if (url.origin === PREVIEW_ORIGIN && isPrinterNamespace(url.pathname)) {
       if (!(["GET", "HEAD"] as string[]).includes(request.method())) {
         writes.push(`${request.method()} ${url.pathname}`);
       }

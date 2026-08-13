@@ -6,6 +6,7 @@ import {
 } from "@playwright/test";
 import { useExperience, type MockPrinterState } from "./support/active-state-harness";
 import { isPreviewUrl } from "./support/preview-origin";
+import { sealPrinterNamespace } from "./support/printer-seal";
 
 /**
  * Chamber light control.
@@ -163,6 +164,11 @@ async function installLightMock(
       await route.abort("blockedbyclient");
       return;
     }
+    // Same origin, but the preview server proxies the printer namespaces —
+    // serve the idle-machine floor and refuse anything else rather than
+    // handing it to a server with a proxy table. Refusals land in
+    // `escaped`, which `assertSealed()` below asserts empty.
+    if (await sealPrinterNamespace(route, url, escaped)) return;
     await route.continue();
   });
 

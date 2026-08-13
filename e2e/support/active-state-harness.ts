@@ -27,6 +27,12 @@ import {
 } from "@playwright/test";
 
 import { PREVIEW_ORIGIN } from "./preview-origin";
+import {
+  currentSpec,
+  IDLE_PROC_STATS,
+  IDLE_TIMELAPSE_SETTINGS,
+  refusePrinterNamespace,
+} from "./printer-seal";
 
 const CAMERA_PORT = "8080";
 
@@ -40,16 +46,12 @@ const MOCK_CAMERA_FRAME = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" 
 
 export type MockPrinterState = Record<string, unknown>;
 
-/** moonraker-timelapse's stock config, trimmed to what the app reads. */
-const TIMELAPSE_SETTINGS: Record<string, unknown> = {
-  enabled: false,
-  mode: "hyperlapse",
-  hyperlapse_cycle: 30,
-  autorender: true,
-  parkhead: false,
-  output_framerate: 30,
-  blockedsettings: ["snapshoturl"],
-};
+/**
+ * moonraker-timelapse's stock config. Shared with the idle-machine floor in
+ * `printer-seal.ts` so a fixture cannot answer this endpoint two ways
+ * depending on which harness a spec happened to install.
+ */
+const TIMELAPSE_SETTINGS = IDLE_TIMELAPSE_SETTINGS;
 
 /** Klipper objects the K1 Max reports — KAMP is an output pin, not a macro. */
 const KLIPPER_OBJECTS = [
@@ -151,6 +153,7 @@ export async function installActiveMock(
 ): Promise<ActiveMock> {
   const writes: string[] = [];
   const escaped: string[] = [];
+  const unmocked: string[] = [];
   const subscriptions: string[] = [];
   const rpcs: string[] = [];
   const timelapseWrites: Array<Record<string, unknown>> = [];
@@ -477,27 +480,15 @@ export async function installActiveMock(
       return;
     }
 
-    // Settings' expert system panel. The payload mirrors what Moonraker
-    // ACTUALLY returns — note the absence of `system_load_avg`, which
-    // Moonraker does not expose and which this app used to render as
-    // "0.00 · 0.00 · 0.00" from a `?? [0, 0, 0]` fallback. A fixture that
-    // invents a field the real API lacks hides exactly that class of bug.
+    // Settings' expert system panel. The payload lives in `printer-seal.ts`
+    // (see IDLE_PROC_STATS) so every fixture in the suite answers this
+    // endpoint identically — including the absence of `system_load_avg`,
+    // which is load-bearing.
     if (url.pathname === "/machine/proc_stats") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          result: {
-            moonraker_stats: [],
-            throttled_state: { bits: 0, flags: [] },
-            cpu_temp: 45.2,
-            network: {},
-            system_cpu_usage: { cpu: 4.2, cpu0: 4.0, cpu1: 4.4 },
-            system_uptime: 3_600,
-            system_memory: { total: 253_952, available: 133_120, used: 120_832 },
-            websocket_connections: 1,
-          },
-        }),
+        body: JSON.stringify({ result: IDLE_PROC_STATS }),
       });
       return;
     }
@@ -544,6 +535,31 @@ export async function installActiveMock(
       });
       return;
     }
+
+    /*
+     * GUARD 1 — "same origin as the app" is not "safe to serve".
+     *
+     * Everything above this line is a mock. Everything below it used to be
+     * `route.continue()`, and that single call was the leak: a relative URL
+     * like `/server/history/list` resolves to the preview origin, passed the
+     * origin check two branches up, and was handed to a server whose proxy
+     * table pointed at a live printer. `assertSealed()` reported a clean run
+     * throughout, because from the browser's point of view nothing had
+     * escaped — the escape happened one layer down.
+     *
+     * So the catch-all now refuses the namespaces the preview proxy would
+     * forward, using the same list the proxy is built from. The request is
+     * aborted (nothing leaves the browser), recorded here so `assertSealed()`
+     * names it, and appended to the run-wide ledger so it fails the run even
+     * in a spec that never calls `assertSealed()`.
+     *
+     * The fix for a failure here is a mock, never a wider allowance: put it
+     * in this harness when a generic idle-machine answer will do, or in the
+     * spec when it needs specific data. No idle-machine floor is applied
+     * first — every read this harness knows about is answered above, so a
+     * NEW one arriving here is a fixture gap that should be loud.
+     */
+    if (await refusePrinterNamespace(route, url, unmocked)) return;
 
     await route.continue();
   });
@@ -620,6 +636,13 @@ export async function installActiveMock(
     timelapseRenders: () => timelapseRenderCount,
     rpcCalls: () => rpcs,
     assertSealed: () => {
+      expect(
+        unmocked,
+        `unmocked printer-API request in "${currentSpec()}" — the harness ` +
+          "catch-all refused it rather than letting the preview server " +
+          "forward it. Add a mock (harness for a generic idle-machine " +
+          "answer, spec for specific data)",
+      ).toEqual([]);
       expect(escaped, "browser traffic escaped the local fixture").toEqual([]);
       expect(writes, "test attempted a printer write or non-subscribe RPC").toEqual([]);
       expect(subscriptions.length, "printer state was never subscribed").toBeGreaterThan(0);
