@@ -75,13 +75,14 @@ describe("latch reducer", () => {
 });
 
 describe("lamp table — K1 Max v1 set", () => {
-  test("exactly the eight table lamps, severity-ordered, no FILAMENT", () => {
+  test("exactly the nine table lamps, severity-ordered, no FILAMENT", () => {
     expect(lamps().map((lamp) => lamp.id)).toEqual([
       "thermal-runaway",
       "heater-fault",
       "firmware",
       "link-lost",
       "fan-fault",
+      "host-load",
       "mcu-hot",
       "mesh-active",
       "homed",
@@ -99,6 +100,7 @@ describe("lamp table — K1 Max v1 set", () => {
     expect(byId(set, "firmware").latching).toBe(true); // latched after recovery
     expect(byId(set, "link-lost").latching).toBe(false);
     expect(byId(set, "fan-fault").latching).toBe(true);
+    expect(byId(set, "host-load").latching).toBe(true); // the spike is over by the time the error is read
     expect(byId(set, "mcu-hot").latching).toBe(false);
     expect(byId(set, "mesh-active").latching).toBe(false);
     expect(byId(set, "homed").latching).toBe(false);

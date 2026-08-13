@@ -115,6 +115,20 @@ export interface ActiveMock {
    */
   pushTimelapse: (event: Record<string, unknown>) => void;
   /**
+   * Push a `notify_proc_stat_update` — Moonraker's ~1 Hz host statistics
+   * heartbeat, the feed the host-health guard reads. The payload mirrors
+   * the real component's shape; omit `cpu` or the memory fields to model
+   * an older Moonraker that does not report them (honest-unknown paths).
+   */
+  pushProcStat: (stats: {
+    cpu?: number;
+    memAvailKb?: number;
+    memTotalKb?: number;
+  }) => void;
+  /** Push a `notify_gcode_response` line — how klipper errors like the
+   *  prtouch probe wording actually reach the client. */
+  pushGcode: (text: string) => void;
+  /**
    * Server-side close of every open socket — simulates a dropped link. The
    * app's own backoff reconnects to the still-installed route.
    */
@@ -423,6 +437,47 @@ export async function installActiveMock(
         jsonrpc: "2.0",
         method: "notify_timelapse_event",
         params: [event],
+      });
+      for (const socket of sockets) socket.send(message);
+    },
+    pushProcStat: (stats) => {
+      const payload: Record<string, unknown> = {
+        moonraker_stats: {
+          time: Date.now() / 1000,
+          cpu_usage: 2.5,
+          memory: 24_732,
+          mem_units: "kB",
+        },
+        cpu_temp: null,
+        network: {},
+        websocket_connections: 1,
+      };
+      if (stats.cpu !== undefined) {
+        payload.system_cpu_usage = {
+          cpu: stats.cpu,
+          cpu0: stats.cpu,
+          cpu1: stats.cpu,
+        };
+      }
+      if (stats.memAvailKb !== undefined && stats.memTotalKb !== undefined) {
+        payload.system_memory = {
+          total: stats.memTotalKb,
+          available: stats.memAvailKb,
+          used: stats.memTotalKb - stats.memAvailKb,
+        };
+      }
+      const message = JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notify_proc_stat_update",
+        params: [payload],
+      });
+      for (const socket of sockets) socket.send(message);
+    },
+    pushGcode: (text) => {
+      const message = JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notify_gcode_response",
+        params: [text],
       });
       for (const socket of sockets) socket.send(message);
     },

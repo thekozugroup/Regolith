@@ -123,6 +123,92 @@ export function firmwareDown(webhooksState: string | undefined): boolean {
   );
 }
 
+/* ------------------------------------------------------------------------ *
+ * Host-starvation shutdown classifier (host-health guard §4).
+ *
+ * Klipper's scheduling/timeout shutdowns NAME THE WRONG SUBSYSTEM: a host
+ * that cannot run Klipper on time surfaces as a timer fault or — worse — as
+ * a probe error ("Unable to obtain 'result_deal_avgs_prtouch' response"
+ * cost the owner a debugging session on a probe that was never broken; the
+ * strain gauge triggered cleanly and the MCU link showed 9 retransmit bytes
+ * in 11 MB). This classifier recognises those wordings so the UI can say
+ * "this is usually host CPU/IO starvation, not a hardware fault".
+ *
+ * The regex set is deliberately NARROW. `lost communication with mcu` is
+ * deliberately EXCLUDED — that one really is often a cable, and claiming
+ * otherwise would trade one wrong diagnosis for another. Copy built on this
+ * verdict says "usually", never "certainly", and the raw state_message
+ * stays visible in the FIRMWARE lamp either way.
+ * ------------------------------------------------------------------------ */
+
+const HOST_STARVATION_PATTERNS: RegExp[] = [
+  /rescheduled timer in the past/i,
+  /missed scheduling of next/i,
+  /timer too close/i,
+  /unable to obtain '[^']*' response/i,
+];
+
+/** The probe-as-messenger wording gets its own first line in the explainer. */
+const PROBE_RESPONSE_RE = /unable to obtain '[^']*' response/i;
+
+export interface HostStarvationVerdict {
+  /** Klippy is down AND the message matches a starvation wording. */
+  starvation: boolean;
+  /** The match was the "unable to obtain '<x>' response" probe wording. */
+  probeMessenger: boolean;
+  /** The single LINE that matched, trimmed, for the explainer to quote —
+   *  never the whole multi-paragraph state_message. */
+  matchedText: string | null;
+}
+
+/**
+ * Classify a shutdown. Scans `state_message` AND the recent gcode response
+ * lines — the gcode arm is not optional: the prtouch wording arrives as a
+ * gcode response, not as state_message, and matching only state_message
+ * would miss the exact case this feature exists for.
+ */
+export function classifyHostStarvationShutdown(
+  webhooks: { state: string; state_message: string } | undefined,
+  recentGcodeLines: readonly string[],
+): HostStarvationVerdict {
+  const none: HostStarvationVerdict = {
+    starvation: false,
+    probeMessenger: false,
+    matchedText: null,
+  };
+  // Only a klippy that is actually down gets classified: the same wording
+  // scrolling past in the console while the printer is READY is history,
+  // not a fault to explain.
+  if (!webhooks || !firmwareDown(webhooks.state)) return none;
+  // state_message is scanned line-by-line so the explainer quotes the ONE
+  // wording that matched, not Klipper's whole multi-paragraph shutdown text.
+  const candidates = [
+    ...(webhooks.state_message ?? "").split("\n"),
+    ...recentGcodeLines.slice(-40),
+  ];
+  for (const text of candidates) {
+    if (!text) continue;
+    for (const pattern of HOST_STARVATION_PATTERNS) {
+      if (pattern.test(text)) {
+        return {
+          starvation: true,
+          probeMessenger: PROBE_RESPONSE_RE.test(text),
+          matchedText: text.trim(),
+        };
+      }
+    }
+  }
+  return none;
+}
+
+/** Boolean face of the classifier, per the design's signature. */
+export function isHostStarvationShutdown(
+  webhooks: { state: string; state_message: string } | undefined,
+  recentGcodeLines: readonly string[],
+): boolean {
+  return classifyHostStarvationShutdown(webhooks, recentGcodeLines).starvation;
+}
+
 /**
  * Honest fan-strain proxy — Moonraker exposes no tach, so this never claims
  * a literal fan fault: "fan flat out, temperature still drifting past the

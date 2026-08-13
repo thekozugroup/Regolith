@@ -23,6 +23,18 @@ import {
   type TimelapseActivity,
   type TimelapseEvent,
 } from "./timelapse";
+import {
+  appendHostSample,
+  parseProcStatUpdate,
+  reduceBufferStarvation,
+  snapshotHostFaultContext,
+  summarizeHostLoad,
+  NO_BUFFER_STARVATION,
+  type BufferStarvation,
+  type HostFaultContext,
+  type HostLoad,
+  type ProcStatSample,
+} from "./hostHealth";
 
 type SubscriptionCallback = (state: PrinterState) => void;
 type ConnectionCallback = (connected: boolean) => void;
@@ -238,6 +250,17 @@ export class Moonraker {
   private static MAX_LOG = 200;
   private timelapse: TimelapseActivity = NO_TIMELAPSE_ACTIVITY;
   private timelapseSubs = new Set<TimelapseCallback>();
+  /**
+   * Host-health state (host-health guard). The samples come from
+   * `notify_proc_stat_update`, which this client ALREADY receives ~1 Hz as
+   * the link-silence heartbeat and used to throw away — consuming it adds
+   * zero subscriptions, zero HTTP traffic, and zero load on the printer.
+   */
+  private hostSamples: ProcStatSample[] = [];
+  private hostStatsSubs = new Set<() => void>();
+  private bufferStarvation: BufferStarvation = NO_BUFFER_STARVATION;
+  /** Frozen the moment klippy enters shutdown/error — see getHostFaultContext. */
+  private hostFaultContext: HostFaultContext | null = null;
   private linkSubs = new Set<LinkStateCallback>();
   private linkState: LinkState = "down";
   /** When the current socket was created — drives the CONNECTING timeout. */
@@ -570,7 +593,16 @@ export class Moonraker {
         reduceTimelapseEvent(this.timelapse, event, Date.now()),
       );
     } else if (msg.method === "notify_proc_stat_update") {
-      // ignore — high frequency
+      // Host-health feed. This used to be discarded ("high frequency") —
+      // but it is the only live view of the host's CPU and memory, and it
+      // is ALREADY on the wire at ~1 Hz. The parser is total: field-shape
+      // drift (older Moonraker, non-RPi SoC) parses to nulls, and a payload
+      // carrying nothing useful is dropped without a sample.
+      const sample = parseProcStatUpdate(msg.params, Date.now());
+      if (sample) {
+        this.hostSamples = appendHostSample(this.hostSamples, sample);
+        this.hostStatsSubs.forEach((cb) => cb());
+      }
     }
   }
 
@@ -622,6 +654,7 @@ export class Moonraker {
   }
 
   private mergeState(diff: Partial<PrinterState>): void {
+    const prevWebhooksState = this.state.webhooks?.state;
     const next: PrinterState = { ...this.state };
     for (const [key, value] of Object.entries(diff)) {
       const k = key as keyof PrinterState;
@@ -631,7 +664,73 @@ export class Moonraker {
       } as never;
     }
     this.state = next;
+    this.trackHostHealth(prevWebhooksState, next);
     this.subs.forEach((cb) => cb(this.state));
+  }
+
+  /**
+   * Host-health bookkeeping off the state merge (host-health guard):
+   * the motion-buffer starvation reducer (a pure fold over fields that are
+   * already subscribed — toolhead, print_stats, motion_report), and the
+   * fault-context freeze. The freeze happens ON THE TRANSITION into
+   * shutdown/error and is then HELD: by the time the explainer renders, the
+   * load that caused the fault may have cleared, so live values would lie.
+   */
+  private trackHostHealth(
+    prevWebhooksState: string | undefined,
+    next: PrinterState,
+  ): void {
+    const toolhead = next.toolhead;
+    const bufferS =
+      toolhead != null &&
+      Number.isFinite(toolhead.print_time) &&
+      Number.isFinite(toolhead.estimated_print_time)
+        ? toolhead.print_time - toolhead.estimated_print_time
+        : null;
+    this.bufferStarvation = reduceBufferStarvation(this.bufferStarvation, {
+      printing: next.print_stats?.state === "printing",
+      liveVelocity: next.motion_report?.live_velocity ?? null,
+      bufferS,
+      now: Date.now(),
+    });
+    const state = next.webhooks?.state;
+    const faulted = state === "shutdown" || state === "error";
+    const wasFaulted =
+      prevWebhooksState === "shutdown" || prevWebhooksState === "error";
+    if (faulted && !wasFaulted) {
+      this.hostFaultContext = snapshotHostFaultContext(
+        this.hostSamples,
+        this.bufferStarvation,
+        Date.now(),
+      );
+    }
+  }
+
+  // ----- Host health (host-health guard) -----
+  /** Rolling host-load summary over the given window, honest-unknown. */
+  getHostLoad(windowMs: number, now = Date.now()): HostLoad {
+    return summarizeHostLoad(this.hostSamples, now, windowMs);
+  }
+
+  /** Motion-buffer starvation verdict — lamp trigger B. */
+  getBufferStarvation(): BufferStarvation {
+    return this.bufferStarvation;
+  }
+
+  /**
+   * Host state frozen at the moment klippy last entered shutdown/error, or
+   * null if that has not happened this session. Held, not live, on purpose.
+   */
+  getHostFaultContext(): HostFaultContext | null {
+    return this.hostFaultContext;
+  }
+
+  /** Fires whenever a new proc-stat sample lands (~1 Hz while linked). */
+  onHostStats(cb: () => void): () => void {
+    this.hostStatsSubs.add(cb);
+    return () => {
+      this.hostStatsSubs.delete(cb);
+    };
   }
 
   // ----- Subscriptions -----

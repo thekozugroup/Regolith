@@ -573,6 +573,9 @@ const LAMP_ORDER = [
   "firmware",
   "link-lost",
   "fan-fault",
+  // HOST LOAD — the printer's computer. Last warning-severity lamp before
+  // the escalating MCU HOT (host-health guard §3.1).
+  "host-load",
   "mcu-hot",
   "mesh-active",
   "homed",
@@ -590,16 +593,17 @@ async function openSystems(page: Page) {
 }
 
 test.describe("Tell-tale cluster — SD1 lamp block", () => {
-  test("cold idle unhomed: eight table lamps, severity-ordered, none lit after the bulb test", async ({ page }) => {
+  test("cold idle unhomed: nine table lamps, severity-ordered, none lit after the bulb test", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await useExperience(page, "basic");
     const mock = await installActiveMock(page, { state: coldIdleUnhomed });
     await openSystems(page);
 
-    // Exactly the v1 table for a K1 Max: no FILAMENT lamp (the profile
+    // Exactly the lamp table for a K1 Max: no FILAMENT lamp (the profile
     // declares no sensor — an unlit lamp would promise monitoring that is
     // not happening), no MAINTENANCE (deferred, no honest data source).
-    await expect(page.locator(".telltale-cell")).toHaveCount(8);
+    // HOST LOAD ships dark until the proc-stat feed proves pressure.
+    await expect(page.locator(".telltale-cell")).toHaveCount(9);
     await expect(page.locator('.telltale-cell[data-lamp^="filament-"]')).toHaveCount(0);
     const order = await page
       .locator(".telltale-cell")
@@ -720,8 +724,8 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
           }),
       );
 
-      // Non-vacuity: the K1 Max table publishes eight lamps.
-      expect(cells.length, `${width}: lamps seen`).toBe(8);
+      // Non-vacuity: the K1 Max table publishes nine lamps.
+      expect(cells.length, `${width}: lamps seen`).toBe(9);
 
       for (const cell of cells) {
         const at = `${width} · ${cell.id}`;
@@ -774,8 +778,8 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
 
     // The clock is frozen inside the 700ms window: every cell renders lit in
     // its own severity color — a single simultaneous step, no stagger.
-    await expect(litLamps(page)).toHaveCount(8);
-    // The sweep must not read as eight simultaneous faults to a screen reader.
+    await expect(litLamps(page)).toHaveCount(9);
+    // The sweep must not read as nine simultaneous faults to a screen reader.
     await expect(
       page.locator('section:has(h2:text-is("Systems")) [role="alert"], section:has(h2:text-is("Systems")) [role="status"]'),
     ).toHaveCount(0);
@@ -1022,7 +1026,7 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
         };
       });
     });
-    expect(channels.length).toBe(8);
+    expect(channels.length).toBe(9);
     for (const entry of channels) {
       // The glyph must keep painting under forced colors: its stroke rides
       // currentColor, which the forced palette rewrites to CanvasText.
@@ -1054,7 +1058,7 @@ test.describe("Tell-tale cluster — SD1 lamp block", () => {
           };
         }),
       );
-    expect(marks.length).toBe(8);
+    expect(marks.length).toBe(9);
     // Non-vacuous on both sides: this scenario holds exactly one lit lamp
     // (FIRMWARE) among unlit neighbours.
     expect(marks.filter((m) => m.lit === "true").length).toBe(1);

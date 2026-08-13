@@ -5,6 +5,7 @@ import {
   Cpu,
   Fan,
   Flame,
+  Gauge,
   Grid3x3,
   Home,
   ShieldAlert,
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { usePrinter } from "@/lib/usePrinter";
+import { useHostHealth } from "@/lib/useHostHealth";
+import { hostLamp } from "@/lib/hostHealth";
 import { detectHeaterDrift, isRunawayConfirmed } from "@/lib/health";
 import { WATCHDOG_TICK_MS } from "@/lib/telemetryWatchdog";
 import {
@@ -52,6 +55,7 @@ const LAMP_ICON: Record<string, LucideIcon> = {
   firmware: Cpu,
   "link-lost": WifiOff,
   "fan-fault": Fan,
+  "host-load": Gauge,
   "mcu-hot": Thermometer,
   "mesh-active": Grid3x3,
   homed: Home,
@@ -107,6 +111,16 @@ export function TellTaleCluster() {
   const runawayConfirmed =
     driftIssue != null && isRunawayConfirmed(driftIssue.since, now);
 
+  // HOST LOAD verdict — the shared detector over the proc-stat ring the
+  // client already receives (~1 Hz heartbeat traffic, nothing added to the
+  // printer). Destructured to primitives so the latch effect below can
+  // depend on the VALUES, not a per-render object identity.
+  const { lampLoad, buffer } = useHostHealth();
+  const { condition: hostCondition, detail: hostDetail } = hostLamp(
+    lampLoad,
+    buffer,
+  );
+
   // Bulb test: once per mount, on the FIRST connect (a dead WS lighting all
   // lamps then going dark would read as mass failure). Ref-guarded against
   // reconnect re-trigger.
@@ -118,11 +132,23 @@ export function TellTaleCluster() {
     return () => window.clearTimeout(id);
   }, [connected]);
 
-  const lamps = readLamps({ state, profile, connected, runawayConfirmed });
+  const lamps = readLamps({
+    state,
+    profile,
+    connected,
+    runawayConfirmed,
+    host: { condition: hostCondition, detail: hostDetail },
+  });
 
   // Latch phases advance through the pure reducer on every input change.
   useEffect(() => {
-    const reading = readLamps({ state, profile, connected, runawayConfirmed });
+    const reading = readLamps({
+      state,
+      profile,
+      connected,
+      runawayConfirmed,
+      host: { condition: hostCondition, detail: hostDetail },
+    });
     setCells((prev) => {
       let changed = false;
       const next: Record<string, CellState> = { ...prev };
@@ -142,7 +168,7 @@ export function TellTaleCluster() {
       }
       return changed ? next : prev;
     });
-  }, [state, profile, connected, runawayConfirmed]);
+  }, [state, profile, connected, runawayConfirmed, hostCondition, hostDetail]);
 
   const acknowledge = (lamp: LampReading) => {
     setCells((prev) => {

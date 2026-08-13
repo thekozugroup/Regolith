@@ -68,6 +68,14 @@ export interface LampInputs {
    * clock), exactly as HealthAlerts tracks it — same detector, same window.
    */
   runawayConfirmed: boolean;
+  /**
+   * HOST LOAD verdict, precomputed by the caller from the shared
+   * `hostLamp()` detector in src/lib/hostHealth.ts (window/latch timing
+   * lives with the sample ring, not here — same division of labour as
+   * runawayConfirmed). Omitted/undefined = unknown host = lamp dark: an
+   * unknown host never produces a warning.
+   */
+  host?: { condition: boolean; detail?: string };
 }
 
 /**
@@ -82,6 +90,7 @@ export function readLamps({
   profile,
   connected,
   runawayConfirmed,
+  host,
 }: LampInputs): LampReading[] {
   const lamps: LampReading[] = [];
   const webhooks = state.webhooks;
@@ -157,6 +166,24 @@ export function readLamps({
     latching: true,
     condition: strained != null,
     detail: strained?.label,
+  });
+
+  // 5b · HOST LOAD — the printer's COMPUTER, not the printer. Sustained
+  // host CPU (or a collapsing motion buffer mid-print) is the condition
+  // that killed the 12 Aug jobs, and it surfaces as timer/probe errors
+  // AFTER the spike has passed — so this lamp LATCHES: a user walking up
+  // to a dead print finds HOST LOAD held with the number that tripped it,
+  // instead of chasing the probe. Warning, not error: a busy host is a
+  // risk, not a fault. The detail line is the non-colour channel that
+  // makes the lamp diagnostic (e.g. "CPU 91% · 60s"); unknown components
+  // are omitted by the detector, never printed as 0.
+  lamps.push({
+    id: "host-load",
+    label: "Host Load",
+    severity: "warning",
+    latching: true,
+    condition: host?.condition ?? false,
+    detail: host?.detail,
   });
 
   // 6 · MCU HOT — profile thresholds through the shared verdict; the lamp
