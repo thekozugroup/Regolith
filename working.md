@@ -2437,3 +2437,162 @@ else running, `REGOLITH_E2E_PORT=4291`): **259/259 in 11.6m**, lint 0,
 416 unit + 19 shell tests, build 0. 228 requests were absorbed by the
 loopback discard sink; `EHOSTUNREACH` and the printer's address appear zero
 times in the log. The printer was not contacted.
+
+## Deploy — HEAD `df1088a`, and what the printer's logs said · 2026-08-13
+
+The print the deploy was waiting on ended. It did not finish. Restoring what
+had been shed, deploying, and reading the failure were all the same visit.
+
+### The deploy was built from a worktree, not from the repo
+
+`deploy.sh` runs `bun install --frozen-lockfile && bun run lint && bun run
+test && bun run build` from its own directory, so it ships whatever is in
+the tree at the moment it runs. At deploy time the tree was **dirty with
+another agent's in-flight work** — `vite.config.ts`, `playwright.config.ts`,
+several `e2e/` specs modified, plus untracked `printer-egress.ts` /
+`assert-no-egress.ts`, with `vite.config.ts` importing one of those new
+untracked modules at config load. Deploying from that tree would have
+shipped unreviewed, ungated work under the label `df1088a`.
+
+So the deploy ran from `git worktree add <tmp> df1088a` — a detached,
+**zero-dirty-file** checkout — and the worktree was removed afterward. The
+other agent's files were never touched.
+
+**The rule this buys: a deploy script that builds from the working tree
+deploys the working tree, not the commit you named.** A clean tree is
+normally what makes those identical; when it is not clean, the commit has to
+be materialised somewhere else or the release is a guess wearing a SHA.
+
+Proof the right bytes landed, rather than an assertion that they did:
+
+- local `dist` manifest SHA-256 `15264ab1…` == live manifest SHA-256 `15264ab1…`
+- local `dist/index.html` `23eedd88…` == live `index.html` `23eedd88…`
+- 24 files local, 24 files live
+
+### Deploy
+
+`./deploy.sh` only, exit **0**. Printer confirmed idle by two samples ~10s
+apart before the run — `cancelled` / `Idle`, both heater targets 0, toolhead
+position byte-identical across both samples. Preflight exit 0 first. No
+print was started; the printer was idle throughout.
+
+- **Rollback anchor (pre-deploy)**: live `index.html` SHA-256 `b42fbe4e…`
+  (the `9b4eae9` build recorded above — the chain is intact)
+- **Live now**: `index.html` SHA-256 `23eedd88…`
+- **Rollback armed**: `fluidd.previous/index.html` is `b42fbe4e…`, exactly
+  the pre-deploy build. Persistent backup written
+  (`fluidd-before-…Z.tgz`, 28 files, retained 5, pruned 1). Rollback:
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
+
+### On-device verification — 1280x800 and 800x480
+
+macOS blocks Chromium from LAN addresses, so the checks ran through a
+loopback SSH forward (printer `:80` → `127.0.0.1:8899`, camera `:8080`
+straight through) with Playwright, one page load at a time.
+
+Both viewports: **2 dials, 24 segments each, all `stroke-linecap: butt`** —
+square caps, the flat grammar intact (234.2x201.41 at 1280, 176.5x151.78 at
+800x480; the 200x172 viewBox is the designed aspect, not a regression).
+**Telemetry rows: 0px label spread and 0px value spread on every grid row**
+in both layouts. **LINK connected** (`link-lost` unlit, "LINK READY").
+**Live tick: ~20 websocket frames per 4s**, including
+`notify_proc_stat_update` — the host-health feed itself is arriving.
+**Zero console errors, zero failed requests.**
+
+**HOST LOAD lamp: present in the cluster and UNLIT** on both viewports, the
+only lit lamp being `mesh-active`. That is the correct reading and now a
+measured one rather than a hoped-for one — see the baseline below.
+
+A first pass did log three console errors, all
+`GET http://127.0.0.1:8080/?action=stream` refused. That was the harness,
+not the build: the camera port had been forwarded to 8901 instead of 8080.
+Forwarded correctly, the camera renders live and the console is clean.
+Worth writing down because it is the exact shape of a false defect — an
+error that is real, reproducible, and caused entirely by the rig.
+
+Device settings survived the deploy, read back read-only from
+`/machine/timelapse/settings`: `autorender = False`,
+`extraoutputparams = '-threads 1'`.
+
+### What actually happened to the owner's print
+
+Three consecutive failures on the same part, and they were **three different
+failures**. Worth separating, because "the printer has been failing" would
+have been true and useless.
+
+1. **`8h2m` file, cancelled at ~11.4%** (file position 3,767,279 of
+   33,060,963). No fault in the log — `wait temp start`, then
+   `Exiting SD card print`. A deliberate stop.
+2. **`8h9m` file, dead 83 seconds after starting** — and this one was ours
+   in kind, not in cause. During `CLEAR_NOZZLE`, eight
+   `mcu 'nozzle_mcu': #output: Timer too close` lines in three seconds, then
+   `MCU 'mcu' shutdown: Missed scheduling of next digital out event` →
+   `Transition to shutdown state`. That is the host-starvation signature,
+   not a hardware fault. An earlier one the same day
+   (`MCU 'rpi' shutdown: Rescheduled timer in the past`) has the same shape.
+3. **`8h9m` file again, 4h21m of clean printing, then
+   `Filament Sensor filament_sensor: runout event detected`** at file
+   position 14,486,843 (~43.5%), Z≈49.8mm. The print paused as designed and
+   sat paused for five hours overnight. It was cancelled the next morning,
+   by which time the extruder had gone cold — which is why the cancel path
+   logged `Extruder not hot enough` on its retract. A consumable ran out.
+   Nothing was broken.
+
+**The load-shedding worked, and the logs say so.** `tailscaled` was shed at
+~18:39. Both starvation-class shutdowns are *before* that line. After it:
+**zero** `Timer too close`, `Missed scheduling`, or `Rescheduled timer`
+events across a 4h21m print and everything since. The failure that came
+after the shed was a filament runout — mechanical, unrelated to host load.
+
+A timezone trap nearly cost an hour of this analysis: Moonraker's history
+rendered an hour ahead of the printer's own clock, making a cancel look like
+it happened 41 minutes after `klippy.log` fell silent. `z_pos`
+`149.9999038924438` appears identically in both records; matching on the
+value rather than the timestamp is what collapsed the two into one event.
+
+### Host-health baseline — first real numbers
+
+`GET /machine/proc_stats`, 60 samples at 10s over 11.0 minutes, printer
+idle, sequential requests only.
+
+| | min | median | p90 | max |
+|---|---|---|---|---|
+| `system_cpu_usage.cpu` (%) | 12.43 | **17.99** | 32.98 | 36.98 |
+| `system_memory.available` (kB) | 116612 | 117014 | 117108 | 117132 |
+
+Zero of 60 samples reached 40%, let alone 60%. Memory is flat — a ~520 kB
+spread across eleven minutes, ~55% of 214048 kB free. CPU is the axis worth
+watching; memory, at idle, is not.
+
+**The provisional 60%-median-over-30s warn line stands, unchanged.** It sits
+at 3.3x the idle median and 1.8x the idle p90, so it provably will not light
+the HOST LOAD lamp on a healthy idle host — which the on-device check above
+independently confirms. The 30s median window is load-bearing: idle alone
+throws isolated 33–37% samples, and an instantaneous rule would be noisy
+with nothing happening.
+
+It is arguably *loose* — only ~23 points separate an idle peak from the warn
+line on a 2-core MIPS box. **It was deliberately not tightened.** The two
+starvation shutdowns above happened with no `system_cpu_usage` series
+captured, so there is no measured value for "CPU% at the moment Klipper
+actually lost timing." Tightening now would trade a proven non-false-positive
+for a guess, in the direction that manufactures false warnings — and a guard
+that cries wolf on a healthy machine is worse than one that is slightly
+generous. The missing half is a loaded-side capture, to be taken during a
+print that is already succeeding, never by starting one to harvest data.
+
+### A verification step that could never have passed
+
+The restore checklist called for the tailscale watchdog log to show a fresh
+timestamp within ~90s of the cron symlink returning. It cannot:
+`tailscale-watchdog.sh` checks `pidof tailscaled` and `tailscale status`,
+and on success does nothing but `exit 0` — `# All good. Stay quiet.` It
+writes only when it acts. A healthy watchdog and a dead one produce byte-
+identical logs.
+
+Cron was verified by installing a temporary probe in `/opt/etc/cron.1min/`,
+observing it fire three times at one-minute intervals, and removing it.
+
+**The rule: a health check that reads a quiet channel proves nothing, and
+"no news is good news" and "no news because it is dead" are the same
+bytes.** Assert on something the healthy path is obliged to produce.
