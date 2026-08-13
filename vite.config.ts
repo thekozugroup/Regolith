@@ -104,6 +104,22 @@ export default defineConfig(({ mode }) => {
   const httpTarget = `http://${printerHost}`;
   const wsTarget = `ws://${printerHost}`;
 
+  /**
+   * Where the PREVIEW server's proxy points: a loopback sink, never a
+   * printer. Port 9 is the discard port; nothing listens there.
+   *
+   * A LEAK MUST ANNOUNCE ITSELF. Keeping the routes and aiming them at a
+   * sink — rather than deleting the table — means a leak still FAILS,
+   * instantly and locally, with ECONNREFUSED in the preview log. An empty
+   * `proxy: {}` would be just as safe for the printer but strictly worse as
+   * a diagnostic: the leaked request would fall through to the SPA's
+   * index.html, return 200, and look like success, hiding the spec that
+   * leaked. Given a choice between two safe designs, take the one that
+   * cannot fail silently.
+   */
+  const sinkHttp = "http://127.0.0.1:9";
+  const sinkWs = "ws://127.0.0.1:9";
+
   return {
     plugins: [react(), tailwindcss(), preloadLandingRoute()],
     resolve: {
@@ -130,6 +146,46 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
+      },
+    },
+    /*
+     * THE E2E ARTIFACT MUST NOT BE ABLE TO REACH A PRINTER.
+     *
+     * This block is the ONLY thing that makes the sink above take effect —
+     * without an explicit `preview.proxy`, Vite falls through to
+     * `server.proxy` and the preview server holds live routes to the real
+     * machine. `bun run preview` is the e2e gate's own webServer, so that
+     * fallthrough put a printer-wired server underneath every test run.
+     *
+     * Observed on 2026-08-12 while the owner had an 8-hour print running:
+     * `[vite] ws proxy error: connect EHOSTUNREACH <printer>:80`, logged by
+     * a suite that is supposed to be hermetic. Those attempts failed at the
+     * network layer, so nothing reached Klipper — but the only thing that
+     * stopped them was the printer happening to be unreachable at that
+     * moment, which is not a safety mechanism.
+     *
+     * THE DURABLE LESSON (see working.md): the suite seals at the BROWSER —
+     * `page.route` + `routeWebSocket`, asserted by `assertSealed()`. That is
+     * the right layer for "the app makes no unmocked calls", and it is one
+     * layer too HIGH to be a containment guarantee. Anything that reaches
+     * the preview ORIGIN is forwarded by the server itself, entirely outside
+     * Playwright's view — so the suite could report zero escaped requests
+     * while the server under it talked to a live printer. A seal has to sit
+     * at the outermost layer that can egress, not at the layer that is
+     * convenient to assert.
+     *
+     * Dev keeps the real proxy above: `vite dev` is how a human drives an
+     * actual machine on purpose. Nothing in the e2e suite needs it.
+     */
+    preview: {
+      proxy: {
+        "/printer": sinkHttp,
+        "/server": sinkHttp,
+        "/access": sinkHttp,
+        "/machine": sinkHttp,
+        "/api": sinkHttp,
+        "/webcam": sinkHttp,
+        "/websocket": { target: sinkWs, ws: true },
       },
     },
     build: {
