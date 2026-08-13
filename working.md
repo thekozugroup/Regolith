@@ -2402,3 +2402,38 @@ against local code, a local `vite preview`, and a mocked e2e harness only.
 
 Deployment remains deliberately deferred until the owner's print finishes.
 Nothing in this pass touched the printer.
+
+### The one failure that was NOT contention
+
+Two full suites ran concurrently on the same tree and disagreed: one logged
+`259 passed`, the other `257 passed / 2 failed` — both in 11.7m. It is
+tempting to file both failures under port contention and move on. One of
+them was not.
+
+`instrument-cluster.spec.ts:329` was contention: a lazy `/settings` route
+missed a 5s readiness timeout on a machine running two Chromium suites.
+
+`timelapse.spec.ts:610` was a real ordering bug, and it was introduced by
+the dispatch re-gate in this pass. `startRender` now awaits
+`readQueuedJobs()` before it POSTs, so the render request leaves a full
+network round-trip AFTER the dialog closes. The test asserted:
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.timelapseRenders()).toBe(1);   // does NOT retry
+
+`expect()` on a plain counter samples once, immediately. Under load it lost
+the race; unloaded it won. The fix is to wait on the app's own state — the
+"Waiting for the printer" activity line — and read the counter after it.
+
+**The lesson: a non-retrying assertion placed after an await is a race, not
+a check, and load only decides how often you see it.** Web-first assertions
+(`toBeVisible`, `toContainText`) retry and are safe; `expect(counter)` and
+`expect(array)` are single-shot and must be sequenced behind a UI fact that
+proves the work finished. Concurrency did not create this bug — it revealed
+it, and a green run on a quiet machine would have hidden it again.
+
+Verified after the fix by ONE suite on an otherwise idle machine (nothing
+else running, `REGOLITH_E2E_PORT=4291`): **259/259 in 11.6m**, lint 0,
+416 unit + 19 shell tests, build 0. 228 requests were absorbed by the
+loopback discard sink; `EHOSTUNREACH` and the printer's address appear zero
+times in the log. The printer was not contacted.

@@ -640,11 +640,16 @@ test.describe("Timelapses page — the owner-triggered render", () => {
     await render.click();
     await page.getByRole("dialog").getByRole("button", { name: "Render now" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(mock.timelapseRenders()).toBe(1);
 
     // Asked, not yet answered — and never claiming progress it does not have.
+    //
+    // This waits on the app's own state BEFORE sampling the counter. The
+    // dialog closes first, then dispatch re-reads the job queue, and only
+    // then does the POST go out — so `timelapseRenders()`, which does not
+    // retry, would otherwise be read a round-trip too early.
     const activity = page.getByTestId("timelapse-activity");
     await expect(activity).toContainText("Waiting for the printer");
+    expect(mock.timelapseRenders()).toBe(1);
     // ...and it cannot be started twice while it is in flight.
     await expect(page.getByTestId("timelapse-render")).toBeDisabled();
 
