@@ -3,6 +3,7 @@ import { AlertTriangle, WifiOff } from "lucide-react";
 import { usePrinter } from "@/lib/usePrinter";
 import {
   BED_SLOPE_LIMITS,
+  classifyHostStarvationShutdown,
   detectHeaterDrift,
   detectThermalSlope,
   HOTEND_SLOPE_LIMITS,
@@ -10,6 +11,8 @@ import {
   linkLost,
   sensorVerdict,
 } from "@/lib/health";
+import { faultContextHasData, formatMb } from "@/lib/hostHealth";
+import { useGcodeLog } from "@/lib/useGcodeLog";
 import { useTempHistory } from "@/lib/useTempHistory";
 import {
   WATCHDOG_TICK_MS,
@@ -45,6 +48,9 @@ export function HealthAlerts() {
   // real data has arrived, and frozen while the feed is quiet — so the slope
   // rules below stay silent rather than reading a flat line into a fault.
   const tempHistory = useTempHistory(state.extruder, state.heater_bed);
+  // Recent klipper responses — the shutdown classifier's second arm. The
+  // prtouch wording arrives HERE, not in webhooks.state_message.
+  const gcodeLines = useGcodeLog(40);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [thermalIssue, setThermalIssue] = useState<{
     heater: string;
@@ -94,7 +100,7 @@ export function HealthAlerts() {
   const alerts: Array<{
     id: string;
     severity: "warn" | "error";
-    message: string;
+    message: React.ReactNode;
     /**
      * Screen-reader announcement. Must be STABLE text — the visible message
      * may interpolate live telemetry that mutates on every status update,
@@ -103,6 +109,88 @@ export function HealthAlerts() {
     announcement: string;
     icon: React.ReactNode;
   }> = [];
+
+  // Host-starvation shutdown explainer (host-health guard §4) — FIRST, above
+  // everything: it is the alert that stops the owner from replacing a probe
+  // that is not broken. The FIRMWARE lamp keeps carrying the raw
+  // state_message; this adds the interpretation without hiding the original.
+  // The classifier's gcode arm matters: incident 2's wording arrived as a
+  // gcode response, never as state_message.
+  const starvation = classifyHostStarvationShutdown(
+    state.webhooks,
+    gcodeLines.map((line) => line.text),
+  );
+  if (starvation.starvation) {
+    // Context is FROZEN at the fault by the client (moonraker.ts snapshots
+    // on the shutdown transition). Live values here would be wrong: by the
+    // time this renders, the load that caused the fault may have cleared.
+    const fault = mr.getHostFaultContext();
+    const contextParts: string[] = [];
+    if (faultContextHasData(fault)) {
+      if (fault.cpuAvg != null) {
+        contextParts.push(`CPU ${Math.round(fault.cpuAvg)}% (60 s average)`);
+      }
+      if (fault.memAvailKb != null) {
+        contextParts.push(`${formatMb(fault.memAvailKb)} memory free`);
+      }
+      if (fault.bufferS != null) {
+        contextParts.push(
+          `motion buffer ${fault.bufferS.toFixed(1)} s (healthy is about 2 s)`,
+        );
+      }
+    }
+    alerts.push({
+      id: "host-starvation-shutdown",
+      severity: "error",
+      message: (
+        <span className="block space-y-1.5">
+          {starvation.probeMessenger ? (
+            <span className="block">
+              <strong>The probe is the messenger, not the fault.</strong>{" "}
+              <span className="font-mono">{starvation.matchedText}</span>{" "}
+              means the strain-gauge probe asked Klipper for a result and
+              Klipper never answered. That is Klipper being starved of CPU,
+              not a failing probe. Do not start by replacing the probe.
+            </span>
+          ) : (
+            <span className="block">
+              <strong>This is a timing fault, not a hardware fault.</strong>{" "}
+              Klipper stopped because the printer&rsquo;s computer could not
+              run it on time — the message{" "}
+              <span className="font-mono">{starvation.matchedText}</span> is
+              Klipper reporting that it missed its own deadline, not a bad
+              probe, sensor, or cable.
+            </span>
+          )}
+          <span className="block" data-testid="host-starvation-context">
+            {contextParts.length > 0 ? (
+              <>
+                <strong>Host at the moment of the fault:</strong>{" "}
+                {contextParts.join(" · ")}.
+              </>
+            ) : (
+              <>
+                <strong>
+                  Host load at the moment of the fault: not recorded.
+                </strong>{" "}
+                Regolith did not have host statistics for that window.
+              </>
+            )}
+          </span>
+          <span className="block">
+            Sustained CPU or disk activity on the printer&rsquo;s computer
+            causes this. Before replacing or recalibrating anything, stop
+            background work on the printer and run the same file again. See{" "}
+            <strong>Load shedding before a long print</strong>{" "}
+            (docs/load-shedding.md).
+          </span>
+        </span>
+      ),
+      announcement:
+        "Klipper shut down with a timing fault. This is usually host CPU or disk load, not a hardware failure.",
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  }
 
   // Network alert
   if (linkLost(connected)) {

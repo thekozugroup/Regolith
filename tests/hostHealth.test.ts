@@ -273,6 +273,22 @@ describe("reduceBufferStarvation", () => {
     );
   });
 
+  test("an implausible cross-clock figure is unknown, never a reading or a verdict", () => {
+    // The two toolhead clocks only track each other while moves are being
+    // fed; a "-4019 s buffer" is arithmetic between unrelated clocks. It
+    // must not trip the starvation trigger and must not be recorded for
+    // the fault snapshot to render.
+    expect(
+      reduceBufferStarvation(NO_BUFFER_STARVATION, {
+        ...base,
+        bufferS: -4019,
+      }),
+    ).toEqual(NO_BUFFER_STARVATION);
+    expect(
+      reduceBufferStarvation(NO_BUFFER_STARVATION, { ...base, bufferS: 7200 }),
+    ).toEqual(NO_BUFFER_STARVATION);
+  });
+
   test("a healthy buffer while moving records the reading and stays calm", () => {
     const next = reduceBufferStarvation(NO_BUFFER_STARVATION, {
       ...base,

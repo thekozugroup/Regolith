@@ -91,6 +91,17 @@ export const LAMP_CPU = 85;
 export const BUFFER_STARVED_S = 0.5;
 /** The collapse must persist this long — brief dips happen at corners. */
 export const BUFFER_SUSTAIN_MS = 10_000;
+/**
+ * Plausibility band for `print_time − estimated_print_time` to count as a
+ * motion-buffer READING at all. The two toolhead clocks only track each
+ * other while the host is actually feeding moves; in other states the
+ * difference is cross-clock arithmetic, not a buffer — a figure like
+ * "-4019 s" is garbage, and rendering it (or triggering on it) would be a
+ * lie. Real collapse sits near 0 (healthy ≈ 2 s, starved ≈ 0.2 s, briefly
+ * slightly negative); anything outside this band is UNKNOWN, not a verdict.
+ */
+export const BUFFER_PLAUSIBLE_MIN_S = -10;
+export const BUFFER_PLAUSIBLE_MAX_S = 600;
 
 /** How far back the shutdown explainer's frozen context looks. */
 export const FAULT_CONTEXT_WINDOW_MS = 120_000;
@@ -290,7 +301,11 @@ export function reduceBufferStarvation(
     input.liveVelocity != null &&
     input.liveVelocity > 0 &&
     input.bufferS != null &&
-    Number.isFinite(input.bufferS);
+    Number.isFinite(input.bufferS) &&
+    // Outside the plausibility band the number is not a buffer reading —
+    // unknown, never a verdict and never a rendered figure.
+    input.bufferS > BUFFER_PLAUSIBLE_MIN_S &&
+    input.bufferS < BUFFER_PLAUSIBLE_MAX_S;
   if (!gateOpen) return NO_BUFFER_STARVATION;
   const bufferS = input.bufferS!;
   if (bufferS >= BUFFER_STARVED_S) {
