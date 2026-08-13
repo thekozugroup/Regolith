@@ -115,11 +115,8 @@ export function TellTaleCluster() {
   // client already receives (~1 Hz heartbeat traffic, nothing added to the
   // printer). Destructured to primitives so the latch effect below can
   // depend on the VALUES, not a per-render object identity.
-  const { lampLoad, buffer } = useHostHealth();
-  const { condition: hostCondition, detail: hostDetail } = hostLamp(
-    lampLoad,
-    buffer,
-  );
+  const { lampLoad } = useHostHealth();
+  const { condition: hostCondition, detail: hostDetail } = hostLamp(lampLoad);
 
   // Bulb test: once per mount, on the FIRST connect (a dead WS lighting all
   // lamps then going dark would read as mass failure). Ref-guarded against

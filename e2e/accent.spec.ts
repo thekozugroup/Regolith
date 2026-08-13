@@ -1,10 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const PREVIEW_ORIGIN = "http://127.0.0.1:4173";
+import { PREVIEW_ORIGIN } from "./support/preview-origin";
+
 const DEFAULT_ACCENT = "#ffb900"; // must equal DEFAULT_ACCENT in src/lib/useTheme.ts — enforced by tests/accentDefault.test.ts
 const ACCENT_KEY = "forge.theme.accent";
 
 async function blockPrinterTraffic(page: Page) {
+  // page.route() does NOT intercept WebSocket upgrades, and the app's own
+  // `/websocket` connect is SAME-ORIGIN — so it sailed straight through the
+  // origin check below, into the preview server, and (until vite.config.ts
+  // grew an explicit `preview.proxy`) onward toward a real printer. This was
+  // the suite's one observed leak. The mute handler answers the socket
+  // in-browser: never calling `connectToServer()` means the upgrade never
+  // leaves Playwright, whatever the server behind it is wired to.
+  await page.routeWebSocket("**/websocket", () => {});
   await page.route("**/*", async (route) => {
     if (new URL(route.request().url()).origin === PREVIEW_ORIGIN) {
       await route.continue();

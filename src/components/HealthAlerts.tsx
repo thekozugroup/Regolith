@@ -116,15 +116,27 @@ export function HealthAlerts() {
   // state_message; this adds the interpretation without hiding the original.
   // The classifier's gcode arm matters: incident 2's wording arrived as a
   // gcode response, never as state_message.
+  //
+  // What the gcode arm is handed is deliberately narrow. Only machine
+  // responses (`type === "response"`) from the CURRENT console generation go
+  // in — user typing is not evidence, and lines from before a reconnect or a
+  // firmware restart describe a machine that is no longer in front of us.
+  // The classifier applies the recency window itself, anchored on the frozen
+  // fault time rather than on render time so the explainer does not expire
+  // while the owner is reading it.
+  const fault = mr.getHostFaultContext();
+  const epoch = mr.getGcodeEpoch();
   const starvation = classifyHostStarvationShutdown(
     state.webhooks,
-    gcodeLines.map((line) => line.text),
+    gcodeLines
+      .filter((line) => line.epoch === epoch && line.type === "response")
+      .map((line) => ({ text: line.text, at: line.ts, fromUser: false })),
+    { faultAt: fault?.at ?? null },
   );
-  if (starvation.starvation) {
+  if (starvation.kind === "starvation") {
     // Context is FROZEN at the fault by the client (moonraker.ts snapshots
     // on the shutdown transition). Live values here would be wrong: by the
     // time this renders, the load that caused the fault may have cleared.
-    const fault = mr.getHostFaultContext();
     const contextParts: string[] = [];
     if (faultContextHasData(fault)) {
       if (fault.cpuAvg != null) {
@@ -144,6 +156,13 @@ export function HealthAlerts() {
       severity: "error",
       message: (
         <span className="block space-y-1.5">
+          {/*
+           * The probe wording is asserted ONLY when the query that went
+           * unanswered actually belongs to the probe family — the classifier
+           * captured the name. Saying "the strain-gauge probe asked Klipper
+           * for a result" over an unrelated query is exactly the kind of
+           * confident wrong sentence this alert exists to prevent.
+           */}
           {starvation.probeMessenger ? (
             <span className="block">
               <strong>The probe is the messenger, not the fault.</strong>{" "}
@@ -188,6 +207,65 @@ export function HealthAlerts() {
       ),
       announcement:
         "Klipper shut down with a timing fault. This is usually host CPU or disk load, not a hardware failure.",
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  } else if (starvation.kind === "mcu-comms") {
+    // The handshake/keepalive queries. Klipper asks these to establish and
+    // hold the link to the mainboard, so one going unanswered points at the
+    // board, its cable, or its power — NOT at host load. This used to be
+    // swept into the starvation copy, which told the owner "not a hardware
+    // fault" over the dead-board signature.
+    alerts.push({
+      id: "host-mcu-comms-shutdown",
+      severity: "error",
+      message: (
+        <span className="block space-y-1.5">
+          <span className="block">
+            <strong>The mainboard did not answer.</strong>{" "}
+            <span className="font-mono">{starvation.matchedText}</span> is
+            Klipper&rsquo;s connection check to the mainboard going
+            unanswered, not a timing problem on the printer&rsquo;s computer.
+          </span>
+          <span className="block">
+            Start with the physical link: the board&rsquo;s power, its data
+            cable at both ends, and any connector that has been disturbed
+            recently. Regolith cannot tell you which of those it is — it can
+            only tell you the board stopped replying.
+          </span>
+        </span>
+      ),
+      announcement:
+        "Klipper shut down because the mainboard stopped answering. Check the board's power and data cable.",
+      icon: <AlertTriangle className="w-4 h-4" />,
+    });
+  } else if (starvation.kind === "unclear") {
+    // An unanswered query we cannot attribute. The honest answer, and a
+    // better one than a confident guess: naming the wrong subsystem on a
+    // machine with 255 °C heaters costs more than admitting the gap.
+    alerts.push({
+      id: "host-shutdown-unclear",
+      severity: "error",
+      message: (
+        <span className="block space-y-1.5">
+          <span className="block">
+            <strong>Klipper stopped; the cause is unclear.</strong>{" "}
+            <span className="font-mono">{starvation.matchedText}</span> says a
+            request went unanswered, but the request{" "}
+            <span className="font-mono">
+              {starvation.queryName ?? "(unnamed)"}
+            </span>{" "}
+            is not one Regolith recognises, so it will not guess between host
+            load and a hardware fault.
+          </span>
+          <span className="block">
+            Both are worth checking: background work on the printer&rsquo;s
+            computer, and the mainboard&rsquo;s power and data cable. The full
+            firmware message is on the FIRMWARE lamp.
+          </span>
+        </span>
+      ),
+      announcement:
+        "Klipper shut down after an unanswered request. Regolith cannot determine the cause.",
       icon: <AlertTriangle className="w-4 h-4" />,
     });
   }

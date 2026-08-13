@@ -29,7 +29,14 @@ interface SystemInfo {
   memUsed: number;
   memTotal: number;
   uptime: number;
-  load: number[];
+  // NO load average. Moonraker's /machine/proc_stats does not expose one —
+  // it returns moonraker_stats, throttled_state, cpu_temp, network,
+  // system_cpu_usage, system_uptime and system_memory, and nothing else.
+  // This page used to read `system_load_avg ?? [0, 0, 0]` and render the
+  // fallback, so it displayed "0.00 · 0.00 · 0.00" as though it were a
+  // measurement of a healthy machine. Same class of invention as the
+  // pressure-advance figure that was removed for the same reason: a number
+  // with no source is worse than an absent row, because it is believed.
   diskTotal: number;
   diskUsed: number;
   klipper: string;
@@ -78,13 +85,11 @@ export function SettingsPage() {
         const ps = await fetchJson("/machine/proc_stats", controller.signal);
         const sysmem = ps.result?.system_memory ?? {};
         const sysuptime = ps.result?.system_uptime ?? 0;
-        const sysload = ps.result?.system_load_avg ?? [0, 0, 0];
         setInfo((prev) => ({
           ...prev,
           memUsed: (sysmem.total ?? 0) - (sysmem.available ?? 0),
           memTotal: sysmem.total ?? 0,
           uptime: sysuptime,
-          load: sysload,
         }));
         setInfoError(null);
       } catch (error) {
@@ -231,13 +236,6 @@ export function SettingsPage() {
           <Row label="Uptime">
             <span className="tabular-nums">
               {info.uptime ? formatDuration(info.uptime) : "—"}
-            </span>
-          </Row>
-          <Row label="Load (1·5·15m)">
-            <span className="tabular-nums text-[var(--color-fg-muted)]">
-              {info.load
-                ? info.load.map((l) => l.toFixed(2)).join(" · ")
-                : "—"}
             </span>
           </Row>
         </div>

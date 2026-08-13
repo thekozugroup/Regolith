@@ -26,7 +26,8 @@ import {
   type WebSocketRoute,
 } from "@playwright/test";
 
-const PREVIEW_ORIGIN = "http://127.0.0.1:4173";
+import { PREVIEW_ORIGIN } from "./preview-origin";
+
 const CAMERA_PORT = "8080";
 
 /** 1x1 transparent PNG — stands in for gcode thumbnails. */
@@ -370,6 +371,133 @@ export async function installActiveMock(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ result: [] }),
+      });
+      return;
+    }
+
+    /*
+     * The reads that were LEAKING.
+     *
+     * Every path below fell through to `route.continue()` at the end of this
+     * handler, reached the preview server, and was proxied onward — at the
+     * real printer, until vite.config.ts grew an explicit `preview.proxy`.
+     * The browser-side allowlists never flagged them because they are
+     * relative URLs: `/server/history/list` resolves to the preview origin,
+     * so the origin check said "local, serve it" while the server behind
+     * that origin held routes to a live machine.
+     *
+     * Pointing the preview proxy at a discard port is what made them
+     * visible — 80 of these in the first 73 tests of a full run, as HTTP
+     * 502s and console errors that the console-hygiene spec correctly
+     * refused to accept as normal. They are answered here, as an idle
+     * machine with no history, so the app's own fetches resolve locally.
+     * Specs that care about these payloads still register their own routes
+     * afterwards and take precedence.
+     */
+    if (url.pathname === "/server/history/list") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: { count: 0, jobs: [] } }),
+      });
+      return;
+    }
+
+    if (url.pathname === "/server/history/totals") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            job_totals: {
+              total_jobs: 0,
+              total_time: 0,
+              total_filament_used: 0,
+              longest_job: 0,
+              longest_print: 0,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.pathname === "/server/info") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            klippy_connected: true,
+            klippy_state: "ready",
+            moonraker_version: "v0.8.0-test",
+          },
+        }),
+      });
+      return;
+    }
+
+    // The one-shot object reads (bed_mesh among them). An empty status is
+    // the honest answer for a fixture that has not declared the object:
+    // the app's own absent-field handling then decides what to render.
+    if (url.pathname === "/printer/objects/query") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: { eventtime: 0, status: {} } }),
+      });
+      return;
+    }
+
+    // Any remaining gcode-root listing. The timelapse_frames root is handled
+    // above; this covers /print's own listing when a spec has not supplied
+    // one, which otherwise 502'd on every route that mounts the Files page.
+    if (url.pathname === "/server/files/list") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: [] }),
+      });
+      return;
+    }
+
+    // Rendered timelapse videos. The Timelapses page links and previews
+    // them; unanswered they were proxied out like everything else. An empty
+    // body with a video content-type is enough for a <video>/<a> to resolve
+    // locally — no spec asserts on decodable frames.
+    if (
+      url.pathname.startsWith("/server/files/timelapse/") ||
+      /\.(mp4|webm)$/i.test(url.pathname)
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "video/mp4",
+        body: "",
+      });
+      return;
+    }
+
+    // Settings' expert system panel. The payload mirrors what Moonraker
+    // ACTUALLY returns — note the absence of `system_load_avg`, which
+    // Moonraker does not expose and which this app used to render as
+    // "0.00 · 0.00 · 0.00" from a `?? [0, 0, 0]` fallback. A fixture that
+    // invents a field the real API lacks hides exactly that class of bug.
+    if (url.pathname === "/machine/proc_stats") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            moonraker_stats: [],
+            throttled_state: { bits: 0, flags: [] },
+            cpu_temp: 45.2,
+            network: {},
+            system_cpu_usage: { cpu: 4.2, cpu0: 4.0, cpu1: 4.4 },
+            system_uptime: 3_600,
+            system_memory: { total: 253_952, available: 133_120, used: 120_832 },
+            websocket_connections: 1,
+          },
+        }),
       });
       return;
     }

@@ -2142,3 +2142,187 @@ build 0, e2e **254 passed** (+5: advisory shows/dismisses/never blocks,
 shutdown explainer renders, hardware faults never hijacked). The print-
 start regression suite passed on every run. The printer was never
 contacted.
+
+---
+
+## 2026-08-12 — Verification pass on the host-health guard: four defects, and a fifth found in the gate itself
+
+The guard shipped in `1b57891`/`686bfc5` was measured rather than re-read.
+Four defects in the feature, one in the harness that verifies it.
+
+### The classifier claimed "not hardware" over hardware faults
+
+`/unable to obtain '[^']*' response/i` matched ANY unanswered Klipper query.
+`identify`, `get_uptime` and `get_clock` are the connect and keepalive
+handshake queries — an unanswered one is the dead-board / bad-cable
+signature, which is the exact class `lost communication with mcu` was
+excluded for. The broad regex re-admitted through the back door what the
+exclusion was written to keep out, and HealthAlerts then asserted
+unconditionally that the string "means the strain-gauge probe asked Klipper
+for a result".
+
+The query NAME now decides: prtouch/probe family → starvation; handshake /
+keepalive → "possible MCU communication fault", pointing at cabling;
+anything else → **cause unclear**, claimed as neither. The probe sentence is
+rendered only when the captured name is actually a probe query.
+
+**The rule this buys:** a narrow confident classifier plus an explicit
+unknown beats a broad one that misdirects. On a machine with 255 °C heaters,
+naming the wrong subsystem costs more than admitting the gap — so `unclear`
+is a first-class verdict with its own copy, not a silent fallthrough.
+
+### Stale and user-authored log lines poisoned genuine faults
+
+`moonraker.gcodeLog` is capped at 200 and was never cleared — not on
+reconnect, not on firmware restart — carried no timestamps to the
+classifier, and `recordCommand()` writes the owner's own typing into the
+same ring. Measured: a genuine `ADC out of range` shutdown plus one
+hours-old `Rescheduled timer in the past` line classified as starvation; and
+a console line `// user asked: what does 'timer too close' mean?` defeated
+the `lost communication` exclusion.
+
+Three changes: lines carry `at`/`fromUser` and are filtered to a recency
+window anchored on the FROZEN fault time (not render time, so the explainer
+does not expire while it is being read); user-typed lines are never
+evidence; and lines carry a link `epoch` that is retired on reconnect and on
+firmware restart — the console still renders them, the classifier no longer
+trusts them. `state_message` is now authoritative: when it names a specific
+non-starvation cause, the gcode arm may corroborate but can never override.
+
+### The frozen fault context dropped its most diagnostic figure
+
+`trackHostHealth` ran the starvation reducer BEFORE the shutdown freeze, on
+the same merged state. A real shutdown push flips `print_stats.state` off
+`printing` and `live_velocity` to 0 in the same message, closing the gate,
+so the snapshot recorded `null` — silently losing "motion buffer 0.1 s
+(healthy is about 2 s)", and whether it appeared depended on the push's
+shape. The snapshot now takes the PRE-fault reading, and `BufferStarvation`
+carries `bufferAt` so the snapshot can police its own freshness.
+
+**The rule:** a unit test that hands a reducer a literal cannot see an
+ordering bug. `tests/hostFaultContext.test.ts` drives real
+`notify_status_update` messages through `Moonraker` instead.
+
+### The HOST LOAD lamp fired on an unknown host, and could never fire in Basic
+
+Trigger B gated on `motion_report.live_velocity`, but `motion_report` is
+CONDITIONALLY subscribed — claimed only by /control and the Dashboard's
+EXPERT tile. In Basic mode the gate was permanently shut, so the "leading
+indicator" could never fire for the app's stated target user. After one
+visit to /control it was worse: `mergeState` only spreads and never deletes,
+so the stale velocity persisted forever and a normal print warm-up latched a
+warning in 10 s with `cpuMedian: null, sampleCount: 0` — a warning about a
+host never sampled, breaking the module's own law.
+
+Trigger B is **removed from the lamp**. Widening the subscription was the
+wrong fix: `motion_report` streams at Moonraker's full batch cadence, so
+subscribing it unconditionally to power a host-LOAD guard would make the
+guard a source of the load it watches. The buffer figure survives where it
+is honest and free — an omittable line in the frozen fault context. The
+unsampled-host law is now an explicit guard, not an emergent property of
+thresholds, and only a push that actually CARRIES `motion_report` counts as
+a velocity observation.
+
+### Invented data, again: a load average Moonraker does not expose
+
+`Settings.tsx` read `ps.result?.system_load_avg ?? [0, 0, 0]` and rendered
+`0.00 · 0.00 · 0.00`. Moonraker's `/machine/proc_stats` returns no load
+average at all, so the page had been showing a fabricated reading of a
+healthy machine. Row removed. Same class as the invented pressure-advance:
+**a number with no source is worse than an absent row, because it is
+believed.** The e2e fixture had been supplying `system_load_avg`, which let
+the fabrication look correct in CI — a fixture that invents a field the real
+API lacks will hide exactly this bug.
+
+### THE BIG ONE: the e2e gate itself could contact the printer
+
+Found while running the gate with the owner's 8-hour print live.
+
+Vite's preview server INHERITS `server.proxy` when `preview.proxy` is unset.
+`playwright.config.ts` runs `bun run preview` as its webServer. So every
+`bun run test:e2e` booted a server holding live proxy routes — `/printer`,
+`/server`, `/access`, `/machine`, `/api`, `/webcam`, and `/websocket` with
+`ws: true` — pointed at the real machine. The run logged it:
+
+    [vite] ws proxy error: connect EHOSTUNREACH <printer>:80
+
+Real TCP attempts, made by the gate. They failed only because the printer
+was unreachable from this Mac at that moment. `forge.local` resolves fine
+now.
+
+**Why the suite never caught it, and the durable lesson:** the specs seal at
+the BROWSER — `page.route` + `routeWebSocket`, asserted by `assertSealed()`.
+That is the right layer for "the app makes no unmocked calls" and it is one
+layer too HIGH to be a containment guarantee. Anything reaching the preview
+ORIGIN is forwarded by the server itself, entirely outside Playwright's
+view. The suite has been reporting zero escaped requests all along while the
+server beneath it could reach a live printer.
+
+    A seal must sit at the outermost layer that can egress,
+    not at the layer that is convenient to assert.
+
+Fix: an explicit `preview.proxy` pointing every route at the discard port
+(`127.0.0.1:9`). Routes are kept and sunk rather than deleted, so a leak
+fails LOUDLY and locally with `ECONNREFUSED` in the preview log instead of
+being absorbed by the SPA fallback and hiding the leaking spec. `vite dev`
+keeps the real proxy — that is how a human drives a real machine on purpose.
+
+**A leak must announce itself.** An empty `proxy: {}` would have been just
+as safe for the printer and strictly worse as a diagnostic: the leaked
+request falls through to `index.html`, returns 200, and looks like success.
+Given two designs that are equally safe, take the one that cannot fail
+silently. The sink proved its worth within one run — 519 sink hits across
+11 endpoints on a half-suite, every one of which had previously been
+forwarded toward the printer, none of which any spec had ever reported.
+
+### The most dangerous comment in the codebase was a CORRECT one
+
+`e2e/support/active-state-harness.ts:360` already said it, plainly:
+
+> `vite preview` proxies every /server, /machine and /printer path at the
+> real printer's address
+
+That is the whole hazard, stated as a general property — and the very next
+line scopes the remedy to "two reads the Timelapses page makes that MUST NOT
+fall through." The author diagnosed the entire class correctly and then
+fixed exactly the two members of it that had a VISIBLE symptom: a page stuck
+in a loading skeleton in CI. Every other member of the class leaked silently
+for as long as it stayed symptom-free — which was months.
+
+**A correct diagnosis written next to a fix scoped to the symptom is not
+partial protection; it is durable false assurance.** The comment is what
+made the next reader — and there were several — believe the hazard was
+handled. Prose that is MORE accurate than its own remedy is the dangerous
+case, not the harmless one: it buys the credibility of a real analysis and
+spends it on a fix that does not cover what the analysis describes.
+
+The rule: when a comment describes a CLASS of hazard, the fix beside it must
+close the class, or the comment must say in terms what it leaves open and
+why. "Specs that care register their own route" was doing that job and could
+not — nothing enforced it, and nothing failed when it did not happen.
+
+Verified by inspection of the server, never by asking the printer:
+`forge.local` resolves to the printer; all six HTTP routes return 502 with
+`connect ECONNREFUSED 127.0.0.1:9` in the vite log; the `/websocket` upgrade
+fails to connect; and `lsof` on the preview PID shows exactly one socket —
+`127.0.0.1:4187 (LISTEN)` — with no outbound connection at all.
+
+### The e2e port was hard-pinned, and the allowlists drifted from it
+
+`127.0.0.1:4173` was hard-coded in `playwright.config.ts`, in six specs'
+request allowlists, and in the harness. Two overlapping runs meant the second
+`vite preview` could not bind, the suite attached to whatever already held
+the port, and every request failed `ERR_BLOCKED_BY_CLIENT` — one session lost
+all 254 tests to it. Host and port now come from `e2e/support/preview-origin.ts`
+(env `REGOLITH_E2E_PORT`, default 4173), and every allowlist derives from the
+same value, so the server and the allowlists cannot disagree again.
+
+### Containment for the advisory
+
+The pre-print advisory moved into `HostLoadAdvisory` behind a
+`ChromeErrorBoundary` with a `CrashSeam`. `/print` is the only route that
+starts a print and it renders inside the shared RouteErrorBoundary, so a
+throw on this optional path blanked the page and took the Start button with
+it. The hook and the verdict live INSIDE the boundary — a boundary around a
+prop the parent computed would catch nothing. **An optional warning must
+never be able to remove the control it is warning about.**

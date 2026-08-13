@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { isPreviewUrl } from "./support/preview-origin";
 
 /**
  * Collapsible sidebar (owner request): the desk sidebar collapses to an ICON
@@ -59,7 +60,7 @@ async function installLocalMock(page: Page): Promise<{ escaped: string[]; writes
       });
       return;
     }
-    if (url.hostname === "127.0.0.1" && url.port === "4173") {
+    if (isPreviewUrl(url)) {
       await route.continue();
       return;
     }

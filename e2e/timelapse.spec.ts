@@ -552,6 +552,61 @@ test.describe("Timelapses page — the owner-triggered render", () => {
     mock.assertSealed();
   });
 
+  test("a job queued while the warning sits open still blocks the dispatch", async ({
+    page,
+  }) => {
+    // The regression this pins: the page's queue count is a snapshot taken
+    // by load() — at mount, or on Refresh — and the confirmation can sit
+    // open for minutes. The queue must be re-read AT DISPATCH, or a job
+    // queued after page load races the ffmpeg pass for the same two cores,
+    // which is the exact collision the gate exists to prevent.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { timelapseRender: "ok" },
+    });
+    await fulfilFileApi(page, { frames: 12, queued: 0 });
+
+    await page.goto("/timelapses");
+    await awaitLink(page);
+    const render = page.getByTestId("timelapse-render");
+    await expect(render).toBeEnabled();
+    await render.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+
+    // A job lands in the queue while the owner reads the warning. Later
+    // routes win, so this answers the dispatch-time re-read.
+    await page.route("**/server/job_queue/status*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            queue_state: "ready",
+            queued_jobs: [
+              { filename: "queued_late.gcode", job_id: "00000042" },
+            ],
+          },
+        }),
+      });
+    });
+
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Render now" })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // Nothing went on the wire, and the refusal says why.
+    await expect(page.getByTestId("timelapse-render-error")).toContainText(
+      "queued",
+    );
+    expect(mock.timelapseRenders()).toBe(0);
+
+    await assertNoBrokenReadouts(page, "render refused at dispatch");
+    mock.assertSealed();
+  });
+
   test("an idle printer renders — warned first, then watched to the end", async ({
     page,
   }) => {

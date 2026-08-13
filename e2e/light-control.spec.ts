@@ -5,6 +5,7 @@ import {
   type WebSocketRoute,
 } from "@playwright/test";
 import { useExperience, type MockPrinterState } from "./support/active-state-harness";
+import { isPreviewUrl } from "./support/preview-origin";
 
 /**
  * Chamber light control.
@@ -157,7 +158,7 @@ async function installLightMock(
       });
       return;
     }
-    if (url.origin !== "http://127.0.0.1:4173") {
+    if (!isPreviewUrl(url)) {
       escaped.push(route.request().url());
       await route.abort("blockedbyclient");
       return;

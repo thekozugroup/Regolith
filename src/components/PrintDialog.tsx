@@ -18,8 +18,8 @@ import {
   timelapseEnabledFromStorage,
   timelapseModeFromStorage,
 } from "@/lib/timelapse";
-import { useHostHealth } from "@/lib/useHostHealth";
-import { formatMb, prePrintHostAdvisory } from "@/lib/hostHealth";
+import { ChromeErrorBoundary, CrashSeam } from "./ChromeErrorBoundary";
+import { HostLoadAdvisory } from "./HostLoadAdvisory";
 import {
   X,
   Play,
@@ -92,11 +92,6 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     timelapseModeFromStorage(readStored(TIMELAPSE_MODE_STORAGE_KEY)),
   );
   const [acknowledged, setAcknowledged] = useState(false);
-  // The host-load ADVISORY (host-health guard §2). Dismissal lasts for the
-  // dialog's lifetime and resets on the next open — no persistence, no
-  // "I understand" checkbox: an advisory that costs a click on the happy
-  // path is a block wearing a costume.
-  const [advisoryDismissed, setAdvisoryDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Optional setup that did NOT happen, on a print that DID start. */
@@ -128,19 +123,11 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
     setup,
   };
   const preflight = guardPrinterAction(state, connected, action);
-  // Host-health ADVISORY — and nothing but. It reads the proc-stat feed the
-  // client already receives, renders a dismissible warning, and is wired to
-  // NOTHING else: not the Start button's disabled state (see the footer —
-  // busy/acknowledged/preflight only), not guardPrinterAction, not
-  // safety.ts. A host-health false positive that refused to print would be
-  // its own outage; the project law is that optional checks never block a
-  // print (same law as KAMP and the timelapse write). Unknown host = null =
-  // silence.
-  const { prePrintLoad } = useHostHealth();
-  const hostAdvisory = prePrintHostAdvisory(
-    prePrintLoad,
-    state.print_stats?.state,
-  );
+  // The host-health ADVISORY — proc-stat feed, verdict, and markup — lives
+  // entirely in <HostLoadAdvisory/> below, behind an error boundary. It is
+  // wired to NOTHING here: the Start button's disabled state reads
+  // busy/acknowledged/preflight only, guardPrinterAction does not know it
+  // exists, and safety.ts has never heard of it.
   // layermacro captures ONLY when the sliced file itself calls
   // TIMELAPSE_TAKE_FRAME. Most files do not, so a toggle left unqualified
   // here would promise a recording this file cannot produce.
@@ -149,7 +136,6 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
   useEffect(() => {
     if (!open) return;
     setAcknowledged(false);
-    setAdvisoryDismissed(false); // the advisory re-evaluates on every open
     setError(null);
     setNotices([]);
     setThumbFailed(false);
@@ -359,87 +345,23 @@ export function PrintDialog({ file, metadata, open, onClose }: PrintDialogProps)
             </div>
           )}
 
-          {/* HOST LOAD advisory — a heads-up, never a gate. The Start button
-              in the footer does not read it, guardPrinterAction does not
-              know it exists, and there is no confirm step behind it. The
-              visible copy interpolates live numbers, so the stable
-              screen-reader announcement lives in an sr-only sibling
-              (HealthAlerts pattern). */}
-          {hostAdvisory && !advisoryDismissed && (
-            <>
-              <p className="sr-only" role="status">
-                The printer&rsquo;s computer is under heavy load. Starting a
-                print now is more likely to fail.
-              </p>
-              <div
-                data-testid="host-load-advisory"
-                className="flex items-start gap-2 p-3 bg-(--color-warning)/8 border border-(--color-warning)/35 rounded-inner"
-              >
-                <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0 space-y-1.5 text-[11px] leading-relaxed text-[var(--color-warning)]">
-                  <p>
-                    <strong>
-                      {hostAdvisory.level === "strong"
-                        ? `Host heavily loaded — ${Math.round(hostAdvisory.cpuMedian)}% CPU for the last 30 seconds with nothing printing.`
-                        : `Host busy — the printer's computer has been at ${Math.round(hostAdvisory.cpuMedian)}% CPU for the last 30 seconds with nothing printing.`}
-                    </strong>{" "}
-                    {hostAdvisory.level === "strong" &&
-                      "This is the condition that ended the 12 Aug jobs. "}
-                    A loaded host can fall behind mid-print and stop the job
-                    with a timer or probe error that looks like a hardware
-                    fault. Stopping background work first makes the print more
-                    likely to finish. Starting anyway is fine — this is a
-                    heads-up, not a block.
-                  </p>
-                  {hostAdvisory.memoryAmplified &&
-                    hostAdvisory.memAvailKb != null &&
-                    hostAdvisory.memTotalKb != null && (
-                      <p data-testid="host-load-advisory-memory">
-                        Free memory is also low (
-                        {formatMb(hostAdvisory.memAvailKb)} of{" "}
-                        {formatMb(hostAdvisory.memTotalKb)}). When memory runs
-                        out the printer swaps to its eMMC, which starves
-                        Klipper the same way a pegged CPU does.
-                      </p>
-                    )}
-                  <details>
-                    <summary className="flex min-h-11 cursor-pointer items-center font-medium">
-                      What to stop →
-                    </summary>
-                    <ul className="list-disc space-y-1 pl-4">
-                      <li>
-                        Video encoding first: no timelapse renders on this
-                        machine until it is idle (already enforced on the
-                        print path).
-                      </li>
-                      <li>
-                        Remote-access daemons in userspace-networking mode,
-                        cloud sync, backups, log shippers. Move their watchdog
-                        cron aside first, and put it back afterwards — losing
-                        remote access is its own hazard.
-                      </li>
-                      <li>
-                        Prefer stopping work over renicing it: on this SoC,
-                        nice does not save you from iowait.
-                      </li>
-                      <li>
-                        Full checklist with the K1 specifics:
-                        docs/load-shedding.md in the Regolith repository.
-                      </li>
-                    </ul>
-                  </details>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAdvisoryDismissed(true)}
-                  aria-label="Dismiss host load warning"
-                  className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
-                >
-                  ×
-                </button>
-              </div>
-            </>
-          )}
+          {/* HOST LOAD advisory — a heads-up, never a gate, and now
+              CONTAINED. /print is the only route that starts a print and it
+              renders inside the shared RouteErrorBoundary, so a throw on the
+              advisory path used to blank the page and take the Start button
+              with it. An optional warning must never be able to remove the
+              control it warns about. Keyed on the file so reopening the
+              dialog for a different job re-evaluates from scratch. */}
+          <ChromeErrorBoundary
+            id="host-load-advisory"
+            label="Host load check unavailable"
+          >
+            <CrashSeam id="host-load-advisory" />
+            <HostLoadAdvisory
+              key={file.path}
+              printState={state.print_stats?.state}
+            />
+          </ChromeErrorBoundary>
 
           <button
             type="button"

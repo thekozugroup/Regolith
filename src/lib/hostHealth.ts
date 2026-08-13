@@ -105,6 +105,14 @@ export const BUFFER_PLAUSIBLE_MAX_S = 600;
 
 /** How far back the shutdown explainer's frozen context looks. */
 export const FAULT_CONTEXT_WINDOW_MS = 120_000;
+/**
+ * A buffer reading older than this is not a reading "at the fault". The
+ * snapshot deliberately takes the PRE-fault figure (the shutdown push closes
+ * the reducer's gate in the same message), so it needs its own recency bar
+ * to keep a figure from an earlier, unrelated stretch of the print out of
+ * the explainer.
+ */
+export const FAULT_BUFFER_MAX_AGE_MS = 15_000;
 
 /**
  * Rolling host-load summary over one window. `null` everywhere until real
@@ -274,12 +282,19 @@ export interface BufferStarvation {
    * and firing there would false-positive on every print's warm-up.
    */
   bufferS: number | null;
+  /**
+   * Client clock at which `bufferS` was read, null when there is no reading.
+   * Without it a figure has no age, and a figure with no age cannot be
+   * honestly attributed to "the moment of the fault".
+   */
+  bufferAt: number | null;
 }
 
 export const NO_BUFFER_STARVATION: BufferStarvation = {
   lowSince: null,
   starved: false,
   bufferS: null,
+  bufferAt: null,
 };
 
 export interface BufferStarvationInput {
@@ -309,18 +324,42 @@ export function reduceBufferStarvation(
   if (!gateOpen) return NO_BUFFER_STARVATION;
   const bufferS = input.bufferS!;
   if (bufferS >= BUFFER_STARVED_S) {
-    return { lowSince: null, starved: false, bufferS };
+    return { lowSince: null, starved: false, bufferS, bufferAt: input.now };
   }
   const lowSince = prev.lowSince ?? input.now;
   return {
     lowSince,
     starved: input.now - lowSince >= BUFFER_SUSTAIN_MS,
     bufferS,
+    bufferAt: input.now,
   };
 }
 
 /* ------------------------------------------------------------------------ *
- * HOST LOAD lamp reading — two independent triggers, OR'd.
+ * HOST LOAD lamp reading — ONE trigger: the proc-stat median.
+ *
+ * The motion-buffer collapse used to be a second, OR'd trigger. It was
+ * REMOVED from the lamp on 2026-08-12, and the reason is worth keeping:
+ *
+ *   · its gate read `motion_report.live_velocity`, but `motion_report` is
+ *     CONDITIONALLY subscribed (profileFields({motion})) — claimed only by
+ *     /control and the Dashboard's EXPERT Live-Vel tile. In Basic mode on a
+ *     session that never opened /control, the field is undefined, the gate
+ *     is permanently shut, and the "leading indicator" could never fire for
+ *     the app's stated target user;
+ *   · after one visit to /control it was WORSE than useless: `mergeState`
+ *     only ever spreads, never deletes, so the stale velocity persisted
+ *     forever and a normal print warm-up latched a HOST LOAD warning in
+ *     10 s with `cpuMedian: null, sampleCount: 0` — a warning about a host
+ *     that had never been sampled, which breaks this module's own law.
+ *
+ * The fix was not to widen the subscription. `motion_report` streams live
+ * position at Moonraker's full batch cadence; subscribing it unconditionally
+ * to power a host-LOAD guard would make the guard a source of the very load
+ * it watches for. So the lamp keeps the trigger that costs nothing and is
+ * always available, and the buffer figure survives where it is honest and
+ * free: as an OMITTABLE line in the frozen shutdown context, rendered only
+ * when motion_report happened to be subscribed and fresh.
  * ------------------------------------------------------------------------ */
 
 export interface HostLampReading {
@@ -332,23 +371,21 @@ export interface HostLampReading {
   detail?: string;
 }
 
-export function hostLamp(
-  load: HostLoad,
-  buffer: BufferStarvation,
-): HostLampReading {
+export function hostLamp(load: HostLoad): HostLampReading {
+  // THE LAW, stated explicitly rather than left to follow from the
+  // thresholds: a host we have never sampled never produces a warning.
+  if (load.sampleCount === 0 || load.cpuMedian == null) {
+    return { condition: false };
+  }
   const cpuHot =
-    load.cpuMedian != null &&
-    load.sampleCount >= LAMP_MIN_SAMPLES &&
-    load.cpuMedian >= LAMP_CPU;
-  const starved = buffer.starved && buffer.bufferS != null;
-  if (!cpuHot && !starved) return { condition: false };
-  const cpuText = cpuHot ? `CPU ${Math.round(load.cpuMedian!)}%` : null;
-  const bufferValue = starved ? `${buffer.bufferS!.toFixed(1)}s` : null;
-  let detail: string | undefined;
-  if (cpuText && bufferValue) detail = `${cpuText} · buffer ${bufferValue}`;
-  else if (cpuText) detail = `${cpuText} · 60s`;
-  else if (bufferValue) detail = `Buffer ${bufferValue}`;
-  return { condition: true, detail };
+    load.sampleCount >= LAMP_MIN_SAMPLES && load.cpuMedian >= LAMP_CPU;
+  if (!cpuHot) return { condition: false };
+  // "median" is the honest word: it is a median over the readings inside the
+  // 60 s window, not a reading held for 60 s.
+  return {
+    condition: true,
+    detail: `CPU ${Math.round(load.cpuMedian)}% median · 60s`,
+  };
 }
 
 /* ------------------------------------------------------------------------ *
@@ -394,7 +431,20 @@ export function snapshotHostFaultContext(
       break;
     }
   }
-  return { at: now, cpuAvg, memAvailKb, bufferS: buffer.bufferS };
+  // Callers hand in the PRE-fault buffer state (the shutdown push closes the
+  // reducer's gate in the same message), so the age check belongs here: a
+  // reading from earlier in the print is not a reading at the fault, and an
+  // unknown buffer is omitted from the copy rather than guessed at.
+  const bufferFresh =
+    buffer.bufferS != null &&
+    buffer.bufferAt != null &&
+    now - buffer.bufferAt <= FAULT_BUFFER_MAX_AGE_MS;
+  return {
+    at: now,
+    cpuAvg,
+    memAvailKb,
+    bufferS: bufferFresh ? buffer.bufferS : null,
+  };
 }
 
 /** True when the snapshot has at least one channel worth rendering. */

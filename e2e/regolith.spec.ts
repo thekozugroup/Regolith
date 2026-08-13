@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
 import { expect, test, type Page } from "@playwright/test";
 
-const PREVIEW_ORIGIN = "http://127.0.0.1:4173";
+import { PREVIEW_ORIGIN } from "./support/preview-origin";
+
 const CAMERA_ORIGIN = "http://127.0.0.1:8080";
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -171,7 +172,10 @@ async function isolateFromPrinter(
         result = {
           system_memory: { total: 1024, available: 768 },
           system_uptime: 3600,
-          system_load_avg: [0.1, 0.2, 0.3],
+          // No system_load_avg: Moonraker's /machine/proc_stats does not
+          // return one. The fixture used to supply it, which let a page that
+          // rendered `?? [0, 0, 0]` look correct in CI while showing a
+          // fabricated "0.00 · 0.00 · 0.00" on a real printer.
         };
       } else if (url.pathname === "/server/info") {
         result = { moonraker_version: "test" };

@@ -194,6 +194,16 @@ export interface GcodeLine {
   ts: number;
   text: string;
   type: "command" | "response";
+  /**
+   * Link generation this line belongs to. Bumped whenever the scrollback
+   * stops describing the machine in front of us — a reconnect (we cannot
+   * know what happened during the gap) or a firmware restart (the MCU state
+   * the lines described is gone). The console still RENDERS every line; the
+   * shutdown classifier only trusts the current generation, which is what
+   * "invalidate the buffer" means here — invalidate for inference, not for
+   * the reader.
+   */
+  epoch: number;
 }
 
 interface RpcRequest {
@@ -248,6 +258,8 @@ export class Moonraker {
   private manuallyDisconnected = false;
   private gcodeLog: GcodeLine[] = [];
   private static MAX_LOG = 200;
+  /** Current console generation — see GcodeLine.epoch. */
+  private gcodeEpoch = 0;
   private timelapse: TimelapseActivity = NO_TIMELAPSE_ACTIVITY;
   private timelapseSubs = new Set<TimelapseCallback>();
   /**
@@ -308,8 +320,11 @@ export class Moonraker {
       // handler, and only once the link actually HELD (STABLE_LINK_MS).
       this.connSubs.forEach((cb) => cb(true));
       this.setLinkState("live");
-      // A fresh link gets a fresh retry budget.
+      // A fresh link gets a fresh retry budget — and a fresh console
+      // generation: nothing that scrolled past before the gap can describe
+      // what the machine is doing now.
       this.subscribeRetryAttempt = 0;
+      this.retireGcodeEpoch();
       // Replay on reconnect with the CURRENT desired set (replace semantics:
       // a field released while offline must not resurrect here).
       this.activeFields = new Set(this.fieldRefs.keys());
@@ -631,9 +646,30 @@ export class Moonraker {
     };
   }
 
-  private appendGcodeLine(line: GcodeLine): void {
-    this.gcodeLog = [...this.gcodeLog, line].slice(-Moonraker.MAX_LOG);
+  private appendGcodeLine(line: Omit<GcodeLine, "epoch">): void {
+    const stamped: GcodeLine = { ...line, epoch: this.gcodeEpoch };
+    this.gcodeLog = [...this.gcodeLog, stamped].slice(-Moonraker.MAX_LOG);
     this.gcodeLogSubs.forEach((cb) => cb(this.gcodeLog));
+  }
+
+  /**
+   * Retire the current console generation.
+   *
+   * Called on reconnect and on firmware restart. Lines from before the break
+   * stay on screen — the owner is reading them — but they stop being
+   * evidence: the shutdown classifier scans only the current epoch, so a
+   * response from a previous link or a pre-restart MCU can no longer be
+   * mistaken for an account of what just happened.
+   */
+  private retireGcodeEpoch(): void {
+    if (this.gcodeLog.length === 0) return;
+    this.gcodeEpoch += 1;
+    this.gcodeLogSubs.forEach((cb) => cb(this.gcodeLog));
+  }
+
+  /** Current console generation — lines older than this are not evidence. */
+  getGcodeEpoch(): number {
+    return this.gcodeEpoch;
   }
 
   /** Surface a user-typed command in the log alongside klipper responses. */
@@ -664,7 +700,7 @@ export class Moonraker {
       } as never;
     }
     this.state = next;
-    this.trackHostHealth(prevWebhooksState, next);
+    this.trackHostHealth(prevWebhooksState, next, diff);
     this.subs.forEach((cb) => cb(this.state));
   }
 
@@ -679,7 +715,16 @@ export class Moonraker {
   private trackHostHealth(
     prevWebhooksState: string | undefined,
     next: PrinterState,
+    diff: Partial<PrinterState>,
   ): void {
+    const now = Date.now();
+    // The buffer figure as it stood BEFORE this push. The shutdown push
+    // itself flips `print_stats.state` off `printing` and `live_velocity` to
+    // 0 in the same message, which closes the reducer's gate and nulls the
+    // reading — snapshotting after the fold silently dropped the single most
+    // diagnostic line in the explainer ("motion buffer 0.1 s, healthy is
+    // about 2 s"), and whether it survived depended on the push's shape.
+    const preFaultBuffer = this.bufferStarvation;
     const toolhead = next.toolhead;
     const bufferS =
       toolhead != null &&
@@ -687,21 +732,41 @@ export class Moonraker {
       Number.isFinite(toolhead.estimated_print_time)
         ? toolhead.print_time - toolhead.estimated_print_time
         : null;
-    this.bufferStarvation = reduceBufferStarvation(this.bufferStarvation, {
+    // `motion_report` is conditionally subscribed and `mergeState` only ever
+    // spreads — it never deletes — so a velocity left behind by a visit to
+    // /control would otherwise read as current forever. Only a push that
+    // actually CARRIED motion_report counts as a velocity observation.
+    const liveVelocity =
+      diff.motion_report !== undefined
+        ? (next.motion_report?.live_velocity ?? null)
+        : null;
+    this.bufferStarvation = reduceBufferStarvation(preFaultBuffer, {
       printing: next.print_stats?.state === "printing",
-      liveVelocity: next.motion_report?.live_velocity ?? null,
+      liveVelocity,
       bufferS,
-      now: Date.now(),
+      now,
     });
     const state = next.webhooks?.state;
     const faulted = state === "shutdown" || state === "error";
     const wasFaulted =
       prevWebhooksState === "shutdown" || prevWebhooksState === "error";
+    // A firmware restart retires the console generation: the lines that
+    // described the old MCU state stop being evidence about the new one.
+    if (state === "startup" && prevWebhooksState !== "startup") {
+      this.retireGcodeEpoch();
+    }
     if (faulted && !wasFaulted) {
+      // Prefer the post-merge reading when the push still had the head
+      // moving; otherwise fall back to the pre-fault one. Staleness is the
+      // snapshot's own problem to police — it holds `bufferAt`.
+      const buffer =
+        this.bufferStarvation.bufferS != null
+          ? this.bufferStarvation
+          : preFaultBuffer;
       this.hostFaultContext = snapshotHostFaultContext(
         this.hostSamples,
-        this.bufferStarvation,
-        Date.now(),
+        buffer,
+        now,
       );
     }
   }
@@ -892,9 +957,11 @@ export class Moonraker {
     await this.send("printer.emergency_stop");
   }
   async restart(): Promise<void> {
+    this.retireGcodeEpoch();
     await this.send("printer.restart");
   }
   async firmwareRestart(): Promise<void> {
+    this.retireGcodeEpoch();
     await this.send("printer.firmware_restart");
   }
 

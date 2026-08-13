@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { isPreviewUrl } from "./support/preview-origin";
 import {
   assertNoBrokenReadouts,
   installActiveMock,
@@ -53,7 +54,7 @@ async function installStrictMock(page: Page): Promise<StrictMock> {
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const local = url.hostname === "127.0.0.1" && url.port === "4173";
+    const local = isPreviewUrl(url);
     const method = request.method();
     if (method !== "GET" && method !== "HEAD") {
       audit.writes.push(`${method} ${url.origin}${url.pathname}`);

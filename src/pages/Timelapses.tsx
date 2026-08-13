@@ -186,12 +186,28 @@ export function Timelapses() {
    * Re-gated at the moment of dispatch: a print can start while the warning
    * sits open, and starting an ffmpeg pass into a live job is the exact
    * failure this whole change exists to prevent.
+   *
+   * The queue arm is re-read HERE, not taken from `gate`: the `queuedJobs`
+   * state behind `gate` was fetched by load() — at mount, or whenever the
+   * owner last pressed Refresh — so a job queued since then would sail
+   * straight through a "re-gate" that only re-checks the live busy flag.
+   * A failed read stays what it is everywhere else on this page: null,
+   * unknown, and not by itself a reason to block — the live print state
+   * remains the authority on what is actually running.
    */
   const startRender = async () => {
     setConfirmingRender(false);
     setRenderError(null);
-    if (!gate.allowed) {
-      setRenderError(gate.reason);
+    const queuedNow = await readQueuedJobs();
+    setQueuedJobs(queuedNow);
+    const dispatchGate = timelapseRenderGate({
+      connected: printer.connected,
+      busyReason: printer.busyReason,
+      queuedJobs: queuedNow,
+      rendering: render?.status === "running" || renderAsking,
+    });
+    if (!dispatchGate.allowed) {
+      setRenderError(dispatchGate.reason);
       return;
     }
     setRenderAsked({ was: render });

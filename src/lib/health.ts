@@ -139,26 +139,153 @@ export function firmwareDown(webhooksState: string | undefined): boolean {
  * otherwise would trade one wrong diagnosis for another. Copy built on this
  * verdict says "usually", never "certainly", and the raw state_message
  * stays visible in the FIRMWARE lamp either way.
+ *
+ * NARROWING (2026-08-12 verification). `Unable to obtain '<name>' response`
+ * was matched WHOLESALE, which is the same mistake as excluding
+ * `lost communication with mcu` and then re-admitting it through the back
+ * door: `identify`, `get_uptime` and `get_clock` are the connect and
+ * keepalive handshake queries, so an unanswered one is the dead-board /
+ * bad-cable signature, NOT starvation. Telling that owner "this is a timing
+ * fault, not a hardware fault" points them away from a real fault on a
+ * machine with 255 °C heaters. So the query NAME now decides:
+ *
+ *   · prtouch/probe family  → starvation (the observed mid-operation case)
+ *   · handshake / keepalive → possible MCU communication fault (cabling)
+ *   · anything else         → CAUSE UNCLEAR, claimed as neither
+ *
+ * A narrow confident classifier plus an explicit unknown beats a broad one
+ * that misdirects. `kind: "unclear"` is a first-class answer here.
  * ------------------------------------------------------------------------ */
 
+/** Scheduling/timeout wordings — Klipper missing its own deadline. */
 const HOST_STARVATION_PATTERNS: RegExp[] = [
   /rescheduled timer in the past/i,
   /missed scheduling of next/i,
   /timer too close/i,
-  /unable to obtain '[^']*' response/i,
 ];
 
-/** The probe-as-messenger wording gets its own first line in the explainer. */
-const PROBE_RESPONSE_RE = /unable to obtain '[^']*' response/i;
+/** Captures the query name from `Unable to obtain '<name>' response`. */
+const UNANSWERED_QUERY_RE = /unable to obtain '([^']*)' response/i;
+
+/**
+ * Query names asked only DURING an operation, where the answer arriving late
+ * means the host was too busy to service it. The prtouch family is what the
+ * 2026-08-12 incident actually produced; this list grows only from observed
+ * wordings, never from guesses.
+ */
+const MID_OPERATION_QUERY_RE = /prtouch|probe|deal_avgs/i;
+
+/**
+ * Connect and keepalive handshake queries. Klipper asks these to establish
+ * and hold the MCU link itself, so an unanswered one means the board is not
+ * talking — a dead board, a bad cable, or a power fault. Never starvation.
+ */
+const HANDSHAKE_QUERY_RE =
+  /^(identify|get_uptime|get_clock|get_config|get_canbus_id|config_reset|get_status|status|reset)$/i;
+
+/**
+ * Wordings that name a SPECIFIC non-starvation cause. When `state_message`
+ * carries one of these, the gcode arm may corroborate but may never
+ * override: a genuine `ADC out of range` shutdown standing next to an
+ * hours-old `Rescheduled timer in the past` line in the console ring must
+ * stay an ADC fault.
+ */
+const TRUSTED_FAULT_PATTERNS: RegExp[] = [
+  /adc out of range/i,
+  /lost communication with mcu/i,
+  /thermistor/i,
+  /not heating at expected rate/i,
+  /verify_heater/i,
+  /shutdown due to m112/i,
+];
+
+/**
+ * How far either side of the shutdown a console line may sit and still be
+ * treated as describing it. The gcode ring holds 200 lines and is never
+ * cleared, so without this an hours-old line poisons a fresh fault.
+ */
+export const STARVATION_LINE_LOOKBACK_MS = 30_000;
+export const STARVATION_LINE_SETTLE_MS = 10_000;
+
+/** How many recent console lines the gcode arm ever considers. */
+const STARVATION_LINE_SCAN = 40;
+
+/**
+ * What the shutdown was, in the classifier's own vocabulary.
+ *
+ *   · `starvation` — Klipper missed its deadline because the host was busy
+ *   · `mcu-comms`  — the mainboard did not answer its handshake: cabling
+ *   · `unclear`    — a query went unanswered and we cannot attribute it
+ *   · `none`       — nothing here to explain
+ */
+export type HostShutdownKind = "none" | "starvation" | "mcu-comms" | "unclear";
+
+/** One console line, with everything the classifier needs to trust it. */
+export interface StarvationLogLine {
+  text: string;
+  /** Client clock, ms — when the line arrived. */
+  at: number;
+  /** User-typed console input. NEVER classified from: the owner asking
+   *  "what does 'timer too close' mean?" is not evidence of a fault. */
+  fromUser: boolean;
+}
+
+export interface StarvationClassifyOptions {
+  /**
+   * Client clock at which klippy entered shutdown/error. The gcode arm is
+   * DISABLED when this is null — without an anchor there is no way to know
+   * whether a console line describes this fault or a previous session, and
+   * guessing is how stale lines poison genuine faults.
+   */
+  faultAt?: number | null;
+}
 
 export interface HostStarvationVerdict {
-  /** Klippy is down AND the message matches a starvation wording. */
+  /** The classification. See HostShutdownKind. */
+  kind: HostShutdownKind;
+  /** Klippy is down AND the message is attributable to host starvation. */
   starvation: boolean;
-  /** The match was the "unable to obtain '<x>' response" probe wording. */
+  /** The match was a probe-family query — the probe-as-messenger wording. */
   probeMessenger: boolean;
   /** The single LINE that matched, trimmed, for the explainer to quote —
    *  never the whole multi-paragraph state_message. */
   matchedText: string | null;
+  /** The query name from `Unable to obtain '<name>' response`, else null. */
+  queryName: string | null;
+}
+
+const NO_VERDICT: HostStarvationVerdict = {
+  kind: "none",
+  starvation: false,
+  probeMessenger: false,
+  matchedText: null,
+  queryName: null,
+};
+
+/** Classify one line in isolation. Null when the line says nothing. */
+function classifyLine(text: string): HostStarvationVerdict | null {
+  for (const pattern of HOST_STARVATION_PATTERNS) {
+    if (pattern.test(text)) {
+      return {
+        kind: "starvation",
+        starvation: true,
+        probeMessenger: false,
+        matchedText: text.trim(),
+        queryName: null,
+      };
+    }
+  }
+  const query = UNANSWERED_QUERY_RE.exec(text);
+  if (!query) return null;
+  const queryName = query[1] ?? "";
+  const base = { matchedText: text.trim(), queryName };
+  if (MID_OPERATION_QUERY_RE.test(queryName)) {
+    return { kind: "starvation", starvation: true, probeMessenger: true, ...base };
+  }
+  if (HANDSHAKE_QUERY_RE.test(queryName)) {
+    return { kind: "mcu-comms", starvation: false, probeMessenger: false, ...base };
+  }
+  return { kind: "unclear", starvation: false, probeMessenger: false, ...base };
 }
 
 /**
@@ -166,47 +293,59 @@ export interface HostStarvationVerdict {
  * lines — the gcode arm is not optional: the prtouch wording arrives as a
  * gcode response, not as state_message, and matching only state_message
  * would miss the exact case this feature exists for.
+ *
+ * But the two arms are NOT equals. `state_message` is Klipper's own account
+ * of why it stopped and it wins outright; the gcode ring is a 200-line
+ * scrollback that also carries user typing and lines from previous sessions,
+ * so it may only speak when `state_message` named no specific cause, and
+ * only for lines that are recent, machine-authored, and anchored to this
+ * fault.
  */
 export function classifyHostStarvationShutdown(
   webhooks: { state: string; state_message: string } | undefined,
-  recentGcodeLines: readonly string[],
+  recentGcodeLines: readonly StarvationLogLine[],
+  options: StarvationClassifyOptions = {},
 ): HostStarvationVerdict {
-  const none: HostStarvationVerdict = {
-    starvation: false,
-    probeMessenger: false,
-    matchedText: null,
-  };
   // Only a klippy that is actually down gets classified: the same wording
   // scrolling past in the console while the printer is READY is history,
   // not a fault to explain.
-  if (!webhooks || !firmwareDown(webhooks.state)) return none;
+  if (!webhooks || !firmwareDown(webhooks.state)) return NO_VERDICT;
+  const stateMessage = webhooks.state_message ?? "";
   // state_message is scanned line-by-line so the explainer quotes the ONE
   // wording that matched, not Klipper's whole multi-paragraph shutdown text.
-  const candidates = [
-    ...(webhooks.state_message ?? "").split("\n"),
-    ...recentGcodeLines.slice(-40),
-  ];
-  for (const text of candidates) {
+  for (const text of stateMessage.split("\n")) {
     if (!text) continue;
-    for (const pattern of HOST_STARVATION_PATTERNS) {
-      if (pattern.test(text)) {
-        return {
-          starvation: true,
-          probeMessenger: PROBE_RESPONSE_RE.test(text),
-          matchedText: text.trim(),
-        };
-      }
-    }
+    const verdict = classifyLine(text);
+    if (verdict) return verdict;
   }
-  return none;
+  // Klipper named a specific, non-starvation cause. The console ring gets no
+  // vote — this is the arm that turned an ADC fault into "not hardware".
+  if (TRUSTED_FAULT_PATTERNS.some((pattern) => pattern.test(stateMessage))) {
+    return NO_VERDICT;
+  }
+  const faultAt = options.faultAt ?? null;
+  if (faultAt == null) return NO_VERDICT;
+  const oldest = faultAt - STARVATION_LINE_LOOKBACK_MS;
+  const newest = faultAt + STARVATION_LINE_SETTLE_MS;
+  const eligible = recentGcodeLines
+    .slice(-STARVATION_LINE_SCAN)
+    .filter((line) => !line.fromUser && line.at >= oldest && line.at <= newest);
+  for (const line of eligible) {
+    if (!line.text) continue;
+    const verdict = classifyLine(line.text);
+    if (verdict) return verdict;
+  }
+  return NO_VERDICT;
 }
 
 /** Boolean face of the classifier, per the design's signature. */
 export function isHostStarvationShutdown(
   webhooks: { state: string; state_message: string } | undefined,
-  recentGcodeLines: readonly string[],
+  recentGcodeLines: readonly StarvationLogLine[],
+  options: StarvationClassifyOptions = {},
 ): boolean {
-  return classifyHostStarvationShutdown(webhooks, recentGcodeLines).starvation;
+  return classifyHostStarvationShutdown(webhooks, recentGcodeLines, options)
+    .starvation;
 }
 
 /**

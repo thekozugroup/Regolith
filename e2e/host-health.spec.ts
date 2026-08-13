@@ -135,8 +135,10 @@ test.describe("HOST LOAD tell-tale", () => {
     await expect(hostLamp(page)).toHaveAttribute("data-lit", "true");
     await expect(hostLamp(page)).toHaveAttribute("data-severity", "warning");
     await expect(hostLamp(page)).toHaveAttribute("data-phase", "on");
+    // "median" is in the copy because that is what the number is: a median
+    // over the readings inside the 60 s window, not a level held for 60 s.
     await expect(hostLamp(page).locator(".telltale-detail")).toHaveText(
-      "CPU 92% · 60s",
+      "CPU 92% median · 60s",
     );
 
     // Pressure clears. THE POINT OF THE LAMP: the spike that kills a print
@@ -276,6 +278,49 @@ test.describe("Pre-print host advisory — advisory only, never a gate", () => {
 
     mock.assertSealed();
   });
+
+  test("a throw on the advisory path can never take the Start button with it", async ({
+    page,
+  }) => {
+    // /print is the ONLY route in the app that starts a print, and it renders
+    // inside the shared RouteErrorBoundary. Before the local boundary, a
+    // throw anywhere on this optional advisory's path blanked the page — an
+    // advisory removing the control it advises about.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { printStart: true, timelapseWrite: "ok" },
+    });
+    await fulfilFileApi(page);
+    await page.addInitScript(() => {
+      window.localStorage.setItem("forge.debug.crash", "host-load-advisory");
+    });
+
+    await page.goto("/print");
+    const row = page.getByRole("button", { name: /benchy_0\.2mm_PLA\.gcode/ });
+    await expect(row).toBeVisible();
+    await row.click();
+    await page.getByRole("button", { name: "Start print" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // Contained and NAMED — not a silent hole, and not a printer fault.
+    await expect(
+      dialog.locator('[data-chrome-failed="host-load-advisory"]'),
+    ).toBeVisible();
+    // THE POINT: the print path is untouched. Acknowledge, start, on the wire.
+    await dialog
+      .getByRole("checkbox", { name: /build plate is seated/ })
+      .click();
+    const start = dialog.getByRole("button", { name: "Start print" });
+    await expect(start).toBeEnabled();
+    await start.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.rpcCalls()).toContain("printer.print.start");
+
+    mock.assertSealed();
+  });
 });
 
 test.describe("Shutdown legibility — naming the real cause", () => {
@@ -393,6 +438,94 @@ test.describe("Shutdown legibility — naming the real cause", () => {
         state_message: "Lost communication with MCU 'mcu'",
       },
     });
+    await expect(
+      page.locator('[data-alert-id="host-starvation-shutdown"]'),
+    ).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("an unanswered HANDSHAKE query points at the cable, not at host load", async ({
+    page,
+  }) => {
+    // `Unable to obtain '<name>' response` was matched wholesale, so this —
+    // the connect handshake going unanswered, i.e. the dead-board signature —
+    // rendered "This is a timing fault, not a hardware fault." That sends
+    // someone away from a real fault on a machine with 255 °C heaters.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await openSystems(page);
+
+    mock.push({
+      webhooks: {
+        state: "shutdown",
+        state_message: "Unable to obtain 'identify' response",
+      },
+    });
+
+    await expect(
+      page.locator('[data-alert-id="host-starvation-shutdown"]'),
+    ).toHaveCount(0);
+    const alert = page.locator('[data-alert-id="host-mcu-comms-shutdown"]');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText("The mainboard did not answer.");
+    await expect(alert).toContainText("data cable");
+    // And it must not repeat the probe claim over an unrelated query.
+    await expect(alert).not.toContainText("strain-gauge probe");
+
+    mock.assertSealed();
+  });
+
+  test("an unrecognised query is CAUSE UNCLEAR — Regolith declines to guess", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await openSystems(page);
+
+    mock.push({
+      webhooks: {
+        state: "shutdown",
+        state_message: "Unable to obtain 'some_unknown_query' response",
+      },
+    });
+
+    const alert = page.locator('[data-alert-id="host-shutdown-unclear"]');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText("the cause is unclear");
+    await expect(alert).toContainText("some_unknown_query");
+    await expect(
+      page.locator('[data-alert-id="host-starvation-shutdown"]'),
+    ).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("a hardware fault standing next to a STALE starvation line stays a hardware fault", async ({
+    page,
+  }) => {
+    // The console ring holds 200 lines and is never cleared. A genuine ADC
+    // shutdown with an old timer line still in the scrollback classified as
+    // starvation, because the gcode arm was allowed to outvote state_message.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await openSystems(page);
+
+    mock.pushGcode("!! Rescheduled timer in the past");
+    mock.push({
+      webhooks: {
+        state: "shutdown",
+        state_message:
+          "ADC out of range\nThis generally occurs when a heater sensor is malfunctioning.",
+      },
+    });
+
+    await expect(
+      page.locator('.telltale-cell[data-lamp="firmware"]'),
+    ).toHaveAttribute("data-lit", "true");
     await expect(
       page.locator('[data-alert-id="host-starvation-shutdown"]'),
     ).toHaveCount(0);

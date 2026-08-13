@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   BUFFER_STARVED_S,
   BUFFER_SUSTAIN_MS,
+  FAULT_BUFFER_MAX_AGE_MS,
   HOST_SAMPLE_CAP,
   LAMP_CPU,
   LAMP_MIN_SAMPLES,
@@ -258,7 +259,12 @@ describe("reduceBufferStarvation", () => {
   };
 
   test("the gate: not printing, no velocity, or unknown buffer all reset to silence", () => {
-    const primed: BufferStarvation = { lowSince: 90_000, starved: false, bufferS: 0.2 };
+    const primed: BufferStarvation = {
+      lowSince: 90_000,
+      starved: false,
+      bufferS: 0.2,
+      bufferAt: 90_000,
+    };
     expect(reduceBufferStarvation(primed, { ...base, printing: false })).toEqual(
       NO_BUFFER_STARVATION,
     );
@@ -294,7 +300,12 @@ describe("reduceBufferStarvation", () => {
       ...base,
       bufferS: 2.1,
     });
-    expect(next).toEqual({ lowSince: null, starved: false, bufferS: 2.1 });
+    expect(next).toEqual({
+      lowSince: null,
+      starved: false,
+      bufferS: 2.1,
+      bufferAt: base.now,
+    });
   });
 
   test("a collapse must SUSTAIN before it is starvation", () => {
@@ -335,53 +346,44 @@ describe("hostLamp", () => {
     ...over,
   });
 
-  test("unknown host, healthy buffer: dark", () => {
-    expect(hostLamp(loadOf({}), NO_BUFFER_STARVATION)).toEqual({
+  test("unknown host: dark", () => {
+    expect(hostLamp(loadOf({}))).toEqual({ condition: false });
+  });
+
+  test("THE LAW — an unsampled host never warns, whatever else is true", () => {
+    // The lamp's second trigger used to reach this state: `sampleCount: 0,
+    // cpuMedian: null` and a lit warning, because a stale live_velocity kept
+    // a motion-buffer gate open. A warning about a host we have never
+    // measured is worse than no warning, so the guard is now explicit rather
+    // than an emergent property of the thresholds.
+    expect(hostLamp(loadOf({ sampleCount: 0, cpuMedian: null }))).toEqual({
+      condition: false,
+    });
+    expect(hostLamp(loadOf({ sampleCount: 0, cpuMedian: 100 }))).toEqual({
       condition: false,
     });
   });
 
-  test("trigger A: sustained CPU with enough samples", () => {
+  test("sustained CPU with enough samples, and the detail says MEDIAN", () => {
     const lamp = hostLamp(
       loadOf({ cpuMedian: 91.2, sampleCount: LAMP_MIN_SAMPLES }),
-      NO_BUFFER_STARVATION,
     );
     expect(lamp.condition).toBe(true);
-    expect(lamp.detail).toBe("CPU 91% · 60s");
+    // Not "CPU 91% · 60s": the figure is a median over the readings inside
+    // the window, not a level held for the whole minute.
+    expect(lamp.detail).toBe("CPU 91% median · 60s");
   });
 
-  test("trigger A needs the full sample budget — a burst cannot fake 60s", () => {
+  test("the trigger needs the full sample budget — a burst cannot fake 60s", () => {
     const lamp = hostLamp(
       loadOf({ cpuMedian: 99, sampleCount: LAMP_MIN_SAMPLES - 1 }),
-      NO_BUFFER_STARVATION,
     );
     expect(lamp.condition).toBe(false);
   });
 
-  test("trigger A bar sits at 85 — a busy-but-plausible 80 stays dark", () => {
-    const lamp = hostLamp(
-      loadOf({ cpuMedian: LAMP_CPU - 1, sampleCount: 60 }),
-      NO_BUFFER_STARVATION,
-    );
+  test("the bar sits at 85 — a busy-but-plausible 80 stays dark", () => {
+    const lamp = hostLamp(loadOf({ cpuMedian: LAMP_CPU - 1, sampleCount: 60 }));
     expect(lamp.condition).toBe(false);
-  });
-
-  test("trigger B alone: buffer detail, no invented CPU number", () => {
-    const lamp = hostLamp(loadOf({}), {
-      lowSince: 0,
-      starved: true,
-      bufferS: 0.21,
-    });
-    expect(lamp.condition).toBe(true);
-    expect(lamp.detail).toBe("Buffer 0.2s");
-  });
-
-  test("both triggers: one combined detail line", () => {
-    const lamp = hostLamp(
-      loadOf({ cpuMedian: 91, sampleCount: 60 }),
-      { lowSince: 0, starved: true, bufferS: 0.2 },
-    );
-    expect(lamp.detail).toBe("CPU 91% · buffer 0.2s");
   });
 });
 
@@ -393,13 +395,50 @@ describe("snapshotHostFaultContext", () => {
     });
     const context = snapshotHostFaultContext(
       ring,
-      { lowSince: 50_000, starved: true, bufferS: 0.1 },
+      { lowSince: 50_000, starved: true, bufferS: 0.1, bufferAt: 58_500 },
       59_000,
     );
     expect(context.cpuAvg).toBe(98);
     expect(context.memAvailKb).toBe(41_984);
     expect(context.bufferS).toBe(0.1);
     expect(faultContextHasData(context)).toBe(true);
+  });
+
+  test("a buffer figure older than the freshness bar is omitted, not rendered", () => {
+    // The snapshot deliberately reads the PRE-fault buffer state, so it must
+    // police the age itself: a reading from earlier in the print is not a
+    // reading "at the moment of the fault".
+    const stale = snapshotHostFaultContext(
+      [],
+      {
+        lowSince: 0,
+        starved: true,
+        bufferS: 0.1,
+        bufferAt: 59_000 - FAULT_BUFFER_MAX_AGE_MS - 1,
+      },
+      59_000,
+    );
+    expect(stale.bufferS).toBeNull();
+    const fresh = snapshotHostFaultContext(
+      [],
+      {
+        lowSince: 0,
+        starved: true,
+        bufferS: 0.1,
+        bufferAt: 59_000 - FAULT_BUFFER_MAX_AGE_MS,
+      },
+      59_000,
+    );
+    expect(fresh.bufferS).toBe(0.1);
+  });
+
+  test("a reading with no timestamp is not a reading at the fault", () => {
+    const context = snapshotHostFaultContext(
+      [],
+      { lowSince: 0, starved: true, bufferS: 0.1, bufferAt: null },
+      59_000,
+    );
+    expect(context.bufferS).toBeNull();
   });
 
   test("no samples → every channel null, and the has-data guard says so", () => {
