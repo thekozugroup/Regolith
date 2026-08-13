@@ -2051,3 +2051,94 @@ an artifact of proxying through localhost, and it degrades honestly to
 **Device state survived the deploy** (read-only check, before and after):
 `autorender: false` and `extraoutputparams: "-threads 1"` both intact. The
 printer was left in `standby`, idle, with both heaters at target 0.
+
+## Host-health guard — the starvation that masquerades as hardware · 2026-08-12, `1b57891` + `686bfc5`
+
+Built entirely locally while an 8-hour print ran: **zero printer contact,
+no deploy** (deploy.sh's idle gate would refuse anyway, and it was not
+asked). Owner's ask: "ensure we further run tests to stabilize the system
+and prevent this from happening in the future through improvements and
+optimizations."
+
+### The two incidents this answers
+
+1. **01:16 — autorender.** Recorded in full above: ffmpeg over 1873 frames
+   on the 2-core SoC, load 2 → 30, and 28 s later
+   `MCU 'rpi' shutdown: Rescheduled timer in the past`. Power cycle
+   required. Root cause: unattended CPU-heavy work on the printing machine
+   (a third-party default Regolith had not disarmed).
+2. **17:54 — the probe that wasn't broken.** A job died with
+   `Unable to obtain 'result_deal_avgs_prtouch' response` — which reads as
+   a strain-gauge failure and cost a debugging session on hardware that
+   was fine (probe triggered cleanly; MCU link showed 9 retransmit bytes
+   in 11 MB). The measured condition underneath, **with no print
+   running**: 68 of 127 MB swap in use, 25% iowait, 0% idle. Swap thrash
+   on eMMC — the host could not run Klipper on time, and Klipper's error
+   named the probe. Root cause: `tailscaled` in userspace-networking mode
+   plus memory pressure; stopping it took swap 68 → 31 MB and iowait
+   25% → 0%, and the same file then printed cleanly.
+
+### The rule (paid for twice now)
+
+**No unattended CPU-heavy work on a printing machine — and a
+host-starvation error will masquerade as a hardware fault.** The error
+names a timer, a digital-out event, or the probe; it never names the CPU.
+Read every future "hardware" shutdown with that in mind before touching
+hardware.
+
+### What shipped
+
+- **Host telemetry from what Moonraker genuinely exposes** —
+  `notify_proc_stat_update` (`system_cpu_usage.cpu`, `system_memory`),
+  which this client was ALREADY receiving ~1 Hz as its link heartbeat and
+  discarding (`moonraker.ts`, the old "ignore — high frequency" branch).
+  **Cadence: Moonraker's own ~1 Hz push. Zero new subscriptions, zero
+  polling, zero HTTP — the guard adds a ≤130-entry ring and a browser-side
+  median, nothing on the SoC.** Swap and load average are NOT exposed and
+  are never claimed; because Moonraker folds iowait into CPU%, a thrashing
+  host reads as a pegged CPU — the honest proxy, and every string says
+  "host busy", never "swap".
+- **HOST LOAD tell-tale** (`host-load`, warning severity, LATCHING) — lit
+  on ≥85% median CPU over 60 s, or on the motion buffer
+  (`toolhead.print_time − estimated_print_time`) collapsing below 0.5 s
+  for 10 s while the head is actually moving (velocity-gated; implausible
+  cross-clock figures are unknown, never verdicts). Latching is the point:
+  the spike is over by the time the owner reads the error. Detail line
+  carries the tripping number ("CPU 91% · 60s") — text channel, no
+  colour-only state, forced-colors handling identical to the other lamps.
+- **Pre-print advisory** in PrintDialog — median ≥60% over 30 s on an idle
+  printer (≥45% when MemAvailable < 12%; strong wording at ≥85%). ADVISORY
+  ONLY, same law as KAMP and timelapse: wired to nothing, dismissible, no
+  extra click on the happy path, and e2e proves `printer.print.start`
+  reaches the wire with the warning on screen. Unknown host = silence.
+- **Shutdown legibility** — the highest-value item. When klippy is down
+  and the message matches the scheduling/timeout wordings, HealthAlerts
+  explains: timing fault, usually host CPU/IO starvation, not hardware —
+  with host load FROZEN at the fault (or an honest "not recorded"). The
+  prtouch wording gets "the probe is the messenger". The gcode-response
+  arm matters: that string never appears in `state_message`.
+  `Lost communication with MCU` is deliberately excluded (often a cable);
+  the classifier is pinned by tests against misclassifying verify_heater,
+  ADC faults, and M112.
+- **`docs/load-shedding.md`** — the runbook both surfaces link to: what to
+  stop before a long print, the tailscaled/watchdog-cron order of
+  operations, the explicit restore path, and what Regolith deliberately
+  cannot do (no service-stop button; instructions for a human).
+
+### Calibration debt (stated, not hidden)
+
+Every threshold is **provisional**, derived from the incidents' shape, not
+from a measured healthy-idle baseline — Moonraker's CPU% was not in the
+forensics (they recorded `sysload`/`memavail`). After the current print
+finishes: log `notify_proc_stat_update` for 30 min idle + 30 min printing
+and re-fit the constants in `src/lib/hostHealth.ts` (they are named and
+commented as provisional).
+
+### Gates — all green, full runs, no deploy
+
+Commit `1b57891` (telemetry + lamp): lint/unit/build 0, e2e **249 passed**
+(baseline 247 + 2). Commit `686bfc5` (advisory + explainer): lint/unit/
+build 0, e2e **254 passed** (+5: advisory shows/dismisses/never blocks,
+shutdown explainer renders, hardware faults never hijacked). The print-
+start regression suite passed on every run. The printer was never
+contacted.
