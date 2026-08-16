@@ -2853,3 +2853,38 @@ was just carefully tuned and the deploy rules said touch nothing outside
 `/usr/data/fluidd`, so **nothing was re-applied**. Follow-up, deliberately
 not done in a deploy visit: reconcile fixes 1–2 with a reviewed
 `--apply` pass, or decide the new check over-reaches.
+
+## 2026-08-16 — first real `--apply`: the box normalized to canonical (repo at fd82793)
+
+The follow-up above is done. `tools/harden-k1.sh --apply --policy` ran
+against the live, conclusively idle K1 Max — the script's first real apply
+on hardware. The owner had already approved both sets (the de-Creality
+pass was their explicit request), so policy was included.
+
+- **Check before**: exit 1, exactly the recorded state — fix 1 PARTIAL,
+  fix 2 CLI-per-tick, fix 7 `[policy]` available-but-not-requested,
+  everything else OK. No `--include-user-scripts` prompt appeared: the
+  watchdog body lives under `/opt/etc/cron.5mins/`, not the owner's
+  scripts dir, so no owner-authored file was touched.
+- **Applied**: fix 1 canonical containment written to S99tailscaled,
+  fix 2 watchdog body replaced with the pidof probe (CLI throttled to a
+  30-minute probe interval), policy fix 7 webrtc guard + flag under
+  `/usr/data/regolith-disabled`. Three timestamped backups under
+  `/usr/data/regolith-harden-backups/`, restore one-liners printed.
+- **Check after**: **exit 0, all nine fixes OK**, policy labeled.
+- **Idempotency on real hardware**: a second `--apply --policy` exited 0
+  with "All fixes already present. Nothing to apply." — no backups taken.
+- **Health after**: klippy `ready`, Moonraker 200, web UI 200, camera
+  snapshot 200 `image/jpeg`, printer on the tailnet as `forge`. The
+  running tailscaled already carried nice 19 / GOMEMLIMIT=24MiB / GOGC=40
+  from boot (the PARTIAL was the init file, not the process), so no
+  restart was needed. Watchdog body on-device confirmed: pidof liveness,
+  stamped CLI probe.
+- **Observation, not a defect fixed here**: tailscaled (nice 19, SN) was
+  sampled at ~111% of one core with loadavg ~4.3–4.9 — the fix-1
+  CPU-for-memory trade running hot. It predates this apply (pid from boot
+  had these values). Klippy unaffected; loadavg is already a deprecated
+  signal on this box. Worth a look if prints ever slow.
+
+Re-run anytime:
+`PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./tools/harden-k1.sh --check`
