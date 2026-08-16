@@ -2777,3 +2777,79 @@ that actually collapses at death), **boot grace on `system_uptime`**, and
 - **The law is untouched**: the advisory still blocks nothing — the settling
   state included — and the e2e law tests still prove the print starts with
   the advisory on screen.
+
+## Deploy — HEAD `964eb4e`, the calibrated thresholds go live · 2026-08-16
+
+The printer ran `df1088a`; this ships the delta up to `964eb4e` — the
+calibrated host-health thresholds from `74dbf7e` (memory floors, 180s
+boot-settling state, min-sample gating) plus tooling/test work. `964eb4e`
+itself touches only `tools/` + tests; the dist delta is the calibration.
+All gates were green at push: lint 0, 424 unit + 43 shell, e2e 263/263,
+build 0, egress catch-all armed with 0 leaks.
+
+### Deploy
+
+Tree clean, HEAD `964eb4e` == `origin/main`, fresh `bun run build` exit 0.
+Preflight exit **0**. Printer confirmed idle by two samples ~16s apart
+immediately before the run — `standby` both times, both heater targets 0.0,
+toolhead position `[0,0,0,0]` byte-identical across samples. Then
+`./deploy.sh` only, exit **0** (it re-verified idle itself: "conclusively
+idle (standby, Idle)"). No print was started; the printer was idle
+throughout. Nothing outside `/usr/data/fluidd` was touched.
+
+Proof the right bytes landed:
+
+- local `dist/index.html` SHA-256 `5f6caf13…` == live `index.html` `5f6caf13…`
+- 24 files local, 24 files live
+- shipped archive SHA-256 `1a321ff5…` verified on-device before the swap
+
+### Rollback
+
+- **Anchor (pre-deploy)**: live `index.html` was `23eedd88…` — exactly the
+  `df1088a` build recorded above. The chain is intact.
+- **Armed**: `fluidd.previous/index.html` is `23eedd88…`, the pre-deploy
+  build. Persistent backup `fluidd-before-20260816T210452Z.tgz`
+  (SHA-256 `66a986c6…`, 27 files, retained 5, pruned 1).
+- Rollback:
+  `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./deploy.sh --rollback`
+
+### On-device verification — 1280x800 and 800x480
+
+Loopback SSH forward again (printer `:80` → `127.0.0.1:8899`, camera
+`:8080` straight through), one viewport at a time.
+
+Both viewports: **2 dials, 24 segments each, every segment
+`stroke-linecap: butt`** (232.5x199.9 at 1280x800, 174.8x150.3 at 800x480).
+**Telemetry: 0px label-column and value-column spread in every grid**
+(`z-telemetry`, `telemetry-grid`, `telemetry-zone`). **LINK READY**,
+`link-lost` unlit. **Live tick confirmed by DOM mutation count** — 45
+mutations/4s at 1280, 32/4s at 800x480. **Zero console errors** at both
+sizes. Camera LIVE.
+
+**HOST LOAD lamp: dark, NOT settling, NOT lit** — `telltale-cell` with no
+`data-settling` attribute and no lit class, on both viewports. Host uptime
+was 4052s at the pre-deploy read, far past the 180s boot grace, so
+dark-and-silent is the calibrated correct state for a box idling at ~18%
+CPU / ~117MB free. First live reading of the new thresholds matches the
+measurement they were calibrated from.
+
+### harden-k1 --check — exit 1, and why nothing was done about it
+
+`tools/harden-k1.sh --check` (read-only) from the Mac: **exit 1, not the
+expected 0.** Stability fixes 3–6 present (light-watchdog nice wrapper,
+vm.swappiness=1 live, log rotation with 5-minute trigger, tailscaled 90s
+deferred start). Policy fixes present-with-label: 8 (fail2ban disabled)
+and 9 (Creality MQTT blackholed) both OK `[policy]`; 7 (webrtc) reports
+as available-but-not-requested — stock Creality Cloud remote access is
+still running, by choice, behind `--policy`.
+
+The two WARNs: **fix 1 tailscaled containment PARTIAL** (some of
+nice 19 / GOMEMLIMIT=24MiB / GOGC=40 missing from S99tailscaled) and
+**fix 2 tailscale watchdog "still spawns the tailscale CLI every tick"**.
+This is a stricter check, not a decayed machine: `tools/harden-k1.sh` is
+wholly new in `df1088a..964eb4e` (the fold-in), and it inspects settings
+the script that actually hardened this box never wrote. The machine state
+was just carefully tuned and the deploy rules said touch nothing outside
+`/usr/data/fluidd`, so **nothing was re-applied**. Follow-up, deliberately
+not done in a deploy visit: reconcile fixes 1–2 with a reviewed
+`--apply` pass, or decide the new check over-reaches.
