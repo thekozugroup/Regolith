@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "bun test tests && bash tests/deploy.test.sh && bash tests/setup.test.sh",
+    "test": "bun test tests && bash tests/deploy.test.sh && bash tests/setup.test.sh && bash tests/harden-k1.test.sh",
     "test:e2e": "bun run build && playwright test",
     "test:deploy": "bash tests/deploy.test.sh",
     "test:setup": "bash tests/setup.test.sh",
+    "test:harden": "bash tests/harden-k1.test.sh",
     "preview": "vite preview"
   },
   "dependencies": {
