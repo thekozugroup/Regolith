@@ -94,12 +94,23 @@ FAKE_ROOT=""
 LOG_FILE=""
 OUTPUT_FILE=""
 TS_INIT_PATH=""
+TS_DEFERRED_PATH=""
 CRON_FAST_PATH=""
 CRON_SLOW_PATH=""
 LIGHT_WD_PATH=""
 SWAP_INIT_PATH=""
 USER_SCRIPTS_PATH=""
 BACKUP_PATH=""
+OPKG_BIN_PATH=""
+LOGROTATE_BIN_PATH=""
+LOGROTATE_CONF_PATH=""
+LOGROTATE_DIR_PATH=""
+LOGROTATE_STATE_PATH=""
+KLOG_PATH=""
+WEBRTC_INIT_PATH=""
+F2B_INIT_PATH=""
+HOSTS_PATH=""
+DISABLED_PATH=""
 
 # --- Fixtures --------------------------------------------------------------
 write_ts_init() {
@@ -179,6 +190,61 @@ RTS
   ln -sf "${USER_SCRIPTS_PATH}/regolith-tailscale.sh" "${CRON_FAST_PATH}/regolith-tailscale"
 }
 
+# Fake Entware opkg: "install logrotate" drops a stub binary and conf exactly
+# where the real package would, so the payload's install path is exercised.
+write_opkg() {
+  mkdir -p "$(dirname "$OPKG_BIN_PATH")"
+  cat > "$OPKG_BIN_PATH" <<OPKG
+#!/bin/sh
+[ "\$1" = "install" ] || exit 0
+mkdir -p "$(dirname "$LOGROTATE_BIN_PATH")" "$(dirname "$LOGROTATE_CONF_PATH")"
+printf '#!/bin/sh\nexit 0\n' > "$LOGROTATE_BIN_PATH"
+chmod 755 "$LOGROTATE_BIN_PATH"
+printf 'include %s\n' "$LOGROTATE_DIR_PATH" > "$LOGROTATE_CONF_PATH"
+OPKG
+  chmod 755 "$OPKG_BIN_PATH"
+}
+
+write_webrtc_init() {
+  cat > "$WEBRTC_INIT_PATH" <<'WEBRTC'
+#!/bin/sh
+start() {
+    echo "starting webrtc"
+}
+stop() {
+    echo "stopping webrtc"
+}
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop; start ;;
+esac
+WEBRTC
+  chmod 755 "$WEBRTC_INIT_PATH"
+}
+
+write_f2b_init() {
+  cat > "$F2B_INIT_PATH" <<'F2B'
+#!/bin/sh
+
+ENABLED=yes
+PROCS=fail2ban-server
+ARGS="-b"
+PREARGS=""
+DESC=$PROCS
+PATH=/opt/bin:/opt/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+. /opt/etc/init.d/rc.func
+F2B
+  chmod 755 "$F2B_INIT_PATH"
+}
+
+write_hosts() {
+  cat > "$HOSTS_PATH" <<'HOSTS'
+127.0.0.1 localhost
+HOSTS
+}
+
 prepare_case() {
   local name="$1"
   CASE_DIR="${TEST_ROOT}/${name}"
@@ -186,12 +252,23 @@ prepare_case() {
   LOG_FILE="${CASE_DIR}/mock.log"
   OUTPUT_FILE="${CASE_DIR}/output.log"
   TS_INIT_PATH="${FAKE_ROOT}/opt/etc/init.d/S06tailscaled"
+  TS_DEFERRED_PATH="${FAKE_ROOT}/opt/etc/init.d/S99tailscaled"
   CRON_FAST_PATH="${FAKE_ROOT}/opt/etc/cron.1min"
   CRON_SLOW_PATH="${FAKE_ROOT}/opt/etc/cron.5mins"
   LIGHT_WD_PATH="${FAKE_ROOT}/usr/data/scripts/light-watchdog.sh"
   SWAP_INIT_PATH="${FAKE_ROOT}/etc/init.d/S98swap"
   USER_SCRIPTS_PATH="${FAKE_ROOT}/usr/data/scripts"
   BACKUP_PATH="${FAKE_ROOT}/usr/data/harden-backups"
+  OPKG_BIN_PATH="${FAKE_ROOT}/opt/bin/opkg"
+  LOGROTATE_BIN_PATH="${FAKE_ROOT}/opt/sbin/logrotate"
+  LOGROTATE_CONF_PATH="${FAKE_ROOT}/opt/etc/logrotate.conf"
+  LOGROTATE_DIR_PATH="${FAKE_ROOT}/opt/etc/logrotate.d"
+  LOGROTATE_STATE_PATH="${FAKE_ROOT}/opt/var/logrotate.state"
+  KLOG_PATH="${FAKE_ROOT}/usr/data/printer_data/logs"
+  WEBRTC_INIT_PATH="${FAKE_ROOT}/etc/init.d/S97webrtc"
+  F2B_INIT_PATH="${FAKE_ROOT}/opt/etc/init.d/S95fail2ban"
+  HOSTS_PATH="${FAKE_ROOT}/etc/hosts"
+  DISABLED_PATH="${FAKE_ROOT}/usr/data/regolith-disabled"
   mkdir -p "${FAKE_ROOT}/opt/etc/init.d" "$CRON_FAST_PATH" "$CRON_SLOW_PATH" \
     "$USER_SCRIPTS_PATH" "${FAKE_ROOT}/etc/init.d"
   : > "$LOG_FILE"
@@ -209,12 +286,23 @@ invoke() {
       PRINTER_HOST="${TEST_HOST:-forge.local}" \
       PRINTER_USER="${TEST_USER:-root}" \
       TS_INIT="$TS_INIT_PATH" \
+      TS_INIT_DEFERRED="$TS_DEFERRED_PATH" \
       CRON_FAST="$CRON_FAST_PATH" \
       CRON_SLOW="$CRON_SLOW_PATH" \
       LIGHT_WD="$LIGHT_WD_PATH" \
       SWAP_INIT="$SWAP_INIT_PATH" \
       USER_SCRIPTS_DIR="$USER_SCRIPTS_PATH" \
       HARDEN_BACKUP_DIR="$BACKUP_PATH" \
+      OPKG_BIN="$OPKG_BIN_PATH" \
+      LOGROTATE_BIN="$LOGROTATE_BIN_PATH" \
+      LOGROTATE_CONF="$LOGROTATE_CONF_PATH" \
+      LOGROTATE_DROPIN_DIR="$LOGROTATE_DIR_PATH" \
+      LOGROTATE_STATE="$LOGROTATE_STATE_PATH" \
+      KLIPPER_LOG_DIR="$KLOG_PATH" \
+      WEBRTC_INIT="$WEBRTC_INIT_PATH" \
+      F2B_INIT="$F2B_INIT_PATH" \
+      HOSTS_FILE="$HOSTS_PATH" \
+      DISABLED_DIR="$DISABLED_PATH" \
       bash ./tools/harden-k1.sh "$@"
   ) > "$OUTPUT_FILE" 2>&1
   INVOKE_STATUS=$?
@@ -250,6 +338,10 @@ full_fixture() {
   write_swap_init sysctl
   write_light_watchdog
   write_tailscale_watchdog "$CRON_FAST_PATH"
+  write_opkg
+  write_webrtc_init
+  write_f2b_init
+  write_hosts
 }
 
 # --- 1. static safety of the tracked script --------------------------------
@@ -264,7 +356,10 @@ else
   pass_test "shellcheck unavailable; static analysis skipped"
 fi
 
-if grep -Eq '([0-9]{1,3}\.){3}[0-9]{1,3}|\.ts\.net|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "${ROOT}/tools/harden-k1.sh"; then
+# 127.0.0.1 is exempt: fix 9 blackholes Creality's MQTT broker to loopback,
+# which leaks nothing about the owner's network. Anything else is a leak.
+if grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}|\.ts\.net|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "${ROOT}/tools/harden-k1.sh" \
+  | grep -v '^127\.0\.0\.1$' | grep -q .; then
   fail_test "harden-k1.sh contains a literal address"
 fi
 if grep -Eq '^[[:space:]]*(export[[:space:]]+)?(PRINTER_PASSWORD|SSHPASS)=[^"$]' "${ROOT}/tools/harden-k1.sh"; then
@@ -304,8 +399,8 @@ prepare_case check-missing
 full_fixture
 invoke idle --check
 [ "$INVOKE_STATUS" -eq 1 ] || fail_test "--check on an unhardened box must exit 1"
-grep -q '4 fix(es) need re-applying' "$OUTPUT_FILE" || fail_test "--check did not count the outstanding fixes"
-pass_test "--check exits 1 and counts every absent fix"
+grep -q '6 fix(es) need re-applying' "$OUTPUT_FILE" || fail_test "--check did not count the outstanding stability fixes"
+pass_test "--check exits 1 and counts every absent stability fix"
 
 # --- 4. refusal while a print is running -----------------------------------
 for busy_scenario in busy paused; do
@@ -349,16 +444,43 @@ invoke idle --apply
 [ "$INVOKE_STATUS" -eq 1 ] \
   || fail_test "--apply without --include-user-scripts must exit 1 while user files remain unfixed"
 
-grep -q '^PREARGS="nice -n 19 nohup"$' "$TS_INIT_PATH" || fail_test "fix 1 PREARGS not written"
-grep -q '^export GOMEMLIMIT=24MiB$' "$TS_INIT_PATH" || fail_test "fix 1 GOMEMLIMIT not written"
-grep -q '^export GOGC=40$' "$TS_INIT_PATH" || fail_test "fix 1 GOGC not written"
-grep -q -- '--tun=userspace-networking' "$TS_INIT_PATH" || fail_test "fix 1 destroyed the userspace-networking arg"
-grep -c '^PREARGS=' "$TS_INIT_PATH" | grep -q '^1$' || fail_test "fix 1 left a duplicate PREARGS"
-block_line="$(grep -n '^PREARGS=' "$TS_INIT_PATH" | head -1 | cut -d: -f1)"
-func_line="$(grep -n 'rc\.func' "$TS_INIT_PATH" | head -1 | cut -d: -f1)"
+# Fix 6 renames the init, so every fix-1 artifact must have survived into the
+# deferred file — and the original name must be gone from the boot glob.
+[ -f "$TS_DEFERRED_PATH" ] || fail_test "fix 6 did not produce the deferred init"
+[ -e "$TS_INIT_PATH" ] && fail_test "fix 6 left the original init name behind; both would run at boot"
+grep -q '^PREARGS="nice -n 19 nohup"$' "$TS_DEFERRED_PATH" || fail_test "fix 1 PREARGS not written"
+grep -q '^export GOMEMLIMIT=24MiB$' "$TS_DEFERRED_PATH" || fail_test "fix 1 GOMEMLIMIT not written"
+grep -q '^export GOGC=40$' "$TS_DEFERRED_PATH" || fail_test "fix 1 GOGC not written"
+grep -q -- '--tun=userspace-networking' "$TS_DEFERRED_PATH" || fail_test "fix 1 destroyed the userspace-networking arg"
+grep -c '^PREARGS=' "$TS_DEFERRED_PATH" | grep -q '^1$' || fail_test "fix 1 left a duplicate PREARGS"
+block_line="$(grep -n '^PREARGS=' "$TS_DEFERRED_PATH" | head -1 | cut -d: -f1)"
+# Match the sourcing line itself, not comments that merely mention rc.func.
+func_line="$(grep -nE '^[[:space:]]*\.[[:space:]]+.*rc\.func' "$TS_DEFERRED_PATH" | head -1 | cut -d: -f1)"
 [ "$block_line" -lt "$func_line" ] || fail_test "fix 1 block landed after rc.func and would never take effect"
-sh -n "$TS_INIT_PATH" || fail_test "fix 1 produced an unparsable init script"
+sh -n "$TS_DEFERRED_PATH" || fail_test "fix 1 produced an unparsable init script"
 pass_test "fix 1 writes containment before rc.func and keeps userspace-networking"
+
+grep -q 'regolith-ts-boot-done' "$TS_DEFERRED_PATH" || fail_test "fix 6 did not install the boot-once wrapper"
+grep -q 'sleep 90' "$TS_DEFERRED_PATH" || fail_test "fix 6 wrapper does not defer by 90 seconds"
+# rc.unslung SOURCES init scripts; an exit in the wrapper would kill boot.
+sed -n '/regolith-harden: boot-once deferred start/,/<<< regolith-harden/p' "$TS_DEFERRED_PATH" \
+  | grep -vE '^#' | grep -qw 'exit' \
+  && fail_test "fix 6 wrapper contains an exit statement in a sourced script"
+wrap_line="$(grep -n 'regolith-ts-boot-done' "$TS_DEFERRED_PATH" | head -1 | cut -d: -f1)"
+func_line="$(grep -nE '^[[:space:]]*\.[[:space:]]+.*rc\.func' "$TS_DEFERRED_PATH" | head -1 | cut -d: -f1)"
+[ "$wrap_line" -lt "$func_line" ] || fail_test "fix 6 wrapper does not gate the rc.func sourcing"
+pass_test "fix 6 renames to the deferred slot and wraps rc.func with an exit-free boot-once delay"
+
+[ -x "$LOGROTATE_BIN_PATH" ] || fail_test "fix 5 did not install logrotate through opkg"
+[ -f "${LOGROTATE_DIR_PATH}/regolith" ] || fail_test "fix 5 did not write the logrotate config"
+grep -q 'size 10M' "${LOGROTATE_DIR_PATH}/regolith" || fail_test "fix 5 config lacks the 10M threshold"
+grep -q 'copytruncate' "${LOGROTATE_DIR_PATH}/regolith" || fail_test "fix 5 config lacks copytruncate"
+grep -q 'klippy.log' "${LOGROTATE_DIR_PATH}/regolith" || fail_test "fix 5 config does not rotate klippy.log"
+grep -q 'moonraker.log' "${LOGROTATE_DIR_PATH}/regolith" || fail_test "fix 5 config does not rotate moonraker.log"
+[ -x "${CRON_SLOW_PATH}/logrotate-regolith" ] || fail_test "fix 5 did not install the 5-minute trigger"
+grep -q 'logrotate' "${CRON_SLOW_PATH}/logrotate-regolith" || fail_test "fix 5 trigger does not run logrotate"
+sh -n "${CRON_SLOW_PATH}/logrotate-regolith" || fail_test "fix 5 trigger is not parsable by sh"
+pass_test "fix 5 installs logrotate, the klippy+moonraker config, and the 5-minute trigger"
 
 grep -q 'vm.swappiness=1$' "$SWAP_INIT_PATH" || fail_test "fix 4 did not set swappiness to 1"
 grep -q 'swappiness=10' "$SWAP_INIT_PATH" && fail_test "fix 4 left the old swappiness value"
@@ -392,9 +514,9 @@ pass_test "every modified file is backed up with a timestamp and an exact restor
 
 # A stray S06tailscaled.bak inside /opt/etc/init.d still matches the rc glob
 # and would be executed at boot. Backups must not live beside the original.
-find "${FAKE_ROOT}/opt/etc/init.d" -name 'S06tailscaled.*' | grep -q . \
+find "${FAKE_ROOT}/opt/etc/init.d" \( -name 'S06tailscaled.*' -o -name 'S99tailscaled.*' -o -name 'S95fail2ban.*' \) | grep -q . \
   && fail_test "a backup was left inside the init.d directory where rc would run it"
-find "${FAKE_ROOT}/etc/init.d" -name 'S98swap.*' | grep -q . \
+find "${FAKE_ROOT}/etc/init.d" \( -name 'S98swap.*' -o -name 'S97webrtc.*' \) | grep -q . \
   && fail_test "a backup was left inside the init.d directory where rc would run it"
 pass_test "backups never land beside an init script the boot glob would execute"
 
@@ -411,9 +533,11 @@ pass_test "second --apply is a no-op for fixes already present"
 
 invoke idle --check
 [ "$INVOKE_STATUS" -eq 1 ] || fail_test "--check should still flag the untouched owner files"
-grep -q '2 fix(es) need re-applying' "$OUTPUT_FILE" \
-  || fail_test "--check should report exactly the two deliberately-skipped owner files"
-pass_test "--check after apply reports exactly the deliberately-skipped owner files"
+# Three remain, all gated on the owner opt-in: the fix-2 watchdog body, the
+# fix-3 python wrapper, and the fix-6 watchdog retarget inside that same body.
+grep -q '3 fix(es) need re-applying' "$OUTPUT_FILE" \
+  || fail_test "--check should report exactly the deliberately-skipped owner-file work"
+pass_test "--check after apply reports exactly the deliberately-skipped owner-file work"
 
 # --- 7. the user-owned file, with consent ----------------------------------
 invoke idle --apply --include-user-scripts
@@ -433,6 +557,16 @@ invoke idle --apply --include-user-scripts
 grep -q 'All fixes already present' "$OUTPUT_FILE" || fail_test "fully hardened apply is not a no-op"
 pass_test "a fully hardened box applies nothing and exits 0"
 
+# None of the runs so far passed --policy, so the de-Creality set must be
+# completely untouched — stability without policy is a supported end state.
+grep -q 'mqtt.crealitycloud.com' "$HOSTS_PATH" && fail_test "hosts was modified without --policy"
+grep -q 'regolith-harden' "$WEBRTC_INIT_PATH" && fail_test "the webrtc init was modified without --policy"
+grep -q '^ENABLED=yes' "$F2B_INIT_PATH" || fail_test "fail2ban was disabled without --policy"
+[ -e "$DISABLED_PATH" ] && fail_test "the disabled-flags directory was created without --policy"
+grep -q 'available but not requested' "$OUTPUT_FILE" \
+  || fail_test "the policy availability note is missing from a stability-only run"
+pass_test "--apply without --policy never touches the de-Creality set, and says it is available"
+
 invoke idle --check
 [ "$INVOKE_STATUS" -eq 0 ] || fail_test "--check on a hardened box must exit 0"
 grep -q 'All fixes present' "$OUTPUT_FILE" || fail_test "--check did not confirm a hardened box"
@@ -447,19 +581,32 @@ grep -q 'PROBE_INTERVAL=1800' "${USER_SCRIPTS_PATH}/tailscale-watchdog.sh" \
   || fail_test "hardened watchdog does not throttle the CLI probe to 30 minutes"
 sh -n "${USER_SCRIPTS_PATH}/tailscale-watchdog.sh" \
   || fail_test "hardened watchdog is not parsable by sh"
-pass_test "hardened watchdog uses pidof and throttles the CLI probe to 30 minutes"
+# Fix 6 renamed the init; a watchdog that still starts the old name would
+# leave a crashed tailscaled down forever.
+grep -q 'S99tailscaled' "${USER_SCRIPTS_PATH}/tailscale-watchdog.sh" \
+  || fail_test "watchdog INIT was not retargeted to the deferred init"
+grep -q 'S06tailscaled' "${USER_SCRIPTS_PATH}/tailscale-watchdog.sh" \
+  && fail_test "watchdog still references the pre-rename init name"
+pass_test "hardened watchdog uses pidof, throttles the CLI probe, and starts the deferred init"
 
 # --- 9. the userspace-networking guard -------------------------------------
 prepare_case no-tun
 write_ts_init '--socket=/var/run/tailscale/tailscaled.sock'
 write_swap_init sysctl
 write_light_watchdog
-before_init="$(cat "$TS_INIT_PATH")"
 invoke idle --apply
 grep -q 'userspace-networking is MISSING' "$OUTPUT_FILE" \
   || fail_test "missing userspace-networking was not called out"
-[ "$(cat "$TS_INIT_PATH")" = "$before_init" ] \
-  || fail_test "fix 1 edited a tailscaled init that cannot start on this box"
+# Fix 6 may legitimately rename and wrap the init (deferral is orthogonal to
+# the broken ARGS), but fix 1 must not have written containment into it.
+active_init="$TS_INIT_PATH"
+[ -f "$TS_DEFERRED_PATH" ] && active_init="$TS_DEFERRED_PATH"
+grep -q 'GOMEMLIMIT' "$active_init" \
+  && fail_test "fix 1 edited a tailscaled init that cannot start on this box"
+grep -q 'nice -n 19 nohup' "$active_init" \
+  && fail_test "fix 1 edited a tailscaled init that cannot start on this box"
+grep -q -- '--socket=/var/run/tailscale/tailscaled.sock' "$active_init" \
+  || fail_test "the owner's ARGS did not survive"
 [ "$INVOKE_STATUS" -eq 1 ] || fail_test "the tun guard must leave the run failing"
 pass_test "fix 1 refuses to touch an init script missing --tun=userspace-networking"
 
@@ -484,7 +631,14 @@ grep -q 'not installed; nothing to harden' "$OUTPUT_FILE" \
   || fail_test "an absent watchdog should be reported as nothing to do"
 grep -q 'does not exist; nothing to wrap' "$OUTPUT_FILE" \
   || fail_test "an absent light-watchdog should be reported as nothing to do"
-grep -q '2 fix(es) need re-applying' "$OUTPUT_FILE" \
+grep -q 'no Entware opkg' "$OUTPUT_FILE" \
+  || fail_test "a box without Entware opkg should report fix 5 as nothing to do"
+grep -q 'not installed; nothing to disable' "$OUTPUT_FILE" \
+  || fail_test "an absent fail2ban should be reported as nothing to disable"
+grep -q 'does not exist; nothing to disable' "$OUTPUT_FILE" \
+  || fail_test "an absent webrtc init should be reported as nothing to disable"
+# Outstanding: fixes 1, 4, and 6 — never the absent subsystems.
+grep -q '3 fix(es) need re-applying' "$OUTPUT_FILE" \
   || fail_test "absent subsystems must not be counted as outstanding fixes"
 pass_test "a subsystem that does not exist is not counted as a missing fix"
 
@@ -538,5 +692,78 @@ grep -q '^SSH_EXEC$' "$LOG_FILE" || fail_test "no remote payload was executed"
 # reaching here without a 93 means each one is busybox-parsable.
 [ "$INVOKE_STATUS" -ne 93 ] || fail_test "a remote payload was not POSIX sh"
 pass_test "every remote payload parses as POSIX sh"
+
+# --- 15. the policy flag ----------------------------------------------------
+prepare_case policy-separation
+full_fixture
+
+invoke idle --check
+[ "$INVOKE_STATUS" -eq 1 ] || fail_test "--check on an unhardened box must exit 1"
+grep -q '\[policy\]' "$OUTPUT_FILE" || fail_test "--check does not label the policy fixes distinctly"
+grep -q '6 fix(es) need re-applying' "$OUTPUT_FILE" \
+  || fail_test "absent policy fixes were counted without --policy"
+grep -q '3 policy fix(es)' "$OUTPUT_FILE" \
+  || fail_test "--check does not count the available policy fixes separately"
+grep -q -- '--policy' "$OUTPUT_FILE" || fail_test "--check does not name the opt-in flag"
+pass_test "--check reports policy fixes distinctly and never counts them without --policy"
+
+invoke idle --check --policy
+[ "$INVOKE_STATUS" -eq 1 ] || fail_test "--check --policy must exit 1 while policy fixes are absent"
+grep -q '9 fix(es) need re-applying' "$OUTPUT_FILE" \
+  || fail_test "--check --policy did not count the de-Creality set"
+pass_test "--check --policy counts stability and policy together"
+
+invoke idle --apply --policy --include-user-scripts
+[ "$INVOKE_STATUS" -eq 0 ] || fail_test "--apply --policy --include-user-scripts must finish clean"
+
+grep -q 'regolith-harden: webrtc' "$WEBRTC_INIT_PATH" || fail_test "fix 7 guard not written"
+sh -n "$WEBRTC_INIT_PATH" || fail_test "fix 7 produced an unparsable init script"
+[ -f "${DISABLED_PATH}/webrtc" ] || fail_test "fix 7 flag file not created"
+grep -q 'Monitor' "${DISABLED_PATH}/webrtc" || fail_test "fix 7 flag file does not document itself"
+# The guard must sit inside start(): Monitor resurrects webrtc by running this
+# very script, so a guard anywhere else is undone within seconds.
+start_line="$(grep -n '^start()' "$WEBRTC_INIT_PATH" | head -1 | cut -d: -f1)"
+guard_line="$(grep -n 'regolith-harden: webrtc' "$WEBRTC_INIT_PATH" | head -1 | cut -d: -f1)"
+stop_line="$(grep -n '^stop()' "$WEBRTC_INIT_PATH" | head -1 | cut -d: -f1)"
+[ "$guard_line" -gt "$start_line" ] && [ "$guard_line" -lt "$stop_line" ] \
+  || fail_test "fix 7 guard is not inside start()"
+pass_test "fix 7 guards start() behind the self-documenting flag file"
+
+grep -q '^ENABLED=no' "$F2B_INIT_PATH" || fail_test "fix 8 did not set ENABLED=no"
+grep -q 'ENABLED=yes' "$F2B_INIT_PATH" && fail_test "fix 8 left ENABLED=yes behind"
+sh -n "$F2B_INIT_PATH" || fail_test "fix 8 produced an unparsable init script"
+pass_test "fix 8 disables fail2ban through its own ENABLED switch"
+
+grep -q '^127\.0\.0\.1 mqtt\.crealitycloud\.com' "$HOSTS_PATH" \
+  || fail_test "fix 9 did not blackhole the Creality MQTT broker"
+grep -q '^127\.0\.0\.1 localhost' "$HOSTS_PATH" || fail_test "fix 9 destroyed the existing hosts content"
+grep -c 'mqtt.crealitycloud.com' "$HOSTS_PATH" | grep -q '^1$' \
+  || fail_test "fix 9 appended a duplicate hosts entry"
+pass_test "fix 9 appends the loopback block without touching the rest of hosts"
+
+find "$BACKUP_PATH" -type f -name '*S97webrtc.[0-9]*' | grep -q . || fail_test "fix 7 took no backup"
+find "$BACKUP_PATH" -type f -name '*S95fail2ban.[0-9]*' | grep -q . || fail_test "fix 8 took no backup"
+find "$BACKUP_PATH" -type f -name '*etc_hosts.[0-9]*' | grep -q . || fail_test "fix 9 took no backup"
+grep -q 'Restore commands' "$OUTPUT_FILE" || fail_test "policy apply did not print restore commands"
+pass_test "every policy fix is backed up with a printed restore command"
+
+before="$(fingerprint)"
+backups_before="$(backup_count)"
+invoke idle --apply --policy --include-user-scripts
+[ "$INVOKE_STATUS" -eq 0 ] || fail_test "second --apply --policy must exit 0"
+grep -q 'All fixes already present' "$OUTPUT_FILE" || fail_test "second policy apply is not a no-op"
+[ "$(fingerprint)" = "$before" ] || fail_test "second policy apply changed files that were already correct"
+[ "$(backup_count)" = "$backups_before" ] || fail_test "second policy apply wrote redundant backups"
+pass_test "the policy set is idempotent"
+
+invoke idle --check --policy
+[ "$INVOKE_STATUS" -eq 0 ] || fail_test "--check --policy on a fully hardened box must exit 0"
+grep -q 'All fixes present' "$OUTPUT_FILE" || fail_test "--check --policy did not confirm the hardened box"
+pass_test "--check --policy exits 0 once the policy set is applied"
+
+invoke idle --check
+[ "$INVOKE_STATUS" -eq 0 ] || fail_test "--check without --policy must not fail over applied policy fixes"
+grep -q 'webrtc disabled' "$OUTPUT_FILE" || fail_test "applied policy fixes should be reported as present"
+pass_test "--check without --policy still reports applied policy fixes as present"
 
 printf '1..%d\n' "$pass_count"

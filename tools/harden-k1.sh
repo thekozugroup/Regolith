@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# Re-apply the host-starvation fixes that keep a Creality K1 Max printing.
+# Re-apply the fixes that keep a Creality K1 Max printing — and, opted in,
+# the de-Creality policy set.
 #
 # Every one of these fixes lives in a path a Creality firmware update wipes
 # (/etc/init.d and /opt/etc on overlayfs) or that an S96wipe_data can clear.
 # This script is the durable copy: run --check after a firmware update to see
 # what came back broken, then --apply to put it back.
 #
+# Fixes 1-6 are STABILITY: memory containment, watchdog cost, swappiness,
+# log rotation, boot-storm deferral. Fixes 7-9 are POLICY: disabling Creality
+# cloud daemons and blocking plain-MQTT telemetry. Policy fixes are only ever
+# applied with the explicit --policy flag, and their absence never fails a run
+# without it — a future owner can keep the stability set and none of the rest.
+#
 # Usage:
 #   ./tools/harden-k1.sh                          # --check (default), changes nothing
 #   ./tools/harden-k1.sh --check                  # report present/absent/partial
-#   ./tools/harden-k1.sh --apply                  # re-apply the system fixes
+#   ./tools/harden-k1.sh --check --policy         # also count the policy fixes
+#   ./tools/harden-k1.sh --apply                  # re-apply the stability fixes
+#   ./tools/harden-k1.sh --apply --policy         # also apply the de-Creality set
 #   ./tools/harden-k1.sh --apply --include-user-scripts
 #                                                 # also touch owner-authored scripts
 #
@@ -44,12 +53,23 @@ PRINTER_HOST="${PRINTER_HOST:-forge.local}"
 # generic. Defaults match a K1 Max running Entware under /opt.
 # ---------------------------------------------------------------------------
 TS_INIT="${TS_INIT:-/opt/etc/init.d/S06tailscaled}"      # Entware tailscaled init
+TS_INIT_DEFERRED="${TS_INIT_DEFERRED:-/opt/etc/init.d/S99tailscaled}"  # after the fix-6 rename
 CRON_FAST="${CRON_FAST:-/opt/etc/cron.1min}"             # busybox run-parts, 60s tier
 CRON_SLOW="${CRON_SLOW:-/opt/etc/cron.5mins}"            # busybox run-parts, 5min tier
 LIGHT_WD="${LIGHT_WD:-/usr/data/scripts/light-watchdog.sh}"
 SWAP_INIT="${SWAP_INIT:-/etc/init.d/S98swap}"            # firmware init, overlayfs
 USER_SCRIPTS_DIR="${USER_SCRIPTS_DIR:-/usr/data/scripts}"
 HARDEN_BACKUP_DIR="${HARDEN_BACKUP_DIR:-/usr/data/regolith-harden-backups}"
+OPKG_BIN="${OPKG_BIN:-/opt/bin/opkg}"                    # Entware package manager
+LOGROTATE_BIN="${LOGROTATE_BIN:-/opt/sbin/logrotate}"    # installed by fix 5
+LOGROTATE_CONF="${LOGROTATE_CONF:-/opt/etc/logrotate.conf}"
+LOGROTATE_DROPIN_DIR="${LOGROTATE_DROPIN_DIR:-/opt/etc/logrotate.d}"
+LOGROTATE_STATE="${LOGROTATE_STATE:-/opt/var/logrotate.state}"
+KLIPPER_LOG_DIR="${KLIPPER_LOG_DIR:-/usr/data/printer_data/logs}"
+WEBRTC_INIT="${WEBRTC_INIT:-/etc/init.d/S97webrtc}"      # Creality Cloud webrtc, overlayfs
+F2B_INIT="${F2B_INIT:-/opt/etc/init.d/S95fail2ban}"      # Entware fail2ban init
+HOSTS_FILE="${HOSTS_FILE:-/etc/hosts}"
+DISABLED_DIR="${DISABLED_DIR:-/usr/data/regolith-disabled}"  # self-documenting flag files
 # Glob that identifies the tailscale watchdog cron entry. Deliberately narrow:
 # Regolith's own /opt/etc/cron.1min/regolith-tailscale status writer is a
 # different thing and is never moved or rewritten by this script.
@@ -60,6 +80,7 @@ WATCHDOG_GLOB="${WATCHDOG_GLOB:-*tailscale*watchdog*}"
 
 MODE="check"
 INCLUDE_USER_SCRIPTS=0
+INCLUDE_POLICY=0
 TARGET=""
 TEMP_DIR=""
 declare -a SSH_COMMAND=()
@@ -73,14 +94,21 @@ fail() { printf '    ERROR  %s\n' "$*" >&2; exit 2; }
 
 usage() {
   cat <<'USAGE'
-harden-k1.sh — re-apply the K1 Max host-starvation fixes.
+harden-k1.sh — re-apply the K1 Max stability fixes, and optionally the
+de-Creality policy set.
 
   ./tools/harden-k1.sh                    report only (default), changes nothing
   ./tools/harden-k1.sh --check            same as above
-  ./tools/harden-k1.sh --apply            re-apply the system fixes
+  ./tools/harden-k1.sh --check --policy   also count the policy fixes as missing
+  ./tools/harden-k1.sh --apply            re-apply the stability fixes (1-6)
+  ./tools/harden-k1.sh --apply --policy   also apply the de-Creality set (7-9)
   ./tools/harden-k1.sh --apply --include-user-scripts
                                           also repair owner-authored scripts
   ./tools/harden-k1.sh --help
+
+Fixes 1-6 are stability (starvation, logs, boot storm); 7-9 are policy
+(webrtc off, fail2ban off, Creality MQTT telemetry blocked). Without
+--policy the policy fixes are reported but never applied and never counted.
 
 Environment: PRINTER_HOST (forge.local), PRINTER_USER (root).
 Exit 0 = all present, 1 = something missing or failed, 2 = refused.
@@ -93,6 +121,7 @@ for argument in "$@"; do
     --check) MODE="check" ;;
     --apply) MODE="apply" ;;
     --include-user-scripts) INCLUDE_USER_SCRIPTS=1 ;;
+    --policy) INCLUDE_POLICY=1 ;;
     --help | -h)
       usage
       exit 0
@@ -143,8 +172,11 @@ validate_glob() {
 
 validate_host "$PRINTER_HOST" || fail "Invalid PRINTER_HOST. Use forge.local or a plain trusted LAN hostname/IP."
 validate_path_segment "$PRINTER_USER" || fail "Invalid PRINTER_USER. Use a plain account name such as root."
-for candidate_path in "$TS_INIT" "$CRON_FAST" "$CRON_SLOW" "$LIGHT_WD" "$SWAP_INIT" \
-  "$USER_SCRIPTS_DIR" "$HARDEN_BACKUP_DIR"; do
+for candidate_path in "$TS_INIT" "$TS_INIT_DEFERRED" "$CRON_FAST" "$CRON_SLOW" \
+  "$LIGHT_WD" "$SWAP_INIT" "$USER_SCRIPTS_DIR" "$HARDEN_BACKUP_DIR" \
+  "$OPKG_BIN" "$LOGROTATE_BIN" "$LOGROTATE_CONF" "$LOGROTATE_DROPIN_DIR" \
+  "$LOGROTATE_STATE" "$KLIPPER_LOG_DIR" "$WEBRTC_INIT" "$F2B_INIT" \
+  "$HOSTS_FILE" "$DISABLED_DIR"; do
   validate_absolute_path "$candidate_path" \
     || fail "Invalid target path: ${candidate_path}. Use an absolute path such as /etc/init.d/S98swap."
 done
@@ -153,7 +185,8 @@ validate_glob "$WATCHDOG_GLOB" || fail "Invalid WATCHDOG_GLOB. Use a plain glob 
 # Hard refusal, independent of the validators: this tool has no business near
 # Klipper configuration. A firmware fix that edits printer.cfg is a different
 # and much more dangerous tool than this one.
-for candidate_path in "$TS_INIT" "$LIGHT_WD" "$SWAP_INIT"; do
+for candidate_path in "$TS_INIT" "$TS_INIT_DEFERRED" "$LIGHT_WD" "$SWAP_INIT" \
+  "$WEBRTC_INIT" "$F2B_INIT" "$HOSTS_FILE" "$LOGROTATE_DROPIN_DIR" "$KLIPPER_LOG_DIR"; do
   case "$candidate_path" in
     *printer.cfg | */printer_data/config/*)
       fail "Refusing to target ${candidate_path}. This script never writes Klipper configuration."
@@ -161,8 +194,19 @@ for candidate_path in "$TS_INIT" "$LIGHT_WD" "$SWAP_INIT"; do
   esac
 done
 
-readonly PRINTER_USER TS_INIT CRON_FAST CRON_SLOW LIGHT_WD SWAP_INIT
+# Derived paths, and the one hostname this script exists to blackhole.
+# mqtt.crealitycloud.com is Creality's telemetry broker, not anything of the
+# owner's: app-server streams temperatures and feedrate there over plain MQTT
+# even when the device is cloud-unbound with data_collect=0.
+LOGROTATE_DROPIN="${LOGROTATE_DROPIN_DIR}/regolith"
+LOGROTATE_TRIGGER="${CRON_SLOW}/logrotate-regolith"
+MQTT_TELEMETRY_HOST="mqtt.crealitycloud.com"
+
+readonly PRINTER_USER TS_INIT TS_INIT_DEFERRED CRON_FAST CRON_SLOW LIGHT_WD SWAP_INIT
 readonly USER_SCRIPTS_DIR HARDEN_BACKUP_DIR WATCHDOG_GLOB
+readonly OPKG_BIN LOGROTATE_BIN LOGROTATE_CONF LOGROTATE_DROPIN_DIR LOGROTATE_STATE
+readonly KLIPPER_LOG_DIR WEBRTC_INIT F2B_INIT HOSTS_FILE DISABLED_DIR
+readonly LOGROTATE_DROPIN LOGROTATE_TRIGGER MQTT_TELEMETRY_HOST
 TARGET="${PRINTER_USER}@${PRINTER_HOST}"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -283,12 +327,22 @@ ok "Printer is conclusively idle (${print_state}, ${idle_state})"
 remote_check_script() {
   cat <<REMOTE_VARS
 TS_INIT='${TS_INIT}'
+TS_INIT_DEFERRED='${TS_INIT_DEFERRED}'
 CRON_FAST='${CRON_FAST}'
 CRON_SLOW='${CRON_SLOW}'
 LIGHT_WD='${LIGHT_WD}'
 SWAP_INIT='${SWAP_INIT}'
 WATCHDOG_GLOB='${WATCHDOG_GLOB}'
 USER_SCRIPTS_DIR='${USER_SCRIPTS_DIR}'
+OPKG_BIN='${OPKG_BIN}'
+LOGROTATE_BIN='${LOGROTATE_BIN}'
+LOGROTATE_DROPIN='${LOGROTATE_DROPIN}'
+LOGROTATE_TRIGGER='${LOGROTATE_TRIGGER}'
+WEBRTC_INIT='${WEBRTC_INIT}'
+F2B_INIT='${F2B_INIT}'
+HOSTS_FILE='${HOSTS_FILE}'
+DISABLED_DIR='${DISABLED_DIR}'
+MQTT_HOST='${MQTT_TELEMETRY_HOST}'
 REMOTE_VARS
   cat <<'REMOTE_CHECK'
 set -u
@@ -300,20 +354,26 @@ say() { printf '%s\n' "$*"; }
 canonical_user_dir="$(readlink -f "$USER_SCRIPTS_DIR" 2>/dev/null || true)"
 say "USER_DIR_CANONICAL ${canonical_user_dir:-$USER_SCRIPTS_DIR}"
 
+# After fix 6 the tailscaled init lives under its deferred name. Fix 1 must
+# inspect and repair whichever of the two actually exists.
+TS_ACTIVE="$TS_INIT"
+[ -f "$TS_INIT_DEFERRED" ] && TS_ACTIVE="$TS_INIT_DEFERRED"
+say "TS_ACTIVE ${TS_ACTIVE}"
+
 # --- Fix 1: tailscaled memory containment ---------------------------------
-if [ ! -f "$TS_INIT" ]; then
+if [ ! -f "$TS_ACTIVE" ]; then
   say "FIX1 missing-file"
 else
   pre=0; lim=0; gogc=0
-  grep -q '^PREARGS="nice -n 19 nohup"$' "$TS_INIT" && pre=1
-  grep -q '^export GOMEMLIMIT=24MiB$' "$TS_INIT" && lim=1
-  grep -q '^export GOGC=40$' "$TS_INIT" && gogc=1
+  grep -q '^PREARGS="nice -n 19 nohup"$' "$TS_ACTIVE" && pre=1
+  grep -q '^export GOMEMLIMIT=24MiB$' "$TS_ACTIVE" && lim=1
+  grep -q '^export GOGC=40$' "$TS_ACTIVE" && gogc=1
   case "${pre}${lim}${gogc}" in
     111) say "FIX1 present" ;;
     000) say "FIX1 absent" ;;
     *) say "FIX1 partial" ;;
   esac
-  if grep -q -- '--tun=userspace-networking' "$TS_INIT"; then
+  if grep -q -- '--tun=userspace-networking' "$TS_ACTIVE"; then
     say "FIX1_TUN present"
   else
     say "FIX1_TUN absent"
@@ -323,6 +383,7 @@ fi
 # --- Fix 2: tailscale watchdog cost ---------------------------------------
 entry=""
 tier=""
+body=""
 for dir in "$CRON_SLOW" "$CRON_FAST"; do
   [ -d "$dir" ] || continue
   for candidate in "$dir"/$WATCHDOG_GLOB; do
@@ -408,6 +469,77 @@ if [ -r /proc/sys/vm/swappiness ]; then
   say "FIX4_LIVE $(cat /proc/sys/vm/swappiness)"
 fi
 
+# --- Fix 5: log rotation ---------------------------------------------------
+if [ ! -x "$LOGROTATE_BIN" ] && [ ! -x "$OPKG_BIN" ]; then
+  say "FIX5 no-entware"
+else
+  lr_bin=0; lr_conf=0; lr_trig=0
+  [ -x "$LOGROTATE_BIN" ] && lr_bin=1
+  [ -f "$LOGROTATE_DROPIN" ] && grep -q 'copytruncate' "$LOGROTATE_DROPIN" && lr_conf=1
+  [ -x "$LOGROTATE_TRIGGER" ] && grep -q 'logrotate' "$LOGROTATE_TRIGGER" && lr_trig=1
+  case "${lr_bin}${lr_conf}${lr_trig}" in
+    111) say "FIX5 present" ;;
+    000) say "FIX5 absent" ;;
+    *) say "FIX5 partial" ;;
+  esac
+fi
+
+# --- Fix 6: tailscaled deferred start (boot storm) -------------------------
+if [ ! -f "$TS_INIT" ] && [ ! -f "$TS_INIT_DEFERRED" ]; then
+  say "FIX6 missing-file"
+else
+  renamed=0; wrapped=0
+  if [ -f "$TS_INIT_DEFERRED" ] && [ ! -f "$TS_INIT" ]; then renamed=1; fi
+  [ -f "$TS_INIT_DEFERRED" ] && grep -q 'regolith-ts-boot-done' "$TS_INIT_DEFERRED" && wrapped=1
+  case "${renamed}${wrapped}" in
+    11) say "FIX6 present" ;;
+    00) say "FIX6 absent" ;;
+    *) say "FIX6 partial" ;;
+  esac
+fi
+# The watchdog must start the init under its post-rename name, or a crashed
+# tailscaled stays down. Compared by basename: the watchdog body references
+# the real on-printer path even when this check runs against a sandbox.
+ts_base="${TS_INIT##*/}"
+ts_def_base="${TS_INIT_DEFERRED##*/}"
+if [ -n "$body" ] && [ -f "$body" ] && grep -q "$ts_base" "$body"; then
+  say "FIX6_WD stale"
+elif [ -n "$body" ] && [ -f "$body" ] && grep -q "$ts_def_base" "$body"; then
+  say "FIX6_WD present"
+else
+  say "FIX6_WD skip"
+fi
+
+# --- Fix 7 (policy): Creality webrtc disabled ------------------------------
+if [ ! -f "$WEBRTC_INIT" ]; then
+  say "FIX7 missing-file"
+else
+  guard=0; flag=0
+  grep -q 'regolith-harden: webrtc' "$WEBRTC_INIT" && guard=1
+  [ -f "${DISABLED_DIR}/webrtc" ] && flag=1
+  case "${guard}${flag}" in
+    11) say "FIX7 present" ;;
+    00) say "FIX7 absent" ;;
+    *) say "FIX7 partial" ;;
+  esac
+fi
+
+# --- Fix 8 (policy): fail2ban disabled -------------------------------------
+if [ ! -f "$F2B_INIT" ]; then
+  say "FIX8 skip"
+elif grep -q '^ENABLED=no' "$F2B_INIT"; then
+  say "FIX8 present"
+else
+  say "FIX8 absent"
+fi
+
+# --- Fix 9 (policy): Creality MQTT telemetry blocked -----------------------
+if [ -f "$HOSTS_FILE" ] && grep -q "$MQTT_HOST" "$HOSTS_FILE"; then
+  say "FIX9 present"
+else
+  say "FIX9 absent"
+fi
+
 say "CHECK_DONE"
 exit 0
 REMOTE_CHECK
@@ -424,6 +556,15 @@ FIX3_STATE="unknown"
 FIX4_STATE="unknown"
 FIX4_VALUE="none"
 FIX4_LIVE="unknown"
+FIX5_STATE="unknown"
+FIX6_CORE="unknown"
+FIX6_WD="skip"
+FIX6_STATE="unknown"
+FIX7_STATE="unknown"
+FIX8_STATE="unknown"
+FIX9_STATE="unknown"
+TS_ACTIVE_PATH="$TS_INIT"
+POLICY_AVAILABLE=0
 USER_DIR_CANONICAL="$USER_SCRIPTS_DIR"
 declare -a ADVISORIES=()
 
@@ -441,6 +582,14 @@ run_check() {
   FIX4_STATE="unknown"
   FIX4_VALUE="none"
   FIX4_LIVE="unknown"
+  FIX5_STATE="unknown"
+  FIX6_CORE="unknown"
+  FIX6_WD="skip"
+  FIX6_STATE="unknown"
+  FIX7_STATE="unknown"
+  FIX8_STATE="unknown"
+  FIX9_STATE="unknown"
+  TS_ACTIVE_PATH="$TS_INIT"
   USER_DIR_CANONICAL="$USER_SCRIPTS_DIR"
   ADVISORIES=()
 
@@ -462,17 +611,42 @@ run_check() {
       FIX4) FIX4_STATE="$value" ;;
       FIX4_VALUE) FIX4_VALUE="$value" ;;
       FIX4_LIVE) FIX4_LIVE="$value" ;;
+      FIX5) FIX5_STATE="$value" ;;
+      FIX6) FIX6_CORE="$value" ;;
+      FIX6_WD) FIX6_WD="$value" ;;
+      FIX7) FIX7_STATE="$value" ;;
+      FIX8) FIX8_STATE="$value" ;;
+      FIX9) FIX9_STATE="$value" ;;
+      TS_ACTIVE) TS_ACTIVE_PATH="$value" ;;
       USER_DIR_CANONICAL) [ -n "$value" ] && USER_DIR_CANONICAL="$value" ;;
       ADVISORY_CLI) ADVISORIES+=("$value") ;;
       *) ;;
     esac
   done < "$report_file"
 
+  # The reported active init is spliced back into repair payloads, so it may
+  # only ever be one of the two configured spellings. Anything else is a
+  # compromised or confused remote and gets refused.
+  case "$TS_ACTIVE_PATH" in
+    "$TS_INIT" | "$TS_INIT_DEFERRED") ;;
+    *) fail "Remote reported an unexpected tailscaled init path: ${TS_ACTIVE_PATH}" ;;
+  esac
+
   if [ "$FIX2_STATE" != "skip" ] && [ "$FIX2_TIER" = "present" ] && [ "$FIX2_PROBE" = "present" ]; then
     FIX2_STATE="present"
   elif [ "$FIX2_STATE" != "skip" ]; then
     FIX2_STATE="absent"
   fi
+
+  # Fix 6 is only truly done when the rename+wrapper are in place AND the
+  # watchdog has been retargeted at the renamed init.
+  case "$FIX6_CORE" in
+    missing-file) FIX6_STATE="missing-file" ;;
+    present)
+      if [ "$FIX6_WD" = "stale" ]; then FIX6_STATE="partial"; else FIX6_STATE="present"; fi
+      ;;
+    *) FIX6_STATE="$FIX6_CORE" ;;
+  esac
 }
 
 # Checked against both the configured and the canonical form of the scripts
@@ -491,12 +665,13 @@ is_user_owned() {
 # branch on zero and see how much is outstanding.
 report_state() {
   local outstanding=0
+  POLICY_AVAILABLE=0
 
   case "$FIX1_STATE" in
-    present) ok "1. tailscaled containment (nice 19, GOMEMLIMIT=24MiB, GOGC=40) — present in ${TS_INIT}" ;;
-    partial) warn "1. tailscaled containment — PARTIAL in ${TS_INIT}; some settings are missing" ;;
-    absent) warn "1. tailscaled containment — ABSENT from ${TS_INIT}" ;;
-    missing-file) warn "1. tailscaled containment — ${TS_INIT} does not exist (Entware tailscale not installed?)" ;;
+    present) ok "1. tailscaled containment (nice 19, GOMEMLIMIT=24MiB, GOGC=40) — present in ${TS_ACTIVE_PATH}" ;;
+    partial) warn "1. tailscaled containment — PARTIAL in ${TS_ACTIVE_PATH}; some settings are missing" ;;
+    absent) warn "1. tailscaled containment — ABSENT from ${TS_ACTIVE_PATH}" ;;
+    missing-file) warn "1. tailscaled containment — ${TS_ACTIVE_PATH} does not exist (Entware tailscale not installed?)" ;;
     *) warn "1. tailscaled containment — indeterminate" ;;
   esac
   [ "$FIX1_STATE" = "present" ] || outstanding=$((outstanding + 1))
@@ -552,6 +727,83 @@ report_state() {
   esac
   [ "$FIX4_LIVE" = "unknown" ] || info "   live /proc/sys/vm/swappiness is ${FIX4_LIVE}"
 
+  case "$FIX5_STATE" in
+    present) ok "5. log rotation — logrotate installed, config + 5-minute trigger present (${LOGROTATE_TRIGGER})" ;;
+    no-entware) info "5. log rotation — no Entware opkg on this box; nothing to install with" ;;
+    partial)
+      warn "5. log rotation — PARTIAL; binary, config, or trigger is missing"
+      outstanding=$((outstanding + 1))
+      ;;
+    absent)
+      warn "5. log rotation — ABSENT (klippy.log grows ~10MB/day with nothing rotating it)"
+      outstanding=$((outstanding + 1))
+      ;;
+    *)
+      warn "5. log rotation — indeterminate"
+      outstanding=$((outstanding + 1))
+      ;;
+  esac
+
+  case "$FIX6_STATE" in
+    present) ok "6. tailscaled deferred start — ${TS_INIT_DEFERRED##*/} with the boot-once 90s delay" ;;
+    missing-file) info "6. tailscaled deferred start — no tailscaled init at all; nothing to defer" ;;
+    *)
+      warn "6. tailscaled deferred start — needs work"
+      [ "$FIX6_CORE" = "present" ] \
+        || warn "   init is still ${TS_INIT##*/}, or lacks the boot-once wrapper"
+      [ "$FIX6_WD" = "stale" ] \
+        && warn "   watchdog still starts ${TS_INIT##*/}, which stops existing after the rename (${FIX2_BODY})"
+      outstanding=$((outstanding + 1))
+      ;;
+  esac
+
+  # -------------------------------------------------------------------------
+  # Policy fixes. These are de-Creality choices, not stability repairs. They
+  # are always REPORTED, but only COUNTED (and only ever applied) when
+  # --policy is given, so an owner who wants Creality Cloud back can keep the
+  # stability set and cleanly skip everything below.
+  # -------------------------------------------------------------------------
+  case "$FIX7_STATE" in
+    present) ok "7. [policy] webrtc disabled — guard in ${WEBRTC_INIT}, flag under ${DISABLED_DIR}" ;;
+    missing-file) info "7. [policy] webrtc — ${WEBRTC_INIT} does not exist; nothing to disable" ;;
+    *)
+      if [ "$INCLUDE_POLICY" -eq 1 ]; then
+        warn "7. [policy] webrtc — Creality Cloud remote-access daemon is not disabled (${FIX7_STATE})"
+        outstanding=$((outstanding + 1))
+      else
+        info "7. [policy] webrtc — stock Creality Cloud remote access. Disable with --policy"
+        POLICY_AVAILABLE=$((POLICY_AVAILABLE + 1))
+      fi
+      ;;
+  esac
+
+  case "$FIX8_STATE" in
+    present) ok "8. [policy] fail2ban disabled — ENABLED=no in ${F2B_INIT}" ;;
+    skip) info "8. [policy] fail2ban — not installed; nothing to disable" ;;
+    *)
+      if [ "$INCLUDE_POLICY" -eq 1 ]; then
+        warn "8. [policy] fail2ban — still enabled (RAM+swap guarding a LAN-only dropbear, no iptables to enforce bans)"
+        outstanding=$((outstanding + 1))
+      else
+        info "8. [policy] fail2ban — enabled. Disable with --policy"
+        POLICY_AVAILABLE=$((POLICY_AVAILABLE + 1))
+      fi
+      ;;
+  esac
+
+  case "$FIX9_STATE" in
+    present) ok "9. [policy] Creality MQTT telemetry — ${MQTT_TELEMETRY_HOST} blackholed in ${HOSTS_FILE}" ;;
+    *)
+      if [ "$INCLUDE_POLICY" -eq 1 ]; then
+        warn "9. [policy] Creality MQTT telemetry — NOT blocked; app-server streams temps and feedrate to ${MQTT_TELEMETRY_HOST} over plain MQTT"
+        outstanding=$((outstanding + 1))
+      else
+        info "9. [policy] Creality MQTT telemetry — not blocked. Block with --policy"
+        POLICY_AVAILABLE=$((POLICY_AVAILABLE + 1))
+      fi
+      ;;
+  esac
+
   local advisory
   for advisory in ${ADVISORIES[@]+"${ADVISORIES[@]}"}; do
     info "advisory: ${advisory} runs on the 60-second tier and invokes the tailscale CLI."
@@ -575,13 +827,18 @@ STAMP='${STAMP}'
 REMOTE_VARS
   cat <<'REMOTE_BACKUP'
 set -eu
+# First write wins within a run: when two repairs touch the same file (fix 1
+# writes into the tailscaled init, then fix 6 renames it), the backup that
+# survives is the file as it was BEFORE this run touched anything.
 backup_file() {
   target="$1"
   mkdir -p "$BACKUP_DIR"
   flat="$(printf '%s' "$target" | tr '/' '_')"
   dest="${BACKUP_DIR}/${flat}.${STAMP}"
-  cp -p "$target" "$dest"
-  printf 'BACKUP %s %s\n' "$target" "$dest"
+  if [ ! -e "$dest" ]; then
+    cp -p "$target" "$dest"
+    printf 'BACKUP %s %s\n' "$target" "$dest"
+  fi
 }
 REMOTE_BACKUP
 }
@@ -607,14 +864,14 @@ apply_fix1() {
   local output_file="${TEMP_DIR}/fix1.out"
   step "Apply fix 1: tailscaled memory containment"
   if [ "$FIX1_TUN" = "absent" ]; then
-    warn "Skipped: ${TS_INIT} has no --tun=userspace-networking. Repair that first;"
+    warn "Skipped: ${TS_ACTIVE_PATH} has no --tun=userspace-networking. Repair that first;"
     warn "without it tailscaled cannot start on this box at all."
     return 1
   fi
   {
     backup_preamble
     cat <<REMOTE_VARS
-TS_INIT='${TS_INIT}'
+TS_INIT='${TS_ACTIVE_PATH}'
 REMOTE_VARS
     cat <<'REMOTE_FIX1'
 backup_file "$TS_INIT"
@@ -633,10 +890,14 @@ export GOMEMLIMIT=24MiB
 export GOGC=40
 # <<< regolith-harden <<<
 BLOCK
+# Strip only THIS fix's previous block; fix 6 keeps its own differently-titled
+# block in the same file. If a marker mismatch ever puts the rc.func sourcing
+# line inside the skipped region, it is preserved — losing that line would
+# produce an init script that silently starts nothing.
 awk '
-  /^# >>> regolith-harden/ { skip = 1; next }
-  /^# <<< regolith-harden/ { skip = 0; next }
-  skip == 1 { next }
+  /^# >>> regolith-harden: host starvation containment/ { skip = 1; next }
+  /^# <<< regolith-harden/ && skip == 1 { skip = 0; next }
+  skip == 1 { if ($0 ~ /rc\.func/) print; next }
   /^PREARGS=/ { next }
   /^export GOMEMLIMIT=/ { next }
   /^export GOGC=/ { next }
@@ -664,11 +925,11 @@ REMOTE_FIX1
 
   if remote "$(cat "${TEMP_DIR}/fix1.sh")" > "$output_file" 2>&1; then
     consume_repair_output "$output_file"
-    ok "tailscaled containment written to ${TS_INIT}"
-    info "tailscaled picks this up on its next start: ${TS_INIT} restart (no reboot)"
+    ok "tailscaled containment written to ${TS_ACTIVE_PATH}"
+    info "tailscaled picks this up on its next start: ${TS_ACTIVE_PATH} restart (no reboot)"
     return 0
   fi
-  warn "Failed to apply fix 1. ${TS_INIT} was not changed if a backup line is absent above."
+  warn "Failed to apply fix 1. ${TS_ACTIVE_PATH} was not changed if a backup line is absent above."
   return 1
 }
 
@@ -719,6 +980,8 @@ ENTRY='${FIX2_ENTRY}'
 BODY='${FIX2_BODY}'
 ENTRY_NAME='${entry_name}'
 REWRITE_BODY='${rewrite_body}'
+TS_INIT_ORIG='${TS_INIT}'
+TS_DEFERRED='${TS_INIT_DEFERRED}'
 REMOTE_VARS
     cat <<'REMOTE_FIX2'
 if [ "$REWRITE_BODY" = "1" ]; then
@@ -771,6 +1034,17 @@ WATCHDOG
     mv "$tmp" "$BODY"
   fi
   chmod 755 "$BODY"
+  # If fix 6 already renamed the init, the template's INIT path is stale the
+  # moment it lands; retarget it so the watchdog restarts what actually exists.
+  if [ -f "$TS_DEFERRED" ] && [ ! -f "$TS_INIT_ORIG" ]; then
+    ts_base="${TS_INIT_ORIG##*/}"
+    ts_def_base="${TS_DEFERRED##*/}"
+    tmp2="${BODY}.regolith-tmp2.$$"
+    sed "s#${ts_base}#${ts_def_base}#g" "$BODY" > "$tmp2"
+    sh -n "$tmp2" || { rm -f "$tmp2"; echo "SYNTAX_FAIL" >&2; exit 1; }
+    cat "$tmp2" > "$BODY"
+    rm -f "$tmp2"
+  fi
   printf 'APPLIED fix2-body\n'
 fi
 
@@ -886,23 +1160,365 @@ REMOTE_FIX4
   return 1
 }
 
-step "Inspect the four host-starvation fixes"
+apply_fix5() {
+  local output_file="${TEMP_DIR}/fix5.out"
+  step "Apply fix 5: log rotation (logrotate + 5-minute trigger)"
+  {
+    backup_preamble
+    cat <<REMOTE_VARS
+OPKG_BIN='${OPKG_BIN}'
+LOGROTATE_BIN='${LOGROTATE_BIN}'
+LOGROTATE_CONF='${LOGROTATE_CONF}'
+DROPIN='${LOGROTATE_DROPIN}'
+TRIGGER='${LOGROTATE_TRIGGER}'
+LR_STATE='${LOGROTATE_STATE}'
+KLOG='${KLIPPER_LOG_DIR}'
+REMOTE_VARS
+    cat <<'REMOTE_FIX5'
+if [ ! -x "$LOGROTATE_BIN" ]; then
+  [ -x "$OPKG_BIN" ] || { echo "NO_OPKG" >&2; exit 1; }
+  "$OPKG_BIN" install logrotate >/dev/null 2>&1 || { echo "OPKG_FAIL" >&2; exit 1; }
+  [ -x "$LOGROTATE_BIN" ] || { echo "OPKG_FAIL" >&2; exit 1; }
+  printf 'APPLIED fix5-opkg\n'
+fi
+[ -f "$DROPIN" ] && backup_file "$DROPIN"
+mkdir -p "${DROPIN%/*}"
+tmp="${DROPIN}.regolith-tmp.$$"
+cat > "$tmp" <<CONF
+# regolith-harden: rotate the only two logs on this box that actually grow.
+# copytruncate is verified safe here: klippy and moonraker both hold their
+# logs through O_APPEND descriptors (checked via /proc fdinfo flags), so
+# nothing is lost in the copy window and neither daemon needs a signal.
+${KLOG}/klippy.log ${KLOG}/moonraker.log {
+    size 10M
+    rotate 3
+    compress
+    copytruncate
+    missingok
+    notifempty
+}
+CONF
+if [ -f "$DROPIN" ]; then
+  cat "$tmp" > "$DROPIN"
+  rm -f "$tmp"
+else
+  mv "$tmp" "$DROPIN"
+fi
+printf 'APPLIED fix5-conf\n'
+[ -f "$TRIGGER" ] && backup_file "$TRIGGER"
+mkdir -p "${TRIGGER%/*}"
+tmp="${TRIGGER}.regolith-tmp.$$"
+cat > "$tmp" <<TRIG
+#!/bin/sh
+# regolith-harden: logrotate trigger
+# Runs from the existing Entware 5-minute run-parts tier -- no new daemon on
+# a 214MB box. Rotation itself only happens once a log passes 10M.
+[ -x ${LOGROTATE_BIN} ] || exit 0
+exec ${LOGROTATE_BIN} -s ${LR_STATE} ${LOGROTATE_CONF}
+TRIG
+sh -n "$tmp" || { rm -f "$tmp"; echo "SYNTAX_FAIL" >&2; exit 1; }
+if [ -f "$TRIGGER" ]; then
+  cat "$tmp" > "$TRIGGER"
+  rm -f "$tmp"
+else
+  mv "$tmp" "$TRIGGER"
+fi
+chmod 755 "$TRIGGER"
+printf 'APPLIED fix5-trigger\n'
+REMOTE_FIX5
+  } > "${TEMP_DIR}/fix5.sh"
+
+  if remote "$(cat "${TEMP_DIR}/fix5.sh")" > "$output_file" 2>&1; then
+    consume_repair_output "$output_file"
+    if grep -q '^APPLIED fix5-opkg$' "$output_file"; then
+      record_restore "ssh ${TARGET} '${OPKG_BIN} remove logrotate; rm -f ${LOGROTATE_DROPIN} ${LOGROTATE_TRIGGER} ${LOGROTATE_STATE}'"
+    else
+      record_restore "ssh ${TARGET} 'rm -f ${LOGROTATE_DROPIN} ${LOGROTATE_TRIGGER} ${LOGROTATE_STATE}'"
+    fi
+    ok "logrotate config written (klippy+moonraker, size 10M, rotate 3, compressed)"
+    ok "5-minute trigger installed: ${LOGROTATE_TRIGGER}"
+    return 0
+  fi
+  if grep -q 'NO_OPKG' "$output_file"; then
+    warn "Failed to apply fix 5: no opkg at ${OPKG_BIN} and no logrotate binary."
+  else
+    warn "Failed to apply fix 5."
+  fi
+  return 1
+}
+
+apply_fix6() {
+  local output_file="${TEMP_DIR}/fix6.out"
+  local rewrite_wd=0
+  local result=0
+  step "Apply fix 6: tailscaled deferred start (boot storm)"
+
+  if [ "$FIX6_WD" = "stale" ]; then
+    if is_user_owned "$FIX2_BODY" && [ "$INCLUDE_USER_SCRIPTS" -ne 1 ]; then
+      warn "Watchdog ${FIX2_BODY} still starts ${TS_INIT##*/} but is owner-authored."
+      warn "Re-run with --include-user-scripts to retarget it to ${TS_INIT_DEFERRED##*/}."
+      result=1
+      if [ "$FIX6_CORE" = "present" ]; then
+        return 1
+      fi
+    else
+      rewrite_wd=1
+    fi
+  fi
+
+  {
+    backup_preamble
+    cat <<REMOTE_VARS
+TS_INIT='${TS_INIT}'
+TS_DEFERRED='${TS_INIT_DEFERRED}'
+WD_BODY='${FIX2_BODY}'
+REWRITE_WD='${rewrite_wd}'
+REMOTE_VARS
+    cat <<'REMOTE_FIX6'
+did_rename=0
+if [ -f "$TS_INIT" ]; then
+  backup_file "$TS_INIT"
+  if [ -f "$TS_DEFERRED" ]; then
+    # Both names exist; two launchers for one daemon would both run at boot.
+    # Keep the deferred one, drop the duplicate (its content is backed up).
+    rm -f "$TS_INIT"
+  else
+    mv "$TS_INIT" "$TS_DEFERRED"
+  fi
+  did_rename=1
+  printf 'APPLIED fix6-rename\n'
+fi
+[ -f "$TS_DEFERRED" ] || { echo "NO_INIT" >&2; exit 1; }
+if ! grep -q 'regolith-ts-boot-done' "$TS_DEFERRED"; then
+  [ "$did_rename" = "1" ] || backup_file "$TS_DEFERRED"
+  line="$(grep -nE '^[[:space:]]*\.[[:space:]]+.*rc\.func' "$TS_DEFERRED" | head -1 | cut -d: -f1)"
+  [ -n "${line:-}" ] || { echo "NO_RC_FUNC" >&2; exit 1; }
+  tmp="${TS_DEFERRED}.regolith-tmp.$$"
+  {
+    head -n "$((line - 1))" "$TS_DEFERRED"
+    printf '%s\n' \
+      '# >>> regolith-harden: boot-once deferred start >>>' \
+      '# At power-on everything starts at once and this 214MB box swaps for' \
+      '# minutes. tailscaled was the biggest boot-window consumer that is not' \
+      '# on the print path, so its first start of each boot is pushed back 90' \
+      '# seconds. The flag lives on tmpfs and so resets itself at every boot.' \
+      '# The watchdog cron stays the safety net: if it fires inside the 90s' \
+      '# window it just starts tailscaled early, and rc.func pidof-guards' \
+      '# against a double run.' \
+      '# rc.unslung SOURCES this file, so there must be no exit in this' \
+      '# wrapper -- an exit here would kill the boot sequence itself.' \
+      'if [ "${1:-}" = "start" ] && [ ! -f /tmp/.regolith-ts-boot-done ]; then' \
+      '  touch /tmp/.regolith-ts-boot-done' \
+      "  nohup sh -c \"sleep 90; ${TS_DEFERRED} start\" >/dev/null 2>&1 &" \
+      'else'
+    sed -n "${line}p" "$TS_DEFERRED"
+    printf '%s\n' 'fi' '# <<< regolith-harden <<<'
+    tail -n "+$((line + 1))" "$TS_DEFERRED"
+  } > "$tmp"
+  sh -n "$tmp" || { rm -f "$tmp"; echo "SYNTAX_FAIL" >&2; exit 1; }
+  cat "$tmp" > "$TS_DEFERRED"
+  rm -f "$tmp"
+  printf 'APPLIED fix6-wrap\n'
+fi
+ts_base="${TS_INIT##*/}"
+ts_def_base="${TS_DEFERRED##*/}"
+if [ "$REWRITE_WD" = "1" ] && [ -f "$WD_BODY" ] && grep -q "$ts_base" "$WD_BODY"; then
+  backup_file "$WD_BODY"
+  tmp="${WD_BODY}.regolith-tmp.$$"
+  sed "s#${ts_base}#${ts_def_base}#g" "$WD_BODY" > "$tmp"
+  sh -n "$tmp" || { rm -f "$tmp"; echo "SYNTAX_FAIL" >&2; exit 1; }
+  cat "$tmp" > "$WD_BODY"
+  rm -f "$tmp"
+  printf 'APPLIED fix6-watchdog\n'
+fi
+REMOTE_FIX6
+  } > "${TEMP_DIR}/fix6.sh"
+
+  if remote "$(cat "${TEMP_DIR}/fix6.sh")" > "$output_file" 2>&1; then
+    consume_repair_output "$output_file"
+    if grep -q '^APPLIED fix6-rename$' "$output_file"; then
+      # The cp printed above restores the pre-rename file under its old name;
+      # completing the restore means also removing the renamed copy.
+      record_restore "ssh ${TARGET} 'rm ${TS_INIT_DEFERRED}'"
+      ok "renamed ${TS_INIT##*/} -> ${TS_INIT_DEFERRED##*/} (last in Entware rc order)"
+    fi
+    grep -q '^APPLIED fix6-wrap$' "$output_file" \
+      && ok "boot-once 90s deferred-start wrapper installed (flag on tmpfs, no exit statements)"
+    grep -q '^APPLIED fix6-watchdog$' "$output_file" \
+      && ok "watchdog retargeted to ${TS_INIT_DEFERRED##*/}"
+    return "$result"
+  fi
+  warn "Failed to apply fix 6."
+  return 1
+}
+
+apply_fix7() {
+  local output_file="${TEMP_DIR}/fix7.out"
+  step "Apply policy fix 7: disable Creality webrtc"
+  {
+    backup_preamble
+    cat <<REMOTE_VARS
+WEBRTC_INIT='${WEBRTC_INIT}'
+DISABLED_DIR='${DISABLED_DIR}'
+REMOTE_VARS
+    cat <<'REMOTE_FIX7'
+mkdir -p "$DISABLED_DIR"
+flag="${DISABLED_DIR}/webrtc"
+if [ ! -f "$flag" ]; then
+  {
+    printf '%s\n' "Created by tools/harden-k1.sh --apply --policy."
+    printf '%s\n' "While this file exists, start() in ${WEBRTC_INIT} returns without"
+    printf '%s\n' "starting webrtc (Creality Cloud remote access; it needs a cloud"
+    printf '%s\n' "binding this printer does not have, and the camera tile uses"
+    printf '%s\n' "mjpg_streamer, not webrtc). Monitor resurrects webrtc through"
+    printf '%s\n' "${WEBRTC_INIT} restart, which is exactly why the guard lives in"
+    printf '%s\n' "start() rather than in a killed process."
+    printf '%s\n' "To re-enable: delete this file, restore ${WEBRTC_INIT} from the"
+    printf '%s\n' "harden backups, then run: ${WEBRTC_INIT} start"
+  } > "$flag"
+  printf 'APPLIED fix7-flag\n'
+fi
+if ! grep -q 'regolith-harden: webrtc' "$WEBRTC_INIT"; then
+  backup_file "$WEBRTC_INIT"
+  line="$(grep -nE '^start[[:space:]]*\(\)[[:space:]]*\{' "$WEBRTC_INIT" | head -1 | cut -d: -f1)"
+  [ -n "${line:-}" ] || { echo "NO_START_FUNC" >&2; exit 1; }
+  tmp="${WEBRTC_INIT}.regolith-tmp.$$"
+  {
+    head -n "$line" "$WEBRTC_INIT"
+    printf '%s\n' \
+      '    # >>> regolith-harden: webrtc disable guard >>>' \
+      '    # Monitor restarts webrtc through this very script, so the guard' \
+      '    # must live here: killing the process or unlinking the binary is' \
+      '    # undone within seconds. The flag file documents itself.' \
+      "    if [ -f \"${DISABLED_DIR}/webrtc\" ]; then" \
+      '        return 0' \
+      '    fi' \
+      '    # <<< regolith-harden <<<'
+    tail -n "+$((line + 1))" "$WEBRTC_INIT"
+  } > "$tmp"
+  sh -n "$tmp" || { rm -f "$tmp"; echo "SYNTAX_FAIL" >&2; exit 1; }
+  cat "$tmp" > "$WEBRTC_INIT"
+  rm -f "$tmp"
+  printf 'APPLIED fix7-guard\n'
+fi
+"$WEBRTC_INIT" stop >/dev/null 2>&1 || true
+printf 'APPLIED fix7-stop\n'
+REMOTE_FIX7
+  } > "${TEMP_DIR}/fix7.sh"
+
+  if remote "$(cat "${TEMP_DIR}/fix7.sh")" > "$output_file" 2>&1; then
+    consume_repair_output "$output_file"
+    grep -q '^APPLIED fix7-flag$' "$output_file" \
+      && record_restore "ssh ${TARGET} 'rm ${DISABLED_DIR}/webrtc'"
+    ok "webrtc disabled: guard in ${WEBRTC_INIT} start(), flag at ${DISABLED_DIR}/webrtc"
+    info "Monitor's next restart attempt hits the guard and webrtc stays down."
+    return 0
+  fi
+  warn "Failed to apply fix 7. ${WEBRTC_INIT} was not changed if no backup line appears above."
+  return 1
+}
+
+apply_fix8() {
+  local output_file="${TEMP_DIR}/fix8.out"
+  step "Apply policy fix 8: disable fail2ban"
+  {
+    backup_preamble
+    cat <<REMOTE_VARS
+F2B_INIT='${F2B_INIT}'
+REMOTE_VARS
+    cat <<'REMOTE_FIX8'
+backup_file "$F2B_INIT"
+"$F2B_INIT" stop >/dev/null 2>&1 || true
+tmp="${F2B_INIT}.regolith-tmp.$$"
+if grep -q '^ENABLED=' "$F2B_INIT"; then
+  sed 's/^ENABLED=.*/ENABLED=no/' "$F2B_INIT" > "$tmp"
+else
+  { head -n 1 "$F2B_INIT"; printf 'ENABLED=no\n'; tail -n +2 "$F2B_INIT"; } > "$tmp"
+fi
+sh -n "$tmp" || { rm -f "$tmp"; echo "SYNTAX_FAIL" >&2; exit 1; }
+cat "$tmp" > "$F2B_INIT"
+rm -f "$tmp"
+printf 'APPLIED fix8\n'
+REMOTE_FIX8
+  } > "${TEMP_DIR}/fix8.sh"
+
+  if remote "$(cat "${TEMP_DIR}/fix8.sh")" > "$output_file" 2>&1; then
+    consume_repair_output "$output_file"
+    ok "fail2ban stopped and ENABLED=no written to ${F2B_INIT}"
+    return 0
+  fi
+  warn "Failed to apply fix 8. ${F2B_INIT} was not changed if no backup line appears above."
+  return 1
+}
+
+apply_fix9() {
+  local output_file="${TEMP_DIR}/fix9.out"
+  step "Apply policy fix 9: block Creality MQTT telemetry"
+  {
+    backup_preamble
+    cat <<REMOTE_VARS
+HOSTS_FILE='${HOSTS_FILE}'
+MQTT_HOST='${MQTT_TELEMETRY_HOST}'
+REMOTE_VARS
+    cat <<'REMOTE_FIX9'
+[ -f "$HOSTS_FILE" ] && backup_file "$HOSTS_FILE"
+if ! grep -q "$MQTT_HOST" "$HOSTS_FILE" 2>/dev/null; then
+  printf '127.0.0.1 %s  # regolith-harden: app-server streams temps/feedrate here over plain MQTT even when cloud-unbound\n' \
+    "$MQTT_HOST" >> "$HOSTS_FILE"
+  printf 'APPLIED fix9-hosts\n'
+fi
+# app-server holds its MQTT session open; bounce it so the block takes effect
+# now. Monitor restarts it within seconds -- that resurrection is the reason
+# a hosts-file block is used instead of disabling the daemon.
+if [ -x /usr/bin/app-server ]; then
+  killall app-server >/dev/null 2>&1 || true
+  printf 'APPLIED fix9-bounce\n'
+fi
+printf 'APPLIED fix9-done\n'
+REMOTE_FIX9
+  } > "${TEMP_DIR}/fix9.sh"
+
+  if remote "$(cat "${TEMP_DIR}/fix9.sh")" > "$output_file" 2>&1; then
+    consume_repair_output "$output_file"
+    ok "${MQTT_TELEMETRY_HOST} -> 127.0.0.1 in ${HOSTS_FILE}"
+    if grep -q '^APPLIED fix9-bounce$' "$output_file"; then
+      ok "app-server bounced; Monitor restarts it without the MQTT session"
+    else
+      info "app-server not present here; nothing to bounce"
+    fi
+    return 0
+  fi
+  warn "Failed to apply fix 9. ${HOSTS_FILE} was not changed if no backup line appears above."
+  return 1
+}
+
+step "Inspect the hardening fixes (1-6 stability, 7-9 policy)"
 run_check
 outstanding=0
 report_state || outstanding=$?
 
 if [ "$MODE" = "check" ]; then
   printf '\n'
+  if [ "$INCLUDE_POLICY" -eq 0 ] && [ "$POLICY_AVAILABLE" -gt 0 ]; then
+    printf '%d policy fix(es) (de-Creality set) available but not requested; add --policy to include them.\n' "$POLICY_AVAILABLE"
+  fi
   if [ "$outstanding" -eq 0 ]; then
     printf 'All fixes present. Nothing to do.\n'
     exit 0
   fi
   printf '%d fix(es) need re-applying. Nothing was changed.\n' "$outstanding"
-  printf 'Re-apply with: PRINTER_HOST=%s ./tools/harden-k1.sh --apply\n' "$PRINTER_HOST"
+  if [ "$INCLUDE_POLICY" -eq 1 ]; then
+    printf 'Re-apply with: PRINTER_HOST=%s ./tools/harden-k1.sh --apply --policy\n' "$PRINTER_HOST"
+  else
+    printf 'Re-apply with: PRINTER_HOST=%s ./tools/harden-k1.sh --apply\n' "$PRINTER_HOST"
+  fi
   exit 1
 fi
 
 if [ "$outstanding" -eq 0 ]; then
+  if [ "$INCLUDE_POLICY" -eq 0 ] && [ "$POLICY_AVAILABLE" -gt 0 ]; then
+    printf '\n%d policy fix(es) (de-Creality set) available but not requested; add --policy to include them.\n' "$POLICY_AVAILABLE"
+  fi
   printf '\nAll fixes already present. Nothing to apply.\n'
   exit 0
 fi
@@ -926,6 +1542,29 @@ case "$FIX4_STATE" in
   present | missing-file) ;;
   *) apply_fix4 || apply_failures=$((apply_failures + 1)) ;;
 esac
+case "$FIX5_STATE" in
+  present | no-entware) ;;
+  *) apply_fix5 || apply_failures=$((apply_failures + 1)) ;;
+esac
+case "$FIX6_STATE" in
+  present | missing-file) ;;
+  *) apply_fix6 || apply_failures=$((apply_failures + 1)) ;;
+esac
+# The de-Creality set. Never applied without the explicit --policy opt-in.
+if [ "$INCLUDE_POLICY" -eq 1 ]; then
+  case "$FIX7_STATE" in
+    present | missing-file) ;;
+    *) apply_fix7 || apply_failures=$((apply_failures + 1)) ;;
+  esac
+  case "$FIX8_STATE" in
+    present | skip) ;;
+    *) apply_fix8 || apply_failures=$((apply_failures + 1)) ;;
+  esac
+  case "$FIX9_STATE" in
+    present) ;;
+    *) apply_fix9 || apply_failures=$((apply_failures + 1)) ;;
+  esac
+fi
 
 step "Verify"
 run_check
@@ -940,6 +1579,9 @@ if [ "${#RESTORE_COMMANDS[@]}" -gt 0 ]; then
 fi
 
 printf '\n'
+if [ "$INCLUDE_POLICY" -eq 0 ] && [ "$POLICY_AVAILABLE" -gt 0 ]; then
+  printf '%d policy fix(es) (de-Creality set) available but not requested; add --policy to include them.\n' "$POLICY_AVAILABLE"
+fi
 if [ "$verify_outstanding" -eq 0 ] && [ "$apply_failures" -eq 0 ]; then
   printf 'Hardening verified. Re-run --check after any firmware update.\n'
   printf 'Note: fix 1 needs a tailscaled restart to take effect. No reboot was performed.\n'
