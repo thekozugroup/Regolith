@@ -122,11 +122,14 @@ export interface ActiveMock {
    * heartbeat, the feed the host-health guard reads. The payload mirrors
    * the real component's shape; omit `cpu` or the memory fields to model
    * an older Moonraker that does not report them (honest-unknown paths).
+   * `uptimeS` maps to `system_uptime` — the boot-grace signal; omitted
+   * models a Moonraker that does not report it (no grace granted).
    */
   pushProcStat: (stats: {
     cpu?: number;
     memAvailKb?: number;
     memTotalKb?: number;
+    uptimeS?: number;
   }) => void;
   /** Push a `notify_gcode_response` line — how klipper errors like the
    *  prtouch probe wording actually reach the client. */
@@ -609,6 +612,9 @@ export async function installActiveMock(
           available: stats.memAvailKb,
           used: stats.memTotalKb - stats.memAvailKb,
         };
+      }
+      if (stats.uptimeS !== undefined) {
+        payload.system_uptime = stats.uptimeS;
       }
       const message = JSON.stringify({
         jsonrpc: "2.0",

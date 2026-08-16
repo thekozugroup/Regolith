@@ -35,13 +35,29 @@
  * absent fields parse to null, null never fires a threshold, and an
  * unknown host NEVER produces a warning.
  *
- * CALIBRATION (provisional): every threshold constant below is derived
- * from the SHAPE of the 2026-08-12 incidents (sustained ~100% CPU with
- * nothing printing; MemAvailable collapsing as the render started), not
- * from a measured healthy-idle baseline of this K1. Re-fit against a
- * 30 min idle + 30 min mid-print `notify_proc_stat_update` capture once
- * the current print finishes. The plumbing is the deliverable; the
- * constants are the best defensible starting point.
+ * CALIBRATION (2026-08-16, measured — no longer provisional): thresholds
+ * below are fitted against two captured baselines of THIS K1 Max:
+ *
+ *   · host-baseline-idle.md — 60 proc-stat samples over 11 min idle:
+ *     CPU min 12.43 / median 17.99 / p90 32.98 / max 36.98; a live idle
+ *     spot-run also caught a single 77.11% spike on a sparse window,
+ *     which is why the min-sample gates below are load-bearing.
+ *   · host-baseline-loaded.md — 2,164 klippy.log samples across a full
+ *     1h49m print: sysload med 2.17 / max 6.01; memavail floor
+ *     106,852 kB; klippy CPU med 24.5 / max 48.1; print_stall 0;
+ *     buffer_time never < 1.109 s. Estimated 30 s-median SYSTEM CPU
+ *     while printing ≈ 37–40%.
+ *   · Boot storm (post-fix, measured live): load peak 4.10 at t+45 s,
+ *     memavail floor 104 MB, all signals clear by t+120 s.
+ *   · Fault signature (both real incidents): load > 15, memavail
+ *     < 82 MB, klippy heap paged out.
+ *
+ * The loaded-baseline analysis recommended LOAD AVERAGE as the primary
+ * signal (sysload separates idle/print/fault cleanly). That is impossible
+ * here: Moonraker's `notify_proc_stat_update` does NOT carry load average,
+ * and this module never fakes or derives one. Where the analysis wanted
+ * load-based verdicts, this module substitutes the memory floors, the
+ * boot-grace window, and min-sample-gated CPU medians instead.
  */
 
 /** One consumed `notify_proc_stat_update` sample. Absent fields are null. */
@@ -54,6 +70,8 @@ export interface ProcStatSample {
   memAvailKb: number | null;
   /** `system_memory.total`, kB. */
   memTotalKb: number | null;
+  /** `system_uptime` — host uptime in seconds. Powers the boot grace. */
+  uptimeS: number | null;
 }
 
 /**
@@ -62,21 +80,55 @@ export interface ProcStatSample {
  */
 export const HOST_SAMPLE_CAP = 130;
 
-/* --- Pre-print advisory thresholds (PROVISIONAL — see header) ---------- */
+/* --- Boot grace (calibrated 2026-08-16) -------------------------------- */
+/**
+ * Everything spikes for the first ~2 min after boot. Measured post-fix
+ * boot storm: load peak 4.10 at t+45 s, memavail floor 104 MB, every
+ * signal clear by t+120 s — 180 s keeps a full minute of margin. (The
+ * PRE-fix storm hit load 19 / 19 MB; that world is gone, but a firmware
+ * update could resurrect it, so the grace must survive it too.) While
+ * `system_uptime` reads below this, advisory and lamp are SUPPRESSED —
+ * rendered as an honest "settling after boot" state, never as silence
+ * and never as a warning. Unknown uptime (older Moonraker) grants no
+ * grace: evaluation proceeds normally.
+ */
+export const BOOT_GRACE_UPTIME_S = 180;
+
+/* --- Memory floors (calibrated 2026-08-16) ----------------------------- */
+/**
+ * MemAvailable floors, absolute kB — fitted from host-baseline-loaded.md:
+ * the full-print floor was 106,852 kB and the fault signature in both real
+ * incidents was < 82 MB with the klippy heap paged out. 60 MB warn never
+ * fires during a real print (46 MB of margin under the measured floor) and
+ * sits comfortably above the fault signature; 35 MB strong is deep in
+ * confirmed-starvation territory. Memory is a LEVEL, not a rate, so the
+ * floors read the newest sample — no median, no sample-count gate.
+ */
+export const MEM_AVAIL_WARN_KB = 60 * 1024;
+export const MEM_AVAIL_STRONG_KB = 35 * 1024;
+
+/* --- Pre-print advisory CPU thresholds (calibrated 2026-08-16) --------- */
 /** Median window for the pre-print advisory. */
 export const PREPRINT_WINDOW_MS = 30_000;
-/** Fewer CPU readings than this in the window → silence, no claim. */
+/**
+ * Fewer CPU readings than this in the window → no verdict, rendered as
+ * UNKNOWN, never as healthy or warning. Load-bearing: at ~1 Hz proc-stat
+ * cadence a sparse window degrades to a 1–2 sample "median", and a single
+ * measured 77.11% idle spike (host-baseline-idle.md spot-run) would beat
+ * the 60% warn bar on an idle box.
+ */
 export const PREPRINT_MIN_SAMPLES = 20;
-/** Idle printer holding this median for the window → warn. */
+/**
+ * CPU stays SECONDARY to the memory floors (idle median 17.99 but idle
+ * tail spikes to 77 — CPU% separates the states poorly on this box).
+ * The bars are kept, not lowered: estimated real print load is a 37–40%
+ * 30 s median, so 60/85 cannot false-trigger on a legitimate print.
+ */
 export const PREPRINT_CPU_WARN = 60;
 /** → warn with strong wording. */
 export const PREPRINT_CPU_STRONG = 85;
-/** Lower CPU bar that applies only when memory is also low. */
-export const PREPRINT_CPU_MEM_AMPLIFIED = 45;
-/** MemAvailable/MemTotal below this amplifies the CPU signal. Never fires alone. */
-export const PREPRINT_MEM_FRACTION = 0.12;
 
-/* --- HOST LOAD lamp thresholds (PROVISIONAL) --------------------------- */
+/* --- HOST LOAD lamp thresholds (calibrated 2026-08-16) ----------------- */
 /**
  * Lamp trigger A: higher bar and a longer window than the pre-print
  * advisory ON PURPOSE — mid-print the host is legitimately busier, and a
@@ -86,8 +138,11 @@ export const LAMP_WINDOW_MS = 60_000;
 export const LAMP_MIN_SAMPLES = 40;
 export const LAMP_CPU = 85;
 
-/* --- Motion-buffer starvation (lamp trigger B, PROVISIONAL) ------------ */
-/** Forensics recorded ~2.1 s healthy; below this the MCU is being fed late. */
+/* --- Motion-buffer starvation (lamp trigger B) ------------------------- */
+/** Forensics recorded ~2.1 s healthy; below this the MCU is being fed late.
+ *  Corroborated 2026-08-16: across a full 1h49m print, `buffer_time` never
+ *  fell below 1.109 s (host-baseline-loaded.md) — 0.5 is clear of anything
+ *  a healthy print produces. */
 export const BUFFER_STARVED_S = 0.5;
 /** The collapse must persist this long — brief dips happen at corners. */
 export const BUFFER_SUSTAIN_MS = 10_000;
@@ -125,6 +180,8 @@ export interface HostLoad {
   memAvailFraction: number | null;
   memAvailKb: number | null;
   memTotalKb: number | null;
+  /** Host uptime (s) from the newest in-window sample carrying it, else null. */
+  uptimeS: number | null;
   /** CPU readings inside the window — the count thresholds gate on. */
   sampleCount: number;
   windowMs: number;
@@ -158,8 +215,16 @@ export function parseProcStatUpdate(
     memAvailKb = finiteOrNull((memory as Record<string, unknown>).available);
     memTotalKb = finiteOrNull((memory as Record<string, unknown>).total);
   }
-  if (cpu == null && memAvailKb == null && memTotalKb == null) return null;
-  return { at, cpu, memAvailKb, memTotalKb };
+  const uptimeS = finiteOrNull(record.system_uptime);
+  if (
+    cpu == null &&
+    memAvailKb == null &&
+    memTotalKb == null &&
+    uptimeS == null
+  ) {
+    return null;
+  }
+  return { at, cpu, memAvailKb, memTotalKb, uptimeS };
 }
 
 /** Append with the ring cap. Returns a new array (reducer discipline). */
@@ -203,6 +268,15 @@ export function summarizeHostLoad(
       break;
     }
   }
+  // Uptime is a level too — newest in-window reading, same rule as memory.
+  let uptimeS: number | null = null;
+  for (let i = inWindow.length - 1; i >= 0; i -= 1) {
+    const sample = inWindow[i]!;
+    if (sample.uptimeS != null) {
+      uptimeS = sample.uptimeS;
+      break;
+    }
+  }
   return {
     cpuMedian: median(cpus),
     memAvailFraction:
@@ -211,6 +285,7 @@ export function summarizeHostLoad(
         : null,
     memAvailKb,
     memTotalKb,
+    uptimeS,
     sampleCount: cpus.length,
     windowMs,
   };
@@ -228,42 +303,72 @@ export function summarizeHostLoad(
  * ------------------------------------------------------------------------ */
 
 export interface HostAdvisory {
-  level: "warn" | "strong";
-  /** Free memory is also low — swap-on-eMMC precondition. Never fires alone. */
-  memoryAmplified: boolean;
-  cpuMedian: number;
+  /**
+   * "settling" is the boot-grace state — informational, not a warning:
+   * the host just booted and every signal is legitimately noisy. There is
+   * still no level that blocks, and there never may be.
+   */
+  level: "settling" | "warn" | "strong";
+  /** The CPU median crossed a bar (never true during settling). */
+  cpuHot: boolean;
+  /** MemAvailable is under a floor (never true during settling). */
+  memLow: boolean;
+  cpuMedian: number | null;
   memAvailKb: number | null;
   memTotalKb: number | null;
+  uptimeS: number | null;
 }
 
 /**
  * Evaluated only when the printer is NOT printing/paused — the box should
  * be nearly idle, so sustained CPU is background work, not the job.
- * Unknown (few samples, no CPU data) is silence, never a warning.
+ *
+ * Verdict order (calibrated 2026-08-16, see header):
+ *   1. Boot grace: uptime < 180 s → "settling", suppressing both signals.
+ *   2. Memory floors — PRIMARY. Fire alone: warn < 60 MB, strong < 35 MB.
+ *   3. CPU median — SECONDARY, gated on ≥ 20 in-window samples: a sparse
+ *      window is UNKNOWN (null), never healthy and never a warning.
+ * Unknown anything (no samples, no CPU data, no memory reading) never
+ * fires a threshold — absent is silence.
  */
 export function prePrintHostAdvisory(
   load: HostLoad,
   printState: string | undefined,
 ): HostAdvisory | null {
   if (printState === "printing" || printState === "paused") return null;
-  if (load.cpuMedian == null || load.sampleCount < PREPRINT_MIN_SAMPLES) {
-    return null;
-  }
-  const memoryAmplified =
-    load.memAvailFraction != null &&
-    load.memAvailFraction < PREPRINT_MEM_FRACTION;
   const base = {
-    memoryAmplified,
     cpuMedian: load.cpuMedian,
     memAvailKb: load.memAvailKb,
     memTotalKb: load.memTotalKb,
+    uptimeS: load.uptimeS,
   };
-  if (load.cpuMedian >= PREPRINT_CPU_STRONG) return { level: "strong", ...base };
-  if (load.cpuMedian >= PREPRINT_CPU_WARN) return { level: "warn", ...base };
-  if (load.cpuMedian >= PREPRINT_CPU_MEM_AMPLIFIED && memoryAmplified) {
-    return { level: "warn", ...base };
+  if (load.uptimeS != null && load.uptimeS < BOOT_GRACE_UPTIME_S) {
+    return { level: "settling", cpuHot: false, memLow: false, ...base };
   }
-  return null;
+  const memLevel: "warn" | "strong" | null =
+    load.memAvailKb == null
+      ? null
+      : load.memAvailKb < MEM_AVAIL_STRONG_KB
+        ? "strong"
+        : load.memAvailKb < MEM_AVAIL_WARN_KB
+          ? "warn"
+          : null;
+  const cpuKnown =
+    load.cpuMedian != null && load.sampleCount >= PREPRINT_MIN_SAMPLES;
+  const cpuLevel: "warn" | "strong" | null = !cpuKnown
+    ? null
+    : load.cpuMedian! >= PREPRINT_CPU_STRONG
+      ? "strong"
+      : load.cpuMedian! >= PREPRINT_CPU_WARN
+        ? "warn"
+        : null;
+  if (memLevel == null && cpuLevel == null) return null;
+  return {
+    level: memLevel === "strong" || cpuLevel === "strong" ? "strong" : "warn",
+    cpuHot: cpuLevel != null,
+    memLow: memLevel != null,
+    ...base,
+  };
 }
 
 /* ------------------------------------------------------------------------ *
@@ -369,23 +474,41 @@ export interface HostLampReading {
    * tripped it, as text. Unknown components are OMITTED, never printed as 0.
    */
   detail?: string;
+  /**
+   * Boot grace (uptime < BOOT_GRACE_UPTIME_S): the lamp is suppressed but
+   * the suppression is VISIBLE — consumers render "settling after boot",
+   * an honest state, never silence and never a lit warning.
+   */
+  settling?: boolean;
 }
 
 export function hostLamp(load: HostLoad): HostLampReading {
+  // Boot grace first: for ~2 min after boot everything spikes (measured
+  // post-fix storm clears by t+120 s; 180 s adds margin). Suppressed, and
+  // said so — the condition stays false so nothing can latch a warning
+  // out of a normal boot.
+  if (load.uptimeS != null && load.uptimeS < BOOT_GRACE_UPTIME_S) {
+    return { condition: false, settling: true };
+  }
   // THE LAW, stated explicitly rather than left to follow from the
   // thresholds: a host we have never sampled never produces a warning.
-  if (load.sampleCount === 0 || load.cpuMedian == null) {
-    return { condition: false };
-  }
+  // (Null CPU / null memory below never compare true — unknown is dark.)
+  const memStrong =
+    load.memAvailKb != null && load.memAvailKb < MEM_AVAIL_STRONG_KB;
   const cpuHot =
-    load.sampleCount >= LAMP_MIN_SAMPLES && load.cpuMedian >= LAMP_CPU;
-  if (!cpuHot) return { condition: false };
-  // "median" is the honest word: it is a median over the readings inside the
-  // 60 s window, not a reading held for 60 s.
-  return {
-    condition: true,
-    detail: `CPU ${Math.round(load.cpuMedian)}% median · 60s`,
-  };
+    load.cpuMedian != null &&
+    load.sampleCount >= LAMP_MIN_SAMPLES &&
+    load.cpuMedian >= LAMP_CPU;
+  if (!memStrong && !cpuHot) return { condition: false };
+  // Detail: memory first when both fire — the paged-out klippy heap is the
+  // fault signature (< 82 MB at death in both real incidents), so the
+  // graver number leads. "median" is the honest word for the CPU figure:
+  // a median over the readings inside the 60 s window, not a level held
+  // for 60 s.
+  const parts: string[] = [];
+  if (memStrong) parts.push(`Mem ${formatMb(load.memAvailKb!)} free`);
+  if (cpuHot) parts.push(`CPU ${Math.round(load.cpuMedian!)}% median · 60s`);
+  return { condition: true, detail: parts.join(" · ") };
 }
 
 /* ------------------------------------------------------------------------ *

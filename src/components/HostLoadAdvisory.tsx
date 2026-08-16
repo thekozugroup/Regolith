@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Timer } from "lucide-react";
 import { formatMb, prePrintHostAdvisory } from "@/lib/hostHealth";
 import { useHostHealth } from "@/lib/useHostHealth";
 
@@ -12,6 +12,12 @@ import { useHostHealth } from "@/lib/useHostHealth";
  * it. A host-health false positive that refused to print would be its own
  * outage — optional checks never block a print (same law as KAMP and the
  * timelapse write). Unknown host = null = silence.
+ *
+ * Verdict source (calibrated 2026-08-16 against the measured baselines —
+ * see src/lib/hostHealth.ts): memory floors are primary, the CPU median is
+ * secondary and sample-count gated, and for the first 3 minutes after host
+ * boot the verdict is an informational "settling" state rather than a
+ * warning — every signal legitimately spikes on boot.
  *
  * It lives in its own component so the PrintDialog can wrap it in an error
  * boundary. `/print` is the only route in the app that starts a print, and
@@ -27,6 +33,65 @@ export function HostLoadAdvisory({ printState }: { printState?: string }) {
   const [dismissed, setDismissed] = useState(false);
   const advisory = prePrintHostAdvisory(prePrintLoad, printState);
   if (!advisory || dismissed) return null;
+
+  if (advisory.level === "settling") {
+    // Boot grace — informational, visibly NOT a warning. The suppression
+    // must be an honest state, never silence: the owner sees why the host
+    // guard is holding fire, and that starting anyway is normal.
+    return (
+      <>
+        <p className="sr-only" role="status">
+          The printer&rsquo;s computer just started up and is settling.
+          Starting a print now is usually fine.
+        </p>
+        <div
+          data-testid="host-load-advisory-settling"
+          className="flex items-start gap-2 p-3 bg-(--color-info)/8 border border-(--color-info)/35 rounded-inner"
+        >
+          <Timer className="w-4 h-4 text-[var(--color-info)] shrink-0 mt-0.5" />
+          <p className="flex-1 min-w-0 text-[11px] leading-relaxed text-[var(--color-info)]">
+            The printer just started up — host load settles within ~3 minutes.
+            Starting a print now is usually fine; if it fails during warm-up,
+            wait for settling and retry.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            aria-label="Dismiss host settling notice"
+            className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[16px] leading-none text-[var(--color-fg-muted)] hover:bg-(--color-fg)/8 hover:text-[var(--color-fg)]"
+          >
+            ×
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // The headline names the signal(s) that actually fired — CPU median,
+  // memory floor, or both — with the measured numbers. Absent channels are
+  // omitted, never zero-filled.
+  const cpuPart =
+    advisory.cpuHot && advisory.cpuMedian != null
+      ? `${Math.round(advisory.cpuMedian)}% CPU, median over the last 30 seconds`
+      : null;
+  const memPart =
+    advisory.memLow && advisory.memAvailKb != null
+      ? `${formatMb(advisory.memAvailKb)} of memory free${
+          advisory.memTotalKb != null ? ` of ${formatMb(advisory.memTotalKb)}` : ""
+        }`
+      : null;
+  const headline =
+    advisory.level === "strong"
+      ? cpuPart && memPart
+        ? `Host heavily loaded — ${cpuPart}, with only ${memPart}, and nothing printing.`
+        : cpuPart
+          ? `Host heavily loaded — ${cpuPart}, with nothing printing.`
+          : `Host memory critically low — ${memPart}, with nothing printing.`
+      : cpuPart && memPart
+        ? `Host busy — the printer's computer has been at ${cpuPart}, with only ${memPart}, and nothing printing.`
+        : cpuPart
+          ? `Host busy — the printer's computer has been at ${cpuPart}, with nothing printing.`
+          : `Host memory low — ${memPart}, with nothing printing.`;
 
   return (
     <>
@@ -44,14 +109,7 @@ export function HostLoadAdvisory({ printState }: { printState?: string }) {
         <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0 space-y-1.5 text-[11px] leading-relaxed text-[var(--color-warning)]">
           <p>
-            <strong>
-              {/* The figure is a MEDIAN over the readings inside a 30 s
-                  window (≥ 20 of them), not a level held for 30 s. Say
-                  which, or the number claims more than it measured. */}
-              {advisory.level === "strong"
-                ? `Host heavily loaded — ${Math.round(advisory.cpuMedian)}% CPU, median over the last 30 seconds, with nothing printing.`
-                : `Host busy — the printer's computer has been at ${Math.round(advisory.cpuMedian)}% CPU, median over the last 30 seconds, with nothing printing.`}
-            </strong>{" "}
+            <strong>{headline}</strong>{" "}
             {advisory.level === "strong" &&
               "This is the condition that ended the 12 Aug jobs. "}
             A loaded host can fall behind mid-print and stop the job with a
@@ -59,16 +117,14 @@ export function HostLoadAdvisory({ printState }: { printState?: string }) {
             background work first makes the print more likely to finish.
             Starting anyway is fine — this is a heads-up, not a block.
           </p>
-          {advisory.memoryAmplified &&
-            advisory.memAvailKb != null &&
-            advisory.memTotalKb != null && (
-              <p data-testid="host-load-advisory-memory">
-                Free memory is also low ({formatMb(advisory.memAvailKb)} of{" "}
-                {formatMb(advisory.memTotalKb)}). When memory runs out the
-                printer swaps to its eMMC, which starves Klipper the same way
-                a pegged CPU does.
-              </p>
-            )}
+          {advisory.memLow && advisory.memAvailKb != null && (
+            <p data-testid="host-load-advisory-memory">
+              When memory runs out the printer swaps to its eMMC, which
+              starves Klipper the same way a pegged CPU does. A real print
+              never took this machine below 106 MB free — this pressure is
+              background work, not print load.
+            </p>
+          )}
           <details>
             <summary className="flex min-h-11 cursor-pointer items-center font-medium">
               What to stop →

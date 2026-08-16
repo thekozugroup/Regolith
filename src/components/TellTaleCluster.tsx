@@ -116,7 +116,11 @@ export function TellTaleCluster() {
   // printer). Destructured to primitives so the latch effect below can
   // depend on the VALUES, not a per-render object identity.
   const { lampLoad } = useHostHealth();
-  const { condition: hostCondition, detail: hostDetail } = hostLamp(lampLoad);
+  const {
+    condition: hostCondition,
+    detail: hostDetail,
+    settling: hostSettling,
+  } = hostLamp(lampLoad);
 
   // Bulb test: once per mount, on the FIRST connect (a dead WS lighting all
   // lamps then going dark would read as mass failure). Ref-guarded against
@@ -134,7 +138,7 @@ export function TellTaleCluster() {
     profile,
     connected,
     runawayConfirmed,
-    host: { condition: hostCondition, detail: hostDetail },
+    host: { condition: hostCondition, detail: hostDetail, settling: hostSettling },
   });
 
   // Latch phases advance through the pure reducer on every input change.
@@ -144,7 +148,7 @@ export function TellTaleCluster() {
       profile,
       connected,
       runawayConfirmed,
-      host: { condition: hostCondition, detail: hostDetail },
+      host: { condition: hostCondition, detail: hostDetail, settling: hostSettling },
     });
     setCells((prev) => {
       let changed = false;
@@ -165,7 +169,7 @@ export function TellTaleCluster() {
       }
       return changed ? next : prev;
     });
-  }, [state, profile, connected, runawayConfirmed, hostCondition, hostDetail]);
+  }, [state, profile, connected, runawayConfirmed, hostCondition, hostDetail, hostSettling]);
 
   const acknowledge = (lamp: LampReading) => {
     setCells((prev) => {
@@ -302,6 +306,15 @@ function LampCell({
       {cell.phase !== "off" && cell.detail && (
         <span className="telltale-detail">{cell.detail}</span>
       )}
+      {/* Boot grace, made VISIBLE: the lamp is dark because the detector is
+          deliberately holding fire for ~3 min after host boot — an honest
+          "settling" state, not silence. Rendered only while the cell is
+          otherwise off so a latched warning always outranks it. */}
+      {cell.phase === "off" && !testing && lamp.settling && (
+        <span className="telltale-detail" data-testid="host-load-settling">
+          settling after boot
+        </span>
+      )}
     </>
   );
 
@@ -310,6 +323,7 @@ function LampCell({
     "data-lit": litFlag,
     "data-phase": cell.phase,
     "data-severity": lamp.severity,
+    "data-settling": lamp.settling ? "true" : undefined,
   };
 
   // A latched cell is the acknowledge affordance: the WHOLE 44px cell is the

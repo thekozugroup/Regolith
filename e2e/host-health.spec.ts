@@ -88,16 +88,19 @@ async function openSystems(page: Page) {
   ).toBeVisible({ timeout: 15_000 });
 }
 
-/** Push `count` proc-stat samples `stepMs` apart on the mocked clock. */
+/** Push `count` proc-stat samples `stepMs` apart on the mocked clock.
+ *  `extra` overrides the memory fields or adds `uptimeS` (system_uptime),
+ *  the boot-grace signal. */
 async function sustainLoad(
   page: Page,
   mock: ActiveMock,
   cpu: number,
   count: number,
   stepMs = 1_500,
+  extra: { memAvailKb?: number; memTotalKb?: number; uptimeS?: number } = {},
 ) {
   for (let i = 0; i < count; i += 1) {
-    mock.pushProcStat({ cpu, ...MEM_OK });
+    mock.pushProcStat({ cpu, ...MEM_OK, ...extra });
     // Real-time beat so the socket message lands before the clock jumps.
     await page.waitForTimeout(15);
     await page.clock.fastForward(stepMs);
@@ -181,6 +184,88 @@ test.describe("HOST LOAD tell-tale", () => {
     }
     await expect(hostLamp(page)).toHaveAttribute("data-lit", "false");
     await expect(hostLamp(page).locator(".telltale-detail")).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("boot grace: a fresh boot is SETTLING — visible, dark, and never a latch; normal evaluation resumes at 180 s", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await openSystems(page);
+    await page.clock.fastForward(1_000);
+
+    // A boot storm inside the grace window: pegged CPU AND memory under the
+    // strong floor, uptime < 180 s. Measured (post-fix) storms clear by
+    // t+120 s; a firmware update could resurrect the pre-fix world (load 19,
+    // 19 MB free) — either way the lamp stays DARK but SAYS why: "settling
+    // after boot" is an honest state, not silence and not a warning.
+    await sustainLoad(page, mock, 96, 45, 1_500, {
+      memAvailKb: 30_720,
+      memTotalKb: 219_136,
+      uptimeS: 60,
+    });
+    await expect(hostLamp(page)).toHaveAttribute("data-lit", "false");
+    await expect(hostLamp(page)).toHaveAttribute("data-settling", "true");
+    await expect(page.getByTestId("host-load-settling")).toHaveText(
+      "settling after boot",
+    );
+
+    // Uptime crosses the 180 s grace with the pressure STILL on: the
+    // settling note yields and the lamp evaluates normally — and lights.
+    await sustainLoad(page, mock, 96, 45, 1_500, {
+      memAvailKb: 30_720,
+      memTotalKb: 219_136,
+      uptimeS: 200,
+    });
+    await expect(hostLamp(page)).toHaveAttribute("data-lit", "true");
+    await expect(page.getByTestId("host-load-settling")).toHaveCount(0);
+    // The detail names BOTH tripping numbers, memory first (the fault
+    // signature was the paged-out heap, not the CPU).
+    await expect(hostLamp(page).locator(".telltale-detail")).toContainText(
+      "Mem 30 MB free",
+    );
+
+    mock.assertSealed();
+  });
+
+  test("the strong memory floor lights the lamp alone; the real-print floor stays dark", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await openSystems(page);
+    await page.clock.fastForward(1_000);
+
+    // 106,852 kB is the measured floor of a full 1h49m print
+    // (host-baseline-loaded.md) — the calibrated floors must NEVER fire on
+    // a level a healthy print actually reaches.
+    await sustainLoad(page, mock, 20, 15, 1_500, {
+      memAvailKb: 106_852,
+      memTotalKb: 219_136,
+      uptimeS: 9_000,
+    });
+    await expect(hostLamp(page)).toHaveAttribute("data-lit", "false");
+
+    // 30 MB is under the 35 MB strong floor — deep inside the fault
+    // signature (< 82 MB at both real deaths). Quiet CPU: memory fires
+    // ALONE, with the number as the non-colour channel.
+    await sustainLoad(page, mock, 20, 15, 1_500, {
+      memAvailKb: 30_720,
+      memTotalKb: 219_136,
+      uptimeS: 9_000,
+    });
+    await expect(hostLamp(page)).toHaveAttribute("data-lit", "true");
+    await expect(hostLamp(page).locator(".telltale-detail")).toHaveText(
+      "Mem 30 MB free",
+    );
 
     mock.assertSealed();
   });
@@ -275,6 +360,109 @@ test.describe("Pre-print host advisory — advisory only, never a gate", () => {
       .getByRole("button", { name: "Dismiss host load warning" })
       .click();
     await expect(advisory).toHaveCount(0);
+
+    mock.assertSealed();
+  });
+
+  test("boot grace: a just-booted host gets the SETTLING notice, not a warning — and the print still starts", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, {
+      ...scenario("at-temperature"),
+      permit: { printStart: true, timelapseWrite: "ok" },
+    });
+    await fulfilFileApi(page);
+
+    await page.goto("/print");
+    const row = page.getByRole("button", { name: /benchy_0\.2mm_PLA\.gcode/ });
+    await expect(row).toBeVisible();
+
+    // Boot-storm shape inside the grace window: hot CPU on a host that has
+    // been up 90 s. Everything spikes after boot (measured: clear by
+    // t+120 s) — this must NOT render as a load warning.
+    await sustainLoad(page, mock, 92, 40, 1_000, { uptimeS: 90 });
+    await row.click();
+    await page.getByRole("button", { name: "Start print" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    const settling = dialog.getByTestId("host-load-advisory-settling");
+    await expect(settling).toBeVisible();
+    await expect(settling).toContainText(
+      "host load settles within ~3 minutes",
+    );
+    await expect(settling).toContainText("wait for settling and retry");
+    // The suppression suppresses the WARNING, and only the warning.
+    await expect(dialog.getByTestId("host-load-advisory")).toHaveCount(0);
+
+    // Still advisory-only: the settling state gates nothing either.
+    await dialog
+      .getByRole("checkbox", { name: /build plate is seated/ })
+      .click();
+    const start = dialog.getByRole("button", { name: "Start print" });
+    await expect(start).toBeEnabled();
+    await start.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(mock.rpcCalls()).toContain("printer.print.start");
+
+    mock.assertSealed();
+  });
+
+  test("the memory floors warn on their own numbers — 55 MB warns while the real-print floor stays silent", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await useExperience(page, "basic");
+    await page.clock.install();
+    const mock = await installActiveMock(page, scenario("at-temperature"));
+    await fulfilFileApi(page);
+
+    await page.goto("/print");
+    const row = page.getByRole("button", { name: /benchy_0\.2mm_PLA\.gcode/ });
+    await expect(row).toBeVisible();
+
+    // The measured full-print memory floor (106,852 kB) with a quiet CPU:
+    // no advisory. The floors were calibrated to sit BELOW anything a
+    // healthy print reaches.
+    await sustainLoad(page, mock, 15, 25, 1_000, {
+      memAvailKb: 106_852,
+      memTotalKb: 219_136,
+      uptimeS: 9_000,
+    });
+    await row.click();
+    await page.getByRole("button", { name: "Start print" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("host-load-advisory")).toHaveCount(0);
+    await dialog
+      .getByRole("button", { name: "Close print confirmation" })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // 55 MB free — under the 60 MB warn floor, above the 35 MB strong
+    // floor, and the fault signature was < 82 MB. Memory fires ALONE.
+    await sustainLoad(page, mock, 15, 25, 1_000, {
+      memAvailKb: 55 * 1024,
+      memTotalKb: 219_136,
+      uptimeS: 9_000,
+    });
+    await row.click();
+    await page.getByRole("button", { name: "Start print" }).click();
+    const dialog2 = page.getByRole("dialog");
+    const advisory = dialog2.getByTestId("host-load-advisory");
+    await expect(advisory).toBeVisible();
+    await expect(advisory).toContainText("Host memory low");
+    await expect(advisory).toContainText("55 MB");
+    await expect(advisory).toContainText("heads-up, not a block");
+    // The swap explainer rides along whenever memory is the signal.
+    await expect(
+      dialog2.getByTestId("host-load-advisory-memory"),
+    ).toBeVisible();
 
     mock.assertSealed();
   });

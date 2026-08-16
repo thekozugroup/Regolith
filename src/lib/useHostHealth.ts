@@ -9,9 +9,13 @@ import {
 } from "./hostHealth";
 
 export interface HostHealthReading {
-  /** 30 s window — the pre-print advisory's signal. */
+  /**
+   * 30 s window — the pre-print advisory's signal. Carries the CPU median,
+   * the memory level (floors are primary since the 2026-08-16 calibration),
+   * and `uptimeS` for the boot-grace "settling" state.
+   */
   prePrintLoad: HostLoad;
-  /** 60 s window — the HOST LOAD lamp's trigger A. */
+  /** 60 s window — the HOST LOAD lamp's trigger A (same channels). */
   lampLoad: HostLoad;
   /** Motion-buffer starvation — the lamp's trigger B. */
   buffer: BufferStarvation;

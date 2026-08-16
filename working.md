@@ -2728,3 +2728,52 @@ appears in a log nobody is obliged to read is not caught, it is merely
 recorded. If the run does not fail, the check does not exist — so the count
 is asserted, the allowance is a named constant with a reason, and the guard
 must prove it was armed by this run before its zero counts for anything.
+
+## Host-health recalibration from measured baselines · 2026-08-16
+
+The 2026-08-12 thresholds were shaped from the incidents alone and marked
+PROVISIONAL. Both baselines now exist — 60 idle proc-stat samples over 11 min
+(`host-baseline-idle.md`) and 2,164 klippy.log samples across a full 1h49m
+print (`host-baseline-loaded.md`) — and the constants in
+`src/lib/hostHealth.ts` are now fitted to them.
+
+### Load average was considered as primary, and is impossible
+
+The loaded-baseline analysis recommended **sysload as the primary signal**
+(warn ≥ 8.0 / strong ≥ 12.0): it is what actually tracked the fault (idle med
+1.24 / print max 6.01 / 18.21 at death) and separates the states far better
+than CPU%. **The web UI cannot see it.** Moonraker's
+`notify_proc_stat_update` carries `system_cpu_usage`, `system_memory`, and
+`system_uptime` — no load average, and this client will not fake one or
+derive a pretend-loadavg from CPU%. Where the analysis wanted load-based
+verdicts, the shipped calibration substitutes: **memory floors** (the level
+that actually collapses at death), **boot grace on `system_uptime`**, and
+**min-sample-gated CPU medians**. If Moonraker ever exposes loadavg, revisit.
+
+### What changed
+
+- **Memory floors, primary, fire alone**: warn < 60 MB, strong < 35 MB
+  (absolute `MemAvailable`). Full-print floor was 106,852 kB — the warn floor
+  has 46 MB of margin under anything a healthy print reaches — and the fault
+  signature was < 82 MB with the klippy heap paged out. The old
+  fraction-based "amplifier" (memory only lowered the CPU bar) is gone: it
+  could never fire alone and its 12% threshold (~26 MB) is subsumed by the
+  floors.
+- **Boot grace**: `system_uptime` < 180 s suppresses advisory AND lamp —
+  measured post-fix boot storm clears by t+120 s (load peak 4.10 at t+45 s,
+  memavail floor 104 MB). The suppression is visible: the advisory renders an
+  informational "settling after boot" notice and the HOST LOAD cell shows
+  "settling after boot" while staying dark (`data-settling="true"`, nothing
+  latches). Honest state, not silence. Unknown uptime = no grace.
+- **Min-sample gating kept and now load-bearing**: ≥ 20 samples/30 s
+  (advisory), ≥ 40/60 s (lamp). A live idle spot-run caught a single 77.11%
+  spike — on a sparse window that one sample IS the "median" and beats the
+  60% warn bar. No verdict below the floor: unknown, never healthy, never a
+  warning.
+- **CPU thresholds unchanged** (warn ≥ 60% median, strong ≥ 85%), demoted to
+  secondary: estimated real print load is a 37–40% 30 s median, so the bars
+  cannot false-trigger on a legitimate print, but the idle tail (77%) sits
+  ABOVE the loaded median — CPU% separates the states poorly on this box.
+- **The law is untouched**: the advisory still blocks nothing — the settling
+  state included — and the e2e law tests still prove the print starts with
+  the advisory on screen.

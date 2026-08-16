@@ -37,6 +37,13 @@ export interface LampReading {
   condition: boolean;
   /** Optional sub-text captured while the condition is true (e.g. klippy's state_message). */
   detail?: string;
+  /**
+   * HOST LOAD only: the detector is in its boot-grace window (host uptime
+   * < 180 s). The lamp stays DARK — condition is false, nothing latches —
+   * but consumers render "settling after boot" so the suppression is an
+   * honest visible state, not silence.
+   */
+  settling?: boolean;
 }
 
 /**
@@ -75,7 +82,7 @@ export interface LampInputs {
    * runawayConfirmed). Omitted/undefined = unknown host = lamp dark: an
    * unknown host never produces a warning.
    */
-  host?: { condition: boolean; detail?: string };
+  host?: { condition: boolean; detail?: string; settling?: boolean };
 }
 
 /**
@@ -177,6 +184,11 @@ export function readLamps({
   // risk, not a fault. The detail line is the non-colour channel that
   // makes the lamp diagnostic (e.g. "CPU 91% · 60s"); unknown components
   // are omitted by the detector, never printed as 0.
+  // Boot grace: for ~3 min after host boot the detector suppresses itself
+  // (everything spikes on boot — measured storm clears by t+120 s). The
+  // suppression is carried as `settling` so the cell can SAY "settling
+  // after boot" while staying dark: an honest state, never silence, never
+  // a lit warning, and — because condition stays false — never a latch.
   lamps.push({
     id: "host-load",
     label: "Host Load",
@@ -184,6 +196,7 @@ export function readLamps({
     latching: true,
     condition: host?.condition ?? false,
     detail: host?.detail,
+    settling: host?.settling,
   });
 
   // 6 · MCU HOT — profile thresholds through the shared verdict; the lamp
