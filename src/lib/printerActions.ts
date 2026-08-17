@@ -564,6 +564,21 @@ function actionKey(action: PrinterAction): string {
 }
 
 /**
+ * What `applyPrintSetup` did, beyond the user-facing notices:
+ * `touchedPrinter` is true when any step was actually attempted against the
+ * printer — a gcode send, or the timelapse HTTP write (which makes the
+ * moonraker-timelapse component run its `_SET_TIMELAPSE_SETUP` macro on the
+ * printer's behalf). The post-setup re-guard uses it to decide whether an
+ * `idle_timeout == "Printing"` reading could be the echo of our own
+ * commands. An attempt that FAILED still counts: the command may have
+ * reached klipper even when the response did not come back clean.
+ */
+interface PrintSetupOutcome {
+  notices: string[];
+  touchedPrinter: boolean;
+}
+
+/**
  * Apply optional pre-print setup. NEVER THROWS.
  *
  * Every step here is a nicety. A missing klipper object, an unsupported
@@ -579,20 +594,21 @@ function actionKey(action: PrinterAction): string {
  * blocked. Both the wrong target and the fatal handling are fixed here.
  *
  * Returns what could not be done, so the caller can say so WITHOUT turning it
- * into an error. An empty array means every requested step landed (or was
- * legitimately skipped as unsupported).
+ * into an error. An empty notices array means every requested step landed (or
+ * was legitimately skipped as unsupported).
  */
 async function applyPrintSetup(
   client: PrinterActionClient,
   setup: PrintSetupOption[],
-): Promise<string[]> {
+): Promise<PrintSetupOutcome> {
   const notices: string[] = [];
-  if (setup.length === 0) return notices;
+  let touchedPrinter = false;
+  if (setup.length === 0) return { notices, touchedPrinter };
 
   const steps = setup
     .map(resolveSetupStep)
     .filter((step): step is PrintSetupStep => step !== null);
-  if (steps.length === 0) return notices;
+  if (steps.length === 0) return { notices, touchedPrinter };
 
   // Only asked for when a gcode step actually needs it, and a failure to read
   // it never suppresses the HTTP steps — they do not depend on klipper.
@@ -609,6 +625,7 @@ async function applyPrintSetup(
   for (const step of steps) {
     if (step.kind === "gcode") {
       if (!objects || !objects.includes(step.object)) continue;
+      touchedPrinter = true;
       try {
         await client.runGcode(step.gcode);
       } catch {
@@ -616,6 +633,7 @@ async function applyPrintSetup(
       }
       continue;
     }
+    touchedPrinter = true;
     try {
       await step.run(client);
     } catch {
@@ -625,7 +643,62 @@ async function applyPrintSetup(
       notices.push(step.notice);
     }
   }
-  return notices;
+  return { notices, touchedPrinter };
+}
+
+/**
+ * Post-setup re-guard, echo-aware. THE GUARD IS NOT WEAKENED — it is made
+ * honest about whose activity it is looking at.
+ *
+ * Executing ANY gcode flips klipper's `idle_timeout.state` to "Printing" for
+ * about a second (measured ~1.0s on the live K1 Max after a bare `SET_PIN`;
+ * klipper's idle_timeout re-checks roughly one second after the last
+ * activity). Print setup executes gcode: the KAMP `SET_PIN`, and the
+ * timelapse HTTP write that has moonraker-timelapse run
+ * `_SET_TIMELAPSE_SETUP`. So the guard's own setup used to trip the guard —
+ * every dialog print with KAMP or timelapse enabled refused itself with
+ * "Printer state changed during setup. Macro / calibration in progress."
+ *
+ * The echo has a precise signature: `idle_timeout == "Printing"` while
+ * `print_stats` still shows NO job (a bare macro never touches print_stats)
+ * and klipper stayed ready. Only that exact signature is granted a short
+ * settling window, and only when setup actually touched the printer. It is
+ * polled, not assumed: if the state does not return to Ready within the
+ * grace, the printer is genuinely busy — someone really did start a macro or
+ * calibration mid-setup — and the refusal stands. A `print_stats` change, a
+ * dropped socket, or a not-ready klipper refuses immediately, exactly as
+ * before.
+ */
+export const SETUP_ECHO_GRACE_MS = 5000;
+export const SETUP_ECHO_POLL_MS = 500;
+
+type Sleep = (ms: number) => Promise<void>;
+
+const defaultSleep: Sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+async function recheckAfterSetup(
+  client: PrinterActionClient,
+  action: PrinterAction,
+  touchedPrinter: boolean,
+  sleep: Sleep,
+): Promise<ActionCheck> {
+  const polls = Math.ceil(SETUP_ECHO_GRACE_MS / SETUP_ECHO_POLL_MS);
+  for (let attempt = 0; ; attempt += 1) {
+    const state = client.getState();
+    const check = guardPrinterAction(state, client.isConnected(), action);
+    if (check.allowed) return check;
+    if (!touchedPrinter) return check; // nothing of ours to attribute it to
+    const printState = state.print_stats?.state;
+    const jobActive = printState === "printing" || printState === "paused";
+    const setupEchoOnly =
+      client.isConnected() &&
+      !jobActive &&
+      state.idle_timeout?.state === "Printing" &&
+      state.webhooks?.state === "ready";
+    if (!setupEchoOnly || attempt >= polls) return check;
+    await sleep(SETUP_ECHO_POLL_MS);
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -646,8 +719,12 @@ export interface PrinterActionResult {
   notices?: string[];
 }
 
-export function createPrinterActionRunner(client: PrinterActionClient) {
+export function createPrinterActionRunner(
+  client: PrinterActionClient,
+  hooks: { sleep?: Sleep } = {},
+) {
   const inFlight = new Set<string>();
+  const sleep = hooks.sleep ?? defaultSleep;
 
   return async function runPrinterAction(
     action: PrinterAction,
@@ -689,25 +766,29 @@ export function createPrinterActionRunner(client: PrinterActionClient) {
       let setupNotices: string[] = [];
       try {
         switch (action.type) {
-          case "start-print":
+          case "start-print": {
             // Best-effort only. Cannot throw, so it cannot block the print.
-            setupNotices = await applyPrintSetup(client, action.setup);
-            {
-              // Setup takes time on the wire; re-gate on live state.
-              const startCheck = guardPrinterAction(
-                client.getState(),
-                client.isConnected(),
-                action,
+            const outcome = await applyPrintSetup(client, action.setup);
+            setupNotices = outcome.notices;
+            // Setup takes time on the wire; re-gate on live state — but our
+            // own setup commands briefly read as "busy" (see
+            // recheckAfterSetup), so give exactly that signature a settling
+            // window instead of refusing the print we just prepared.
+            const startCheck = await recheckAfterSetup(
+              client,
+              action,
+              outcome.touchedPrinter,
+              sleep,
+            );
+            if (!startCheck.allowed) {
+              throw new PrinterActionError(
+                "blocked",
+                `Printer state changed during setup. ${startCheck.reason ?? "Print was not started."}`,
               );
-              if (!startCheck.allowed) {
-                throw new PrinterActionError(
-                  "blocked",
-                  `Printer state changed during setup. ${startCheck.reason ?? "Print was not started."}`,
-                );
-              }
             }
             await client.startPrint(action.filename);
             break;
+          }
           case "repeat-print":
             await client.startPrint(action.filename);
             break;

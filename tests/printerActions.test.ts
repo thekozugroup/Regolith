@@ -7,6 +7,8 @@ import {
   guardPrinterAction,
   kampEnabledFromStorage,
   PrinterActionError,
+  SETUP_ECHO_GRACE_MS,
+  SETUP_ECHO_POLL_MS,
   type PrinterActionClient,
 } from "../src/lib/printerActions";
 
@@ -333,6 +335,162 @@ describe("printer action safety", () => {
         { type: "set-pressure-advance", value: 0.04, save: true },
       ).allowed,
     ).toBe(false);
+  });
+});
+
+describe("post-setup idle_timeout echo", () => {
+  // Executing ANY gcode — including our own KAMP SET_PIN and the macro the
+  // timelapse HTTP write triggers — flips klipper's idle_timeout.state to
+  // "Printing" for about a second (measured ~1.0s on the live K1 Max). The
+  // post-setup re-guard used to sample inside that window and refuse the
+  // very print it had just prepared, on every single attempt. The guard now
+  // grants exactly that signature — idle Printing, print_stats untouched,
+  // klipper ready — a polled settling window, and nothing else.
+  const POLL_BUDGET = Math.ceil(SETUP_ECHO_GRACE_MS / SETUP_ECHO_POLL_MS);
+  const ECHO_ON = { kind: "timelapse", enabled: true, mode: "hyperlapse" } as const;
+
+  test("our own setup gcode cannot block the print — the echo settles and the print starts", async () => {
+    const fake = client();
+    fake.runGcode = async (script) => {
+      fake.calls.push(`gcode:${script}`);
+      fake.state = readyState({ idle_timeout: { state: "Printing" } });
+    };
+    const sleeps: number[] = [];
+    const run = createPrinterActionRunner(fake, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        // Settles on the second poll — the measured ~1s echo.
+        if (sleeps.length === 2) fake.state = readyState();
+      },
+    });
+    const result = await run(
+      { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls).toContain("gcode:SET_PIN PIN=ADAPTIVE_BED_MESH VALUE=1");
+    expect(fake.calls.at(-1)).toBe("start:part.gcode");
+    expect(sleeps).toEqual([SETUP_ECHO_POLL_MS, SETUP_ECHO_POLL_MS]);
+  });
+
+  test("the macro echo of the timelapse write is forgiven the same way", async () => {
+    const fake = client();
+    fake.writeTimelapseSettings = async (patch) => {
+      fake.calls.push(`timelapse:${JSON.stringify(patch)}`);
+      // moonraker-timelapse runs _SET_TIMELAPSE_SETUP on the printer's
+      // behalf — gcode we never sent ourselves, but ours all the same.
+      fake.state = readyState({ idle_timeout: { state: "Printing" } });
+      return patch;
+    };
+    const run = createPrinterActionRunner(fake, {
+      sleep: async () => {
+        fake.state = readyState();
+      },
+    });
+    const result = await run(
+      { type: "start-print", filename: "part.gcode", setup: [ECHO_ON] },
+      { confirm: () => true },
+    );
+    expect(result.executed).toBe(true);
+    expect(fake.calls.at(-1)).toBe("start:part.gcode");
+  });
+
+  test("an echo that never settles is a genuinely busy printer — refused", async () => {
+    const fake = client();
+    fake.runGcode = async (script) => {
+      fake.calls.push(`gcode:${script}`);
+      fake.state = readyState({ idle_timeout: { state: "Printing" } });
+    };
+    const sleeps: number[] = [];
+    const run = createPrinterActionRunner(fake, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    await expect(
+      run(
+        { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+        { confirm: () => true },
+      ),
+    ).rejects.toThrow("Macro / calibration in progress");
+    // The whole grace was spent waiting before the refusal.
+    expect(sleeps.length).toBe(POLL_BUDGET);
+    expect(fake.calls).not.toContain("start:part.gcode");
+  });
+
+  test("a real job appearing during setup refuses immediately — no grace", async () => {
+    const fake = client();
+    fake.runGcode = async (script) => {
+      fake.calls.push(`gcode:${script}`);
+      fake.state = readyState({
+        idle_timeout: { state: "Printing" },
+        print_stats: { state: "printing", filename: "other.gcode" },
+      });
+    };
+    const sleeps: number[] = [];
+    const run = createPrinterActionRunner(fake, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    await expect(
+      run(
+        { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+        { confirm: () => true },
+      ),
+    ).rejects.toThrow("state changed during setup");
+    expect(sleeps.length).toBe(0);
+    expect(fake.calls).not.toContain("start:part.gcode");
+  });
+
+  test("klipper leaving ready during setup refuses immediately — no grace", async () => {
+    const fake = client();
+    fake.runGcode = async (script) => {
+      fake.calls.push(`gcode:${script}`);
+      fake.state = readyState({
+        webhooks: { state: "shutdown", state_message: "Heater fault" },
+        idle_timeout: { state: "Printing" },
+      });
+    };
+    const sleeps: number[] = [];
+    const run = createPrinterActionRunner(fake, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    await expect(
+      run(
+        { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+        { confirm: () => true },
+      ),
+    ).rejects.toThrow("state changed during setup");
+    expect(sleeps.length).toBe(0);
+    expect(fake.calls).not.toContain("start:part.gcode");
+  });
+
+  test("busy state when setup sent nothing gets no grace — it cannot be our echo", async () => {
+    // The profile asked for KAMP, but this printer has no such pin: nothing
+    // is sent. An idle_timeout flip during that window is someone else's
+    // macro, and the guard must refuse it on the spot.
+    const fake = client(readyState(), ["print_stats", "toolhead"]);
+    fake.listObjects = async () => {
+      fake.state = readyState({ idle_timeout: { state: "Printing" } });
+      return ["print_stats", "toolhead"];
+    };
+    const sleeps: number[] = [];
+    const run = createPrinterActionRunner(fake, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    await expect(
+      run(
+        { type: "start-print", filename: "part.gcode", setup: ["kamp-on"] },
+        { confirm: () => true },
+      ),
+    ).rejects.toThrow("state changed during setup");
+    expect(sleeps.length).toBe(0);
+    expect(fake.calls).not.toContain("start:part.gcode");
   });
 });
 

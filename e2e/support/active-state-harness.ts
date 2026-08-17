@@ -97,6 +97,17 @@ export interface ActiveMockOptions {
      */
     timelapseRender?: "ok" | "fail";
   };
+  /**
+   * Emulate the real klipper idle_timeout echo. Executing ANY gcode flips
+   * `idle_timeout.state` to "Printing", and it returns to "Ready" about a
+   * second later (measured ~1.0s on the live K1 Max after a bare `SET_PIN`).
+   * With this set, every permitted `printer.gcode.script` pushes the
+   * "Printing" diff immediately and the "Ready" diff after `settleMs` —
+   * which is exactly how the app's own pre-print setup briefly reads as a
+   * busy printer. `settleMs: null` never settles: a genuinely busy printer,
+   * a real macro or calibration that the start guard must keep refusing.
+   */
+  idleEcho?: { settleMs: number | null };
 }
 
 export interface ActiveMock {
@@ -165,6 +176,16 @@ export async function installActiveMock(
   let cameraRequestCount = 0;
   let options = initial;
 
+  /** `notify_status_update` to every open socket — Moonraker's live diff. */
+  const pushStatus = (diff: MockPrinterState) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "notify_status_update",
+      params: [diff],
+    });
+    for (const socket of sockets) socket.send(message);
+  };
+
   /** RPCs a test has opted into, answered locally and recorded. */
   const permittedRpc = (method: string): unknown | undefined => {
     if (!options.permit?.printStart) return undefined;
@@ -193,6 +214,18 @@ export async function installActiveMock(
           socket.send(
             JSON.stringify({ jsonrpc: "2.0", id: request.id, result: permitted }),
           );
+          // The klipper echo: an executed gcode reads as a busy printer for
+          // about a second. See `ActiveMockOptions.idleEcho`.
+          if (method === "printer.gcode.script" && options.idleEcho) {
+            pushStatus({ idle_timeout: { state: "Printing" } });
+            const { settleMs } = options.idleEcho;
+            if (settleMs !== null) {
+              setTimeout(
+                () => pushStatus({ idle_timeout: { state: "Ready" } }),
+                settleMs,
+              );
+            }
+          }
           return;
         }
         writes.push(`rpc:${method}`);
@@ -571,14 +604,7 @@ export async function installActiveMock(
     use: (next) => {
       options = next;
     },
-    push: (diff) => {
-      const message = JSON.stringify({
-        jsonrpc: "2.0",
-        method: "notify_status_update",
-        params: [diff],
-      });
-      for (const socket of sockets) socket.send(message);
-    },
+    push: pushStatus,
     pushTimelapse: (event) => {
       const message = JSON.stringify({
         jsonrpc: "2.0",
