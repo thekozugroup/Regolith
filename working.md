@@ -6,9 +6,10 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current status — 2026-10-03
 
-- UI polish committed and pushed on `main` at `a3a9c2d`; tracked tree clean after that commit. Audit: `docs/ui-audit-2026-10-03.md`.
-- Fixed picker bounds/focus, touch-camera discoverability, layout-heavy indicator animations, and accessible progress/preference feedback. Full gate and deployment evidence will be appended to the dated entry at the end of this file.
-- Current run has not started a print or changed printer configuration/services. Read-only preflight reports idle/cool; recheck before every deployment.
+- UI polish from `a3a9c2d`, plus browser-test lifecycle correction `2aa4746`, is pushed on `main` and deployed. All 24 served files match the exact-current production build. Audit: `docs/ui-audit-2026-10-03.md`.
+- Fixed picker bounds/focus, touch-camera discoverability, layout-heavy indicator animations, and accessible progress/preference feedback. Release gates: 430 unit tests, 279 browser tests with zero escaped requests, deployment/setup/hardening shell tests, lint, build, and 42 guarded live views pass. Full evidence is in the latest dated entry below.
+- No print was started; printer configuration, services, commands, transport, profiles, and safety behavior are unchanged. Post-deploy state is ready/standby, inactive SD, idle, zero heater targets/power. Camera stayed Live for 30 seconds with zero reconnects; this is idle-feed evidence, not print-quality proof.
+- Prior backup-retention/browser-safety/deployment goal completed. Next active goal: a cosmetic-only Settings hierarchy/density pass to reduce the Experience card's empty space while preserving aligned surfaces, logical keyboard order, readable copy, 44px targets, Basic/Expert clarity, and the established Instrument Cluster × Apple HIG design. Re-run every release and printer-safety gate before any later deployment.
 - Sections below preserve historical decisions and may be superseded. Use exact-current source and the latest dated entry for implementation and release truth, not old "deployed" claims.
 
 ## Historical status — August 2026
@@ -2975,3 +2976,72 @@ Before retention prunes the oldest on-device UI archive, copied
 `659dc98ed7acf0bf5bd5c7b073a86ec99fa22f5539386597a0ced737ab4e32a5`;
 local tar listing valid (28 entries). Existing non-UI configuration backups
 are outside the deploy retention pattern and remain untouched.
+
+### Verified static release — 2026-10-03 21:43–21:46 EDT
+
+- Source release: `2aa47463e064d0c70bf5a6769e125e91928540ad`, including
+  `a3a9c2d438b9cff6102ab8d8cbf0358ef31978cf`. Both pushed directly to main
+  as `thekozugroup <thekozugroup@gmail.com>`, without co-author trailers.
+- Fresh name resolution and accepted SSH identity matched. Pre-swap and
+  post-release reads confirmed ready/standby, empty filename, inactive SD,
+  Idle, heater targets/power zero; final temperatures ~27.8°C / 25.8°C.
+  Key authentication was unavailable; the existing silent runtime-only
+  password fallback was used. No credential was saved.
+- Existing guarded `deploy.sh` reran frozen install, lint, 430 unit tests,
+  19 deploy tests, guided setup, 43 hardening shell tests, and production
+  build successfully. Hardening tests are local mocks: no hardening script
+  was run against the printer. No service restart or configuration edit.
+- Release archive: 284,450 bytes, SHA-256
+  `e823d2692b4e30e88f213ca5344e8297ffabfd5884dbf7fb447651b6d17a78d0`.
+  Upload hash/size and staged file list verified before the atomic swap.
+- New persistent rollback archive:
+  `/usr/data/regolith-backups/fluidd-before-20261004T014340Z.tgz`,
+  280,286 bytes, SHA-256
+  `86cbad8f92ac4d009ce0c1e92f17ec73b267ea5f09e0e1997dd6ca40ced37cde`.
+  Also copied read-only to the active run's ignored `artifacts/rollback/`
+  directory; local SHA matches and tar listing is valid. Previous live slot
+  retained. Five UI archives retained; the oldest August 7 archive was
+  pruned on-device only after verification and remains recoverable from
+  its previously verified off-device copy. Other backups untouched.
+- Independent Sol review: all **24/24** files in `dist` fetched by sequential
+  read-only HTTP GET and byte-SHA-256 matched, no failures/mismatches.
+  Critical hashes:
+
+  | Asset | SHA-256 |
+  | --- | --- |
+  | `index.html` | `e96a9cc796fc3dde87a28691c9fc182bbc602e5e484503fa74ef81a4e2c3ab3c` |
+  | `assets/index-DrQHotLY.js` | `0b80a5c90436ae4147b8dd144805674234c9667a6214ffdb8af2f1d133dedca0` |
+  | `assets/index-C9p5fcXe.css` | `d2edea42730f86c2dce98c07045ccfe69589e8084e67d95deb164a803c1f2a00` |
+  | `assets/Dashboard-TMJ0OCY1.js` | `7bce53a73c4a43a6f1f0c4c1f5dab5fdcf531ed12dd12b336a3ef3272d4b9ed0` |
+
+- Post-deploy browser: 42 views (seven routes × both modes × 1280×800,
+  800×480, 390×844), zero document overflow, page errors, console errors,
+  or blocked/attempted write requests. HTTP guard allowed only explicit
+  read endpoints/static assets; WebSocket guard allowed subscription only.
+  Reviewed Home, Settings, Files, Control, and camera screenshots. Browser
+  closed after verification so it does not keep a camera client running.
+- Camera: seven stream requests across route visits plus the final soak;
+  the final 30-second hold used one stream, six samples all Live at
+  1280×720, zero reconnects. No light toggle; no print or physical control
+  exercised. Earlier ~15 FPS direct sample is camera throughput only.
+- Development-browser smoothness sample: 361 animation frames over ~3 s,
+  max gap 10.4 ms, zero long tasks during 30 telemetry updates, one camera
+  request. Not a hardware touchscreen FPS certification. Production core
+  JS 291.36 kB / 93.66 kB gzip; CSS 64.42 kB / 12.22 kB gzip.
+- Evidence: ignored `test-results/polish-verified.json`,
+  `test-results/live-polish/`, and run artifacts
+  `live-polish-2026-10-03.json` / `polish-egress-4273.jsonl`. Raw egress
+  ledger was found in macOS `os.tmpdir()` (not `/tmp`) and preserved:
+  one armed marker, no escaped requests.
+- Git comparison against `91b5fe7`: all `src/lib`, profiles, deployment,
+  installer, hardening, and dependency files unchanged. User watchdog
+  hashes remain exactly `d150bd58…` / `d703570c…`; untracked work preserved.
+- Recovery if later required: fresh safety gates, then
+  `PRINTER_HOST=<printer-host> ./deploy.sh --rollback`. No unnecessary live
+  rollback performed. Vendor firmware-update survival remains best-effort,
+  not guaranteed; preserved local rollback archives improve recovery.
+
+Next: compare cosmetic Settings grouping/density options using mocked
+before/after evidence. Do not fix empty space by breaking shared alignment,
+shrinking touch targets, changing reading order, or changing printer behavior.
+The current release is complete; the next goal is separate and not yet shipped.
