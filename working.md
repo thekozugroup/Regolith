@@ -2,9 +2,16 @@
 
 ## Goal
 
-Make Regolith safe and approachable for a nontechnical Apple user while preserving expert Klipper control. Use calm Apple HIG-style hierarchy, solid industrial surfaces, and frosted blur only for navigation/status chrome. No Liquid Glass.
+Make Regolith safe and approachable for a nontechnical Apple user while preserving expert Klipper control. Design direction: 1980s digital instrument cluster × Apple HIG — glanceable real telemetry, aligned surfaces, clear states, accessible input, and calm hierarchy. Preserve the established Inter/neutral/segmented-instrument system. No Liquid Glass, glow, or decorative animation. Latest request permits UI polish and guarded static deployment, never activating a print or changing printer behavior.
 
-## Current status
+## Current status — 2026-10-03
+
+- UI polish committed and pushed on `main` at `a3a9c2d`; tracked tree clean after that commit. Audit: `docs/ui-audit-2026-10-03.md`.
+- Fixed picker bounds/focus, touch-camera discoverability, layout-heavy indicator animations, and accessible progress/preference feedback. Full gate and deployment evidence will be appended to the dated entry at the end of this file.
+- Current run has not started a print or changed printer configuration/services. Read-only preflight reports idle/cool; recheck before every deployment.
+- Sections below preserve historical decisions and may be superseded. Use exact-current source and the latest dated entry for implementation and release truth, not old "deployed" claims.
+
+## Historical status — August 2026
 
 - **Commit SHAs recorded before the 2026-08-04 history rewrite are stale.** The credential scrub rewrote `main`, so every SHA in the release and validation records below that predates the rewrite no longer resolves. Treat those records as narrative history, not as references you can `git show`. Match releases by date and description; verify anything load-bearing against the current `main` rather than an old SHA.
 - **Exact-current Regolith through `68181d0` is deployed and verified on the K1 Max (2026-08-03 13:22:35 printer clock), and the print-start bug is proven fixed on real hardware.** A print was started from the deployed UI, klipper accepted it, and no `key69` error appeared anywhere. See "Live release and print-start proof" below.
@@ -2934,3 +2941,37 @@ heat, deploy only static assets through verified backup/atomic swap, compare
 every served asset hash, then read-only live browser QA. Firmware-update
 survival remains best-effort as documented in README; no firmware update is
 part of this iteration.
+
+### Full-suite safety gate caught a test lifecycle race
+
+First full run: all 279 test cases passed, but the **release gate failed**
+because one mocked thumbnail request reached the local preview server.
+The preview's loopback discard sink refused it; it did not reach the
+printer. Zero-egress allowance was not relaxed.
+
+`console-hygiene.spec.ts` waited for an absent status with accessible name
+`Loading view…`, but the status node has text rather than that accessible
+name. The assertion matched nothing even during lazy loading. Replaced it
+with a positive visible route-heading check, then a network-idle wait to
+drain the fixture's finite reads before the next navigation/teardown.
+The thumbnail endpoint was already mocked; this is a test lifecycle fix,
+not a new printer endpoint allowance. Full exact-current rerun required.
+
+Rerun complete: **279/279 browser tests pass in 13.7 minutes**, including
+the global zero-egress gate (one armed marker, zero escaped/refused calls).
+Report: ignored `test-results/polish-verified.json`. No runtime changes were
+needed for the lifecycle fix. Lint and shell syntax checks pass again.
+
+Read-only live baseline: all seven routes × Basic/Expert × 1280×800,
+800×480, and 390×844 (42 captures), no document overflow, page exceptions,
+or attempted writes. A 30-second camera browser soak stayed Live at
+1280×720 with zero reconnects; chamber light remained off. Baseline served
+asset names match the original `91b5fe7` build, so this release is not
+silently bundling an unrelated undeployed printer-control change.
+
+Before retention prunes the oldest on-device UI archive, copied
+`fluidd-before-20260807T211834Z.tgz` to the active run's ignored
+`artifacts/rollback/` directory. Local and remote SHA-256 both
+`659dc98ed7acf0bf5bd5c7b073a86ec99fa22f5539386597a0ced737ab4e32a5`;
+local tar listing valid (28 entries). Existing non-UI configuration backups
+are outside the deploy retention pattern and remain untouched.

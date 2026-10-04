@@ -93,10 +93,16 @@ test.describe("Console hygiene", () => {
         for (const route of ROUTES) {
           watcher.label(`${mode} ${target.id} ${route}`);
           await page.goto(route);
+          // A role=status node is not named by its text. The old negative
+          // "Loading view…" role query matched nothing even during Suspense,
+          // so this loop could tear down interception while a thumbnail was
+          // still mounting. Prove content exists, then drain the fixture's
+          // finite HTTP reads before navigating again. No live networking.
           await expect(
-            page.getByRole("status", { name: "Loading view…" }),
-            `${route} never settled`,
-          ).toHaveCount(0, { timeout: 15_000 });
+            page.locator("main h2").first(),
+            `${route} never rendered route content`,
+          ).toBeVisible({ timeout: 15_000 });
+          await page.waitForLoadState("networkidle");
         }
       }
 
