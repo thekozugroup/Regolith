@@ -371,18 +371,18 @@ function BedView({
         {/* Toolhead marker */}
         {markerPlaceable && (
           <div
-            className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 border-2 transition-[left,top] duration-150 ease-out"
-            style={{
-              left: `${x}%`,
-              top: `${y}%`,
-              borderColor: printing
-                ? "var(--color-accent)"
-                : "var(--color-fg)",
-              backgroundColor: printing
-                ? "var(--color-accent)"
-                : "transparent",
-            }}
-          />
+            data-testid="toolhead-position"
+            className="pointer-events-none absolute inset-0 transition-[transform] duration-[var(--dur-fast)] ease-out"
+            style={{ transform: `translate(${x}%, ${y}%)` }}
+          >
+            <div
+              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 border-2"
+              style={{
+                borderColor: printing ? "var(--color-accent)" : "var(--color-fg)",
+                backgroundColor: printing ? "var(--color-accent)" : "transparent",
+              }}
+            />
+          </div>
         )}
         {!markerPlaceable && (
           <div className="absolute inset-0 flex items-center justify-center text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-subtle)]">

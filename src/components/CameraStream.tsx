@@ -172,10 +172,10 @@ export function CameraStream({
       {available && (
         <div
           className={cn(
-            "absolute right-2 top-2 z-10 flex gap-1.5 transition-opacity",
+            "camera-controls absolute right-2 top-2 z-10 flex gap-1.5 transition-opacity",
             isFullscreen
               ? "opacity-100"
-              : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100",
+              : "camera-controls-auto",
           )}
         >
           <button

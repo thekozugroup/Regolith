@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Touchscreens have no reliable hover, regardless of their width. Keep
+   camera actions visible there; reveal on hover/focus only for mouse input. */
+@media (hover: hover) and (pointer: fine) and (min-width: 640px) {
+  .camera-controls-auto { opacity: 0; }
+  .group:hover .camera-controls-auto,
+  .camera-controls-auto:focus-within { opacity: 1; }
+}
+
 /* Desktop chrome (persistent sidebar, no bottom nav) needs BOTH width and
    height: the K1 Max's own 800x480 touch panel is >=768px wide but only
    480px tall — it must keep the touch layout (bottom nav, full width).

@@ -296,14 +296,17 @@ export function Timelapses() {
               ? "Timelapses could not be loaded."
               : `${files.length} timelapses available.`}
         </div>
+        {/* Announce phase changes, not every frame/percentage tick. Keep this
+            node mounted so assistive technology observes the first update. */}
+        <div data-testid="timelapse-phase" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {render ? RENDER_WORD[render.status] : recording ? "Recording timelapse" : renderAsking ? "Waiting for the printer to start rendering" : ""}
+        </div>
         {/* Live capture / render state. Rendered ONLY when something is
             actually happening — an idle machine gets no dead complication,
             the same law the mission bar follows. */}
         {(render || recording || renderAsking) && (
           <div
             data-testid="timelapse-activity"
-            role="status"
-            aria-live="polite"
             className="mb-[var(--stack)] rounded-inner border border-[var(--color-border)] p-3"
           >
             {render ? (
@@ -320,13 +323,17 @@ export function Timelapses() {
                 </div>
                 {render.status === "running" && (
                   <div
-                    aria-hidden="true"
+                    role="progressbar"
+                    aria-label="Timelapse rendering"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={render.progress ?? undefined}
                     className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--color-elevated)]"
                   >
                     <div
                       data-testid="timelapse-render-bar"
-                      className="h-full bg-[var(--color-accent)] transition-[width] duration-300"
-                      style={{ width: `${render.progress ?? 0}%` }}
+                      className="h-full w-full origin-left bg-[var(--color-accent)] transition-[transform] duration-[var(--dur-fast)]"
+                      style={{ transform: `scaleX(${(render.progress ?? 0) / 100})` }}
                     />
                   </div>
                 )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Hammer,
@@ -44,6 +44,7 @@ import {
   saveBrand,
   type BrandConfig,
 } from "@/lib/brand";
+import { getModalFocusableElements } from "@/lib/modal";
 
 // Curated Lucide subset — recognizable, geometric, work well at 18px.
 const ICON_LIBRARY: Record<string, LucideIcon> = {
@@ -87,6 +88,29 @@ interface Props {
   configurable?: boolean;
 }
 
+const POPOVER_INSET = 8;
+const POPOVER_GAP = 4;
+const POPOVER_WIDTH = 280;
+const POPOVER_PREFERRED_HEIGHT = 460;
+
+interface PopoverPosition {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+}
+
+function getVisibleFocusableElements(container: HTMLElement): HTMLElement[] {
+  return getModalFocusableElements(container).filter((element) => {
+    const style = window.getComputedStyle(element);
+    return (
+      element.getClientRects().length > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden"
+    );
+  });
+}
+
 export function BrandLogo({
   className,
   size = 18,
@@ -94,10 +118,19 @@ export function BrandLogo({
 }: Props) {
   const [brand, setBrand] = useState<BrandConfig>(loadBrand);
   const [open, setOpen] = useState(false);
-  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [position, setPosition] = useState<PopoverPosition | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const didFocusPickerRef = useRef(false);
+  const pickerId = useId();
+
+  const closePicker = useCallback((restoreFocus = false) => {
+    didFocusPickerRef.current = false;
+    setOpen(false);
+    setPosition(null);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
 
   // Persist + broadcast so other instances sync
   useEffect(() => {
@@ -123,37 +156,119 @@ export function BrandLogo({
     return () => window.removeEventListener("forge:brand-changed", handler);
   }, [brand]);
 
-  // Close on outside click
+  // A non-modal picker should stay anchored to its trigger without ever
+  // covering the viewport's last reachable controls.
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const updatePosition = (event?: Event) => {
+      // The panel itself scrolls on short displays; its own scroll must not
+      // make the fixed anchor recompute or trigger a state update.
+      if (
+        event?.type === "scroll" &&
+        event.target instanceof Node &&
+        popoverRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        closePicker(false);
+        return;
+      }
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(POPOVER_WIDTH, viewportWidth - POPOVER_INSET * 2);
+      const below = viewportHeight - rect.bottom - POPOVER_INSET - POPOVER_GAP;
+      const above = rect.top - POPOVER_INSET - POPOVER_GAP;
+      const placeAbove = below < POPOVER_PREFERRED_HEIGHT && above > below;
+      const available = Math.max(0, placeAbove ? above : below);
+      const maxHeight = Math.min(
+        viewportHeight - POPOVER_INSET * 2,
+        Math.max(available, 44),
+      );
+      const top = placeAbove
+        ? Math.max(POPOVER_INSET, rect.top - POPOVER_GAP - maxHeight)
+        : Math.min(
+            Math.max(POPOVER_INSET, rect.bottom + POPOVER_GAP),
+            viewportHeight - POPOVER_INSET - maxHeight,
+          );
+
+      const nextPosition = {
+        left: Math.max(
+          POPOVER_INSET,
+          Math.min(rect.left, viewportWidth - POPOVER_INSET - width),
+        ),
+        top,
+        width,
+        maxHeight,
+      };
+      setPosition((current) =>
+        current &&
+        current.left === nextPosition.left &&
+        current.top === nextPosition.top &&
+        current.width === nextPosition.width &&
+        current.maxHeight === nextPosition.maxHeight
+          ? current
+          : nextPosition,
+      );
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [closePicker, open]);
+
+  // Close on outside pointer without stealing the focus that pointer selected.
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
       if (
         popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
+        !popoverRef.current.contains(event.target as Node) &&
+        !triggerRef.current?.contains(event.target as Node)
       ) {
-        setOpen(false);
+        closePicker(false);
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
+        closePicker(true);
       }
     };
-    setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [closePicker, open]);
+
+  // The portal is mounted only after a measured position exists. Focus once
+  // per open cycle after that mount, rather than racing that second render.
+  useEffect(() => {
+    if (!open || !position || didFocusPickerRef.current) return;
+    didFocusPickerRef.current = true;
+    const selected = popoverRef.current?.querySelector<HTMLButtonElement>(
+      '[aria-pressed="true"]',
+    );
+    const first = popoverRef.current?.querySelector<HTMLButtonElement>(
+      "button[aria-pressed]",
+    );
+    (selected ?? first)?.focus();
+  }, [open, position]);
 
   const handleUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       setBrand({ type: "image", src: String(reader.result) });
-      setOpen(false);
+      closePicker(true);
     };
     reader.readAsDataURL(file);
   };
@@ -189,11 +304,12 @@ export function BrandLogo({
         ref={triggerRef}
         onClick={() => {
           if (!configurable) return;
-          if (!open && triggerRef.current) {
-            const r = triggerRef.current.getBoundingClientRect();
-            setAnchor({ x: r.left, y: r.bottom + 4 });
+          if (open) {
+            closePicker(false);
+          } else {
+            setPosition(null);
+            setOpen(true);
           }
-          setOpen((o) => !o);
         }}
         className={cn(
           "press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
@@ -203,6 +319,8 @@ export function BrandLogo({
         title={configurable ? "Change brand icon" : undefined}
         aria-label={configurable ? "Change brand icon" : "Brand icon"}
         aria-expanded={configurable ? open : undefined}
+        aria-controls={configurable ? pickerId : undefined}
+        aria-haspopup={configurable ? "dialog" : undefined}
         disabled={!configurable}
       >
         {renderIcon() ?? (
@@ -215,9 +333,10 @@ export function BrandLogo({
         )}
       </button>
 
-      {open && configurable && anchor && createPortal(
+      {open && configurable && position && createPortal(
         <div
           ref={popoverRef}
+          id={pickerId}
           role="dialog"
           aria-label="Choose brand icon"
           // Derived-radius rule: this compact popover pads with p-2 (8px),
@@ -225,10 +344,48 @@ export function BrandLogo({
           // token HERE makes .modal-panel derive BOTH sides from the pad
           // the markup actually uses: outer = 8px + control = 12px, and
           // --radius-inner = control (4px) for the corner children.
-          className="modal-panel [--modal-pad:0.5rem] fixed z-[100] w-[280px] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] shadow-2xl overflow-hidden"
+          className="modal-panel [--modal-pad:0.5rem] fixed z-[100] bg-[var(--color-elevated)] border border-[var(--color-border-strong)] shadow-2xl overflow-y-auto"
           style={{
-            left: Math.min(anchor.x, window.innerWidth - 290),
-            top: anchor.y,
+            left: position.left,
+            top: position.top,
+            width: position.width,
+            maxHeight: position.maxHeight,
+          }}
+          onBlur={(event) => {
+            // A native file chooser can report null relatedTarget while the
+            // hidden input remains responsible for its eventual change event.
+            if (
+              event.relatedTarget &&
+              !event.currentTarget.contains(event.relatedTarget as Node)
+            ) {
+              closePicker(false);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            const panel = event.currentTarget;
+            const items = getVisibleFocusableElements(panel);
+            const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+            const isFirst = currentIndex === 0;
+            const isLast = currentIndex === items.length - 1;
+
+            if (event.shiftKey && isFirst) {
+              event.preventDefault();
+              closePicker(true);
+              return;
+            }
+            if (!event.shiftKey && isLast) {
+              event.preventDefault();
+              const trigger = triggerRef.current;
+              const documentItems = getVisibleFocusableElements(document.body)
+                .filter((element) => !panel.contains(element));
+              const triggerIndex = trigger ? documentItems.indexOf(trigger) : -1;
+              const next = triggerIndex >= 0
+                ? documentItems[triggerIndex + 1]
+                : null;
+              closePicker(false);
+              (next ?? trigger)?.focus();
+            }
           }}
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
@@ -237,7 +394,7 @@ export function BrandLogo({
             </span>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => closePicker(true)}
               aria-label="Close brand icon picker"
               className="press-flat inline-flex min-h-11 min-w-11 items-center justify-center rounded-inner text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
             >
@@ -257,7 +414,7 @@ export function BrandLogo({
                     key={name}
                     onClick={() => {
                       setBrand({ type: "lucide", name });
-                      setOpen(false);
+                      closePicker(true);
                     }}
                     className={cn(
                       "press-flat flex min-h-11 min-w-11 items-center justify-center rounded-inner transition-colors",
@@ -293,7 +450,7 @@ export function BrandLogo({
               type="button"
               onClick={() => {
                 setBrand({ type: "none" });
-                setOpen(false);
+                closePicker(true);
               }}
               className={cn(
                 "press-flat flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] hover:bg-[var(--color-accent-faint)]",
@@ -312,7 +469,7 @@ export function BrandLogo({
               type="button"
               onClick={() => {
                 setBrand(DEFAULT_BRAND);
-                setOpen(false);
+                closePicker(true);
               }}
               className="press-flat flex min-h-11 w-full items-center gap-2 rounded-inner p-2 text-[12px] text-[var(--color-fg-muted)] hover:bg-[var(--color-accent-faint)]"
             >
@@ -327,6 +484,9 @@ export function BrandLogo({
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
+              // Permit choosing the same local mark again after a cancelled
+              // or failed attempt; FileReader owns the captured File value.
+              e.currentTarget.value = "";
               if (f) handleUpload(f);
             }}
           />

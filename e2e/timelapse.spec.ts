@@ -433,6 +433,18 @@ test.describe("Timelapses page — live render progress and arrival", () => {
     await expect(activity).toContainText("62%");
     await expect(page.getByTestId("timelapse-render-bar")).toBeAttached();
 
+    // Progress stays discoverable without re-announcing the entire card on
+    // every tick. Only the phase is a live region; bars animate transforms.
+    const phase = page.getByTestId("timelapse-phase");
+    const progress = page.getByRole("progressbar", { name: "Timelapse rendering" });
+    await expect(phase).toHaveText("Rendering video");
+    await expect(progress).toHaveAttribute("aria-valuenow", "62.4");
+    await expect(page.getByTestId("timelapse-render-bar")).toHaveCSS("transition-property", "transform");
+    mock.pushTimelapse({ action: "render", status: "running", progress: 68 });
+    await expect(progress).toHaveAttribute("aria-valuenow", "68");
+    await expect(phase).toHaveText("Rendering video");
+    await expect(activity).not.toHaveAttribute("aria-live");
+
     // The render finishing means a NEW file exists — the list refetches on
     // that edge instead of leaving the owner staring at a stale library.
     files.addTimelapse(TIMELAPSE_FILE);

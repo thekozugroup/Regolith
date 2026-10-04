@@ -62,7 +62,7 @@ export function ProfileSettings() {
 
   return (
     <Card title="Printer Profile" icon={<Boxes />} className="lg:col-span-1">
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         <div className="text-[11px] text-[var(--color-fg-muted)] leading-relaxed">
           A profile defines your printer's heaters, sensors, fans, and
           macros. Upload a JSON profile to support a different printer
@@ -140,14 +140,22 @@ export function ProfileSettings() {
           />
         </div>
 
-        {imported && (
-          <div className="text-[11px] text-[var(--color-accent)]">
-            Imported "{imported}" and set as active.
-          </div>
-        )}
-        {error && (
-          <div className="text-[11px] text-[var(--color-error)]">{error}</div>
-        )}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={imported ? "text-[11px] text-[var(--color-accent)]" : "sr-only"}
+        >
+          {imported ? `Imported "${imported}" and set as active.` : null}
+        </div>
+        <div
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          className={error ? "text-[11px] text-[var(--color-error)]" : "sr-only"}
+        >
+          {error}
+        </div>
       </div>
     </Card>
   );

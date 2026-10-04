@@ -2888,3 +2888,49 @@ pass was their explicit request), so policy was included.
 
 Re-run anytime:
 `PRINTER_HOST=<printer-host> PRINTER_PASSWORD=$PRINTER_PASSWORD ./tools/harden-k1.sh --check`
+
+## 2026-10-03 — Impeccable × Taste interaction polish
+
+Continuation starts from `91b5fe7`, not the superseded August checkout.
+Scope is UI-only polish/performance and guarded static deployment. **Never
+start a print.** No printer action, transport, safety logic, profile,
+firmware, service, installer, or dependency behavior changed. The existing
+Instrument Cluster × Apple HIG direction remains; later owner laws in the
+code take precedence over generic font/palette/decor suggestions.
+
+- Audit: `docs/ui-audit-2026-10-03.md`. Sol audited; Terra handled the
+  bounded picker correction; Luna added accessible preference feedback.
+- Brand picker now fits short displays, supports intentional keyboard
+  entry/exit and focus return, preserves native image selection, and closes
+  if responsive chrome removes its trigger. Scroll events no longer cause
+  redundant positioning state updates.
+- Camera actions stay visible on large touchscreens. Fine-pointer hover
+  and keyboard-focus reveal remain available. Stream/retry logic unchanged.
+- Toolhead position, memory, and timelapse progress now animate transforms
+  instead of layout properties; existing reduced-motion law remains active.
+- Timelapse phase announcements no longer repeat on every percentage/frame
+  update. Progress is a named accessible progressbar. Profile/preference
+  feedback has stable announcement regions with no empty visual gaps.
+- Baseline 70-view geometry sweep passed. Reviewed representative Home and
+  Settings desktop/mobile captures plus corrected 800×600 picker capture.
+- Local gates so far: lint/build, 430 unit tests (3,905 assertions), 19
+  deployment shell tests, guided setup, 43 hardening shell tests, and 32
+  corrected targeted browser tests pass. First targeted pass caught an
+  initial-focus mount race (fixed) and overly broad Tailwind transition
+  declarations (narrowed). Full 279-test suite is running; not yet claimed.
+- Printer identity freshly matched; read-only preflight passed. A transient
+  name-resolution timeout caused the first preflight to fail closed; the
+  freshly resolved, fingerprint-verified LAN address succeeded. No remote
+  file changes during preflight. Printer repeatedly reported ready/standby,
+  inactive SD, idle, zero targets/power, hotend ~27.7°C and bed ~25.8°C.
+- Direct read-only camera sample: 671 JPEG frames / 45.003 seconds, 37,813,649
+  bytes, 10-second buckets 147/150/150/150 plus 74 over final five seconds;
+  max frame gap 238 ms. This is an idle observation, not print-quality proof.
+- User-owned watchdog files remain untracked and retain hashes `d150bd58…`
+  (Python) and `d703570c…` (shell). Existing untracked artifacts preserved.
+
+Next gate: finish the full mocked suite, freshly re-prove identity/idle/zero
+heat, deploy only static assets through verified backup/atomic swap, compare
+every served asset hash, then read-only live browser QA. Firmware-update
+survival remains best-effort as documented in README; no firmware update is
+part of this iteration.

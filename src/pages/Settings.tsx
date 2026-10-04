@@ -219,11 +219,12 @@ export function SettingsPage() {
                 : "—"}
             </span>
           </Row>
-          <div className="h-1 bg-[var(--color-elevated)] rounded-full overflow-hidden">
+          <div aria-hidden="true" className="h-1 bg-[var(--color-elevated)] rounded-full overflow-hidden">
             <div
-              className="h-full transition-[width] duration-700"
+              data-testid="host-memory-bar"
+              className="h-full w-full origin-left transition-[transform] duration-[var(--dur-fast)]"
               style={{
-                width: `${memPct}%`,
+                transform: `scaleX(${Math.max(0, Math.min(1, memPct / 100))})`,
                 background:
                   memPct > 85
                     ? "var(--color-error)"

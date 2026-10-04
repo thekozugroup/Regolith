@@ -155,11 +155,14 @@ export function BackupSettings() {
           />
         )}
 
-        {status && (
-          <div className="text-[11px] text-[var(--color-accent)] tabular-nums pt-1">
-            {status}
-          </div>
-        )}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={status ? "text-[11px] text-[var(--color-accent)] tabular-nums pt-1" : "sr-only"}
+        >
+          {status}
+        </div>
 
         <input
           ref={fileRef}
