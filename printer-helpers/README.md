@@ -1,7 +1,9 @@
-# Lower-startup light watchdog candidate
+# Lower-startup light watchdog
 
-Local candidate only. No installer, cron edits, printer connections, or automatic
-deployment are included. The owner-authored files under `scripts/` remain intact.
+No installer, cron edits, printer connections, or automatic deployment are
+included. The owner-authored files under `scripts/` remain intact. The specific
+guarded K1 Max installation on October 9 is recorded in `working.md`; copying
+this repository does not install or enable a helper on another printer.
 
 `light-watchdog.py` uses the standard `http.client.HTTPConnection` for the normal
 loopback request, avoiding the heavy `urllib.request` and `typing` imports.
@@ -89,3 +91,9 @@ lower); peak RSS: 10,580 → 9,432 kB (about 11% lower).
 The identical timing harness contributes baseline overhead to both versions.
 This supports lower startup cost, not elimination of every system CPU spike.
 Raw results are retained in the ignored run's `artifacts/cpu/helper-benchmark.json`.
+
+The exact tested helper was subsequently installed at 15:52:46 UTC, preserving
+the existing wrapper, priority, one-minute schedule, state, permissions and
+ten-minute timeout. The original is in a verified persistent rollback file.
+Natural scheduled ticks were observed without changing the already-off light.
+No physical print, motion, or automatic-light transition test was performed.

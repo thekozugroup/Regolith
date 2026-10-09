@@ -14,16 +14,27 @@ startup cost while preserving automation, and review the separate hourly
 calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
 
 - Files: two-request shared metadata queue, visible previews, revision-aware
-  bounded cache, selected-file priority, refresh/error recovery drafted.
-- Settings: stable identity/version reads plus existing pushed memory/uptime,
-  bounded fallback and error recovery drafted. Independent review underway.
-- First local checks: 444 unit tests, lint and build pass. Focused mocked
-  browser tests running; full release acceptance and live deployment pending.
+  bounded cache, selected-file priority, refresh/error recovery implemented.
+- Settings: stable identity/version reads, pushed memory, independently fresh
+  uptime fallback, and honest last-known/offline states implemented.
+- Application work committed/pushed in `e49ac1f`; helpers/tests in `3bf0e22`.
+  Final independent source review found no remaining release blocker.
+- Latest local checks: 451 unit tests, lint/build, five Files and seven Settings
+  focused browser tests pass. Full 291-browser suite is running; static UI
+  deployment remains gated on that suite and fresh device safety evidence.
 - Fresh printer check at 15:36 UTC: ready/complete, inactive SD, Idle, hotend
   26.63°C / bed 24.97°C, both targets and power zero. No commands sent.
 - Original live helpers copied read-only and hash-verified into ignored
   `.a5c/runs/01KZ1XHAFCKSDQB4AAD966MX1R/artifacts/cpu/originals/`. User-owned local
-  `scripts/` remains unchanged. Helper replacements are local drafts only.
+  `scripts/` remains unchanged. Calibration replacement remains a local draft.
+- Light helper deployed at 15:52:46 UTC after fresh identity, idle/cool, empty
+  queue and LED-off checks. Exact candidate SHA-256:
+  `84a8d0dc06ebf7c92c4a0094dbe72509700647248715b2f494516565e98401b5`.
+  Persistent rollback: `/usr/data/regolith-backups/light-watchdog-before-20261009T155200Z.py`;
+  original hash `d150bd58cea24cce3f73aa8abf29aaf4fac1c90e017c4ceefd863ebf86679e7f`.
+  Wrapper hash unchanged, root:root mode 700, same cron/600-second timeout.
+  Natural ticks through 15:57 UTC updated state mtime, preserved state values,
+  and added no LED-off log entry. No manual normal watchdog run.
 - Calibration proposal requires an explicit maintenance approval before
   movement; owner choice pending. Do not deploy that behavior change silently.
 - Every remote write still requires fresh accepted identity, idle/cool proof,
@@ -42,7 +53,10 @@ calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
 - Initial focused browser runs caught fixture shape/order/routing and wording
   errors. Runtime review also fixed missing uptime, overwritten error states,
   stale data, hung sibling reads, and same-name metadata invalidation. Files'
-  five focused browser tests now pass; Settings final rerun and full suite pending.
+  five focused browser tests and Settings' seven tests now pass; full suite pending.
+- Passive post-helper observation: 179 samples, aggregate CPU median 27.98%,
+  maximum 78.5%. This was not a matched baseline-length trial and does not show
+  elimination of system CPU peaks. No feature, camera setting or service cut.
 - Calibration draft: 42 offline fault-injection tests pass. Default has no
   motion, explicit maintenance remains fail-closed on unknown firmware
   contracts/pending saves. It is not deployed or physically certified.

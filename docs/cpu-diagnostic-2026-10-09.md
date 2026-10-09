@@ -1,5 +1,12 @@
 # CPU diagnostic — October 9, 2026
 
+Historical diagnostic, not the remediation release record. See `working.md`
+for current implementation/deployment state. Correction: this printer pushes
+memory but not uptime; the optimization retains bounded uptime fallback reads.
+The original raw `test-results/` scratch directory was later cleared by
+Playwright's output cleanup. Its summary below remains historical evidence;
+new repeated baseline/after artifacts use the durable ignored run directory.
+
 Brief CPU spikes are real. Two avoidable workloads were observed: Regolith's
 all-at-once file metadata requests, and the on-printer chamber-light watchdog's
 minute-by-minute Python startup. Expert Settings also repeats information reads
