@@ -19,9 +19,33 @@ calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
   uptime fallback, and honest last-known/offline states implemented.
 - Application work committed/pushed in `e49ac1f`; helpers/tests in `3bf0e22`.
   Final independent source review found no remaining release blocker.
-- Latest local checks: 451 unit tests, lint/build, five Files and seven Settings
-  focused browser tests pass. Full 291-browser suite is running; static UI
-  deployment remains gated on that suite and fresh device safety evidence.
+- Latest local checks: 451 unit tests (4,035 assertions), lint/build, all 291
+  browser tests, 19 deployment cases, guided setup and 43 hardening cases pass.
+  Full-suite ledger contains a fresh armed record and zero escaped/unmocked
+  printer requests. All 52 offline helper test groups/cases pass.
+- Static UI from `41e1bc8` deployed at 16:05 UTC after renewed identity and
+  idle/cool/empty-queue proof. All 24 served files match the production build.
+  New verified persistent/off-device backup: `fluidd-before-20261009T160549Z.tgz`,
+  SHA-256 `cf3756965f7f30b3d3ee72cac1c53f420b1daeb19f946135d023992d5122c33b`,
+  281,931 bytes, 27 archive entries. Retention kept five UI archives and pruned
+  the oldest (`fluidd-before-20260812T154159Z.tgz`) only after a verified local
+  copy existed. Prior UI also remains in `fluidd.previous`.
+- Matched live after-measurements: three Settings visits each dropped from 53
+  to 7 host reads; Files visits from 24 to 10 metadata + thumbnail pairs. All
+  data/features remain; off-screen previews load on demand. Settings CPU medians
+  28.72–30.16% → 25.13–26.70%; Files peaks 71.56–82.32% → 50–63.87% in these
+  idle trials. Periodic system peaks remain; Home peak did not fall. One camera
+  request, no reconnect/page errors/attempted writes.
+- Live audit: 42 Basic/Expert views across desktop, K1 panel and phone pass
+  without horizontal overflow, page/console errors or attempted writes.
+  Supplementary host-data and Files scroll/selection/refresh checks pass.
+  Initial exact-text/ambiguous-Refresh harness selectors were corrected; no
+  application workaround was needed. Six camera samples remained Live at
+  1280×720, with zero reconnects in the final 30-second soak.
+- Final 16:22 UTC state: ready/complete, inactive SD, Idle, heaters off,
+  hotend 26.82°C / bed 25.04°C, LED off, no queued jobs, zero WebSocket clients.
+  Light helper/backup/wrapper hashes still match; hourly calibration unchanged.
+  Detailed evidence and caveats: `docs/performance-release-2026-10-09.md`.
 - Fresh printer check at 15:36 UTC: ready/complete, inactive SD, Idle, hotend
   26.63°C / bed 24.97°C, both targets and power zero. No commands sent.
 - Original live helpers copied read-only and hash-verified into ignored
@@ -33,7 +57,7 @@ calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
   Persistent rollback: `/usr/data/regolith-backups/light-watchdog-before-20261009T155200Z.py`;
   original hash `d150bd58cea24cce3f73aa8abf29aaf4fac1c90e017c4ceefd863ebf86679e7f`.
   Wrapper hash unchanged, root:root mode 700, same cron/600-second timeout.
-  Natural ticks through 15:57 UTC updated state mtime, preserved state values,
+  Natural ticks through 16:22 UTC updated state mtime, preserved state values,
   and added no LED-off log entry. No manual normal watchdog run.
 - Calibration proposal requires an explicit maintenance approval before
   movement; owner choice pending. Do not deploy that behavior change silently.
@@ -53,13 +77,18 @@ calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
 - Initial focused browser runs caught fixture shape/order/routing and wording
   errors. Runtime review also fixed missing uptime, overwritten error states,
   stale data, hung sibling reads, and same-name metadata invalidation. Files'
-  five focused browser tests and Settings' seven tests now pass; full suite pending.
+  five focused browser tests and Settings' seven tests pass in the full suite.
 - Passive post-helper observation: 179 samples, aggregate CPU median 27.98%,
   maximum 78.5%. This was not a matched baseline-length trial and does not show
   elimination of system CPU peaks. No feature, camera setting or service cut.
 - Calibration draft: 42 offline fault-injection tests pass. Default has no
   motion, explicit maintenance remains fail-closed on unknown firmware
   contracts/pending saves. It is not deployed or physically certified.
+- Goal remains active pending the owner decision on unattended calibration.
+  Approved performance work is shipped; not every background CPU spike is
+  eliminated. Do not mark the broader safety goal complete or deploy the
+  maintenance-approval policy without that decision. The earlier cosmetic
+  Settings density goal remains deferred, not silently claimed complete.
 - The first Playwright run cleared its default `test-results/` directory,
   including raw diagnostic scratch evidence. Summary measurements remain in
   the committed diagnostic. Original helpers were re-copied and hash-verified;
@@ -85,7 +114,7 @@ calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
 - The prior cosmetic Settings goal remains unshipped; CPU diagnosis is the
   latest owner priority. Existing untracked files/watchdogs preserved.
 
-## Latest deployed release — 2026-10-03
+## Previous deployed release — 2026-10-03
 
 - UI polish from `a3a9c2d`, plus browser-test lifecycle correction `2aa4746`, is pushed on `main` and deployed. All 24 served files match the exact-current production build. Audit: `docs/ui-audit-2026-10-03.md`.
 - Fixed picker bounds/focus, touch-camera discoverability, layout-heavy indicator animations, and accessible progress/preference feedback. Release gates: 430 unit tests, 279 browser tests with zero escaped requests, deployment/setup/hardening shell tests, lint, build, and 42 guarded live views pass. Full evidence is in the latest dated entry below.
