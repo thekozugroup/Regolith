@@ -1,6 +1,9 @@
 # Calibration helper safety draft — 2026-10-09
 
-Status: offline implementation only. Not deployed. No printer contact or physical calibration occurred. Owner approval is still required before changing unattended behavior.
+Status: offline implementation only. Not deployed. A separate GET-only firmware
+capability check was completed; the helper itself was not run on the printer.
+No physical calibration occurred. Owner approval is still required before
+changing unattended behavior.
 
 The hourly helper now reports eligibility without moving the printer. Calibration remains available only during an explicitly approved maintenance session. Idle does not mean the bed is clear.
 
@@ -38,6 +41,49 @@ The hourly helper now reports eligibility without moving the printer. Calibratio
 Therefore polling cannot prove continuously absent transient activity between samples, exclude an external request arriving between the final check and dispatch, stop an accepted command when the local request times out, or establish a clear bed. Maintenance approval must secure exclusive controls physically/operationally. Unattended motion is not claimed safe. A future automatic-motion design needs a reviewed server-side admission interlock, tested firmware-specific macro contracts and trustworthy clear-bed proof; this draft does not implement them.
 
 The current K1 firmware may use G28 macros/homing overrides, scheduled macros, or lack the pending-item status schema. Any such condition refuses maintenance; this draft is not a certification of K1 maintenance availability. Default diagnostics report a schedule candidate, then report refusal if safety capabilities are missing. Guards must not be weakened to make maintenance appear available.
+
+### Actual K1 capability check — October 9, 16:27 UTC
+
+The printer is **not compatible with this draft's maintenance contract**.
+Separate read-only GETs inspected printer info, selected status fields, queue
+status and command help. Neither helper entry point ran; no configuration,
+pending buffer, timer, print or service was changed. The printer was ready,
+complete, Idle, unpaused, virtual SD inactive, both heaters off and below 27°C,
+with an empty paused queue.
+
+| Observed condition | Consequence |
+| --- | --- |
+| `printer/info` lacks `process_id` on `09faed31-dirty` | Process continuity cannot be established by this draft. Refuse explicitly; do not substitute a version, hostname or dummy PID. |
+| `homing_override` and `gcode_macro BED_MESH_CALIBRATE` are configured | Native synchronous command assumptions are not established for vendor macros. Refuse maintenance. |
+| Six `delayed_gcode` sections, including timelapse and configuration-loading routines | Existence is not proof of an active timer, but timer inactivity cannot be established. Refuse maintenance; do not disable those routines. |
+| Pending-config schema exists; `save_config_pending=true` with `bed_mesh default` and `bed_mesh adaptive` | Existing unsaved mesh changes would be included in a configuration save. Preserve them; no automatic save, clear or restart. |
+
+The [documented upstream info response](https://moonraker.readthedocs.io/en/latest/external_api/printer/#get-klippy-host-information)
+includes `process_id`, but this observed vendor response does not. This is a
+compatibility boundary, not proof that the printer itself is broken.
+The [command-help API](https://moonraker.readthedocs.io/en/latest/external_api/printer/#get-gcode-help)
+is not an exhaustive command inventory: absence of G28/M400 descriptions does
+not establish that those commands are unavailable. No command was invoked to test it.
+
+Offline regression fixtures now cover the observed missing-identity shape in
+all four default/force/maintenance invocation combinations, then independently
+exercise each configuration refusal with valid identity supplied. No fallback
+was added. All 45 calibration tests pass; independent review found no defect in
+the identity validation change. Missing/non-positive/non-integer identities
+fail before object queries, backups, calibration state writes or commands.
+
+Owner approval of report-only hourly checks would change unattended policy;
+it would **not** make this draft's maintenance mode compatible or certified.
+Existing UI/vendor calibration controls remain untouched. A supported helper
+maintenance path still needs firmware-specific identity, macro-completion and
+exclusive-control contracts, with separately authorized physical acceptance.
+Do not remove safety gates merely to restore automatic motion.
+
+Evidence is retained in the existing ignored run's `artifacts/cpu/` files
+`calibration-capabilities-raw.json` and `calibration-capabilities.json`.
+Raw configuration stays local; the committed report records only the relevant
+field shapes, section names and refusal reasons. Historical raw report's
+`registeredCommands` property means "listed by help", not proven support.
 
 Pending schema and operation allowlists were inspected in primary upstream source: [configfile autosave status and set](https://github.com/Klipper3d/klipper/blob/master/klippy/configfile.py), [shaper save_params](https://github.com/Klipper3d/klipper/blob/master/klippy/extras/shaper_calibrate.py), [bed-mesh profile serialization](https://github.com/Klipper3d/klipper/blob/master/klippy/extras/bed_mesh.py) and [homing override registration](https://github.com/Klipper3d/klipper/blob/master/klippy/extras/homing_override.py). Current upstream reserves `BED_MESH_PROFILE SAVE=default`; the retained firmware-era command may only acknowledge a warning/no-op. The calibration itself must already produce the complete validated default-profile pending buffer; otherwise no SAVE_CONFIG occurs. The exact vendor firmware still needs read-only compatibility review. Allowed bounds are conservative rejection limits, not proof that calibration quality is acceptable.
 

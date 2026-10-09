@@ -287,6 +287,14 @@ def number(value, name):
     return value
 
 
+def process_identity(info):
+    """Older vendor builds omit the upstream PID; do not invent continuity."""
+    value = info.get('process_id') if isinstance(info, dict) else None
+    if type(value) is not int or not 0 < value <= 2 ** 31 - 1:
+        raise SafetyError('Klipper process identity unavailable or invalid; maintenance blocked')
+    return value
+
+
 def validate_pending(configfile, operation=None):
     """Upstream configfile status stores section -> option -> string (or removal).
 
@@ -364,9 +372,7 @@ def snapshot(pending_operation=None):
         info = get_json('/printer/info', timeout=2)['result']
         if info['state'] != 'ready':
             raise SafetyError('Klipper not ready')
-        process = number(info['process_id'], 'process_id')
-        if process <= 0:
-            raise SafetyError('unknown Klipper process')
+        process = process_identity(info)
         initial = query_objects(BASE_OBJECTS)['result']['status']
         heaters = initial['heaters']['available_heaters']
         if (not isinstance(heaters, list) or not {'extruder', 'heater_bed'}.issubset(heaters)

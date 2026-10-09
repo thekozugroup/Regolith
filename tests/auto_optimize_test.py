@@ -158,6 +158,57 @@ class GateTests(OfflineCase):
         self.install_snapshot_fixture()
         self.assertEqual(optimizer.snapshot()['eventtime'], 1)
 
+    def test_process_identity_requires_an_actual_positive_integer(self):
+        self.assertEqual(optimizer.process_identity({'process_id': 22}), 22)
+        for value in (None, True, False, 0, -1, 1.5, 22.0, '22', [], {},
+                      float('nan'), float('inf'), 2 ** 31):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(optimizer.SafetyError, 'process identity'):
+                    optimizer.process_identity({'process_id': value})
+        with self.assertRaisesRegex(optimizer.SafetyError, 'process identity'):
+            optimizer.process_identity({})
+
+    def test_observed_vendor_info_without_pid_blocks_all_invocation_modes(self):
+        # K1 API field shape observed via GET on 2026-10-09. No host/path data.
+        info = {'state': 'ready', 'state_message': 'Printer is ready',
+                'software_version': 'vendor-build', 'cpu_info': 'mips'}
+        for args in ([], ['--force'], ['--maintenance-approved'],
+                     ['--force', '--maintenance-approved']):
+            with self.subTest(args=args), \
+                    patch.object(optimizer, 'get_json', return_value={'result': info}), \
+                    patch.object(optimizer, 'query_objects') as query, \
+                    patch.object(optimizer, 'post_gcode') as post, \
+                    patch.object(optimizer, 'backup_cfg') as backup:
+                self.assertEqual(optimizer.main(args), 3)
+                query.assert_not_called()
+                post.assert_not_called()
+                backup.assert_not_called()
+                self.assertFalse(optimizer.STATE_FILE.exists())
+
+    def test_observed_vendor_configuration_remains_blocked_even_with_identity(self):
+        # Each independent condition was present on the inspected K1. Keeping
+        # them separate proves an identity fix alone cannot unlock maintenance.
+        self.install_snapshot_fixture()
+        cases = [
+            ('config', {'printer': {}, 'homing_override': {}}),
+            ('config', {'printer': {}, 'gcode_macro BED_MESH_CALIBRATE': {}}),
+            ('config', {'printer': {}, 'delayed_gcode _HYPERLAPSE_LOOP': {}}),
+            ('pending', {'bed_mesh default': {}, 'bed_mesh adaptive': {}}),
+        ]
+        original = copy.deepcopy(self.fixture)
+        for kind, value in cases:
+            self.fixture = copy.deepcopy(original)
+            config = self.fixture['status']['configfile']
+            if kind == 'pending':
+                config['save_config_pending'] = True
+                config['save_config_pending_items'] = value
+            else:
+                config['config'] = value
+            with self.subTest(kind=kind, value=value), patch.object(optimizer, 'post_gcode') as post:
+                self.assertEqual(optimizer.main(['--force', '--maintenance-approved']), 3)
+                post.assert_not_called()
+                self.assertFalse(optimizer.STATE_FILE.exists())
+
     def test_busy_unknown_heating_and_macros_block(self):
         self.install_snapshot_fixture()
         cases = [

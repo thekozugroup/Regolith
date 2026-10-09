@@ -8,6 +8,22 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ### Active remediation goal
 
+Continuation audit at 16:27 UTC: prior turn made progress (verified deployment
+and measured reductions). This turn checked the remaining calibration contract
+using four read-only API GETs, without invoking either helper. Actual K1 info
+omits process identity; homing/mesh overrides and six scheduled-macro sections
+are present; unsaved default/adaptive meshes are pending. These independently
+prevent maintenance approval from proving safe compatibility. Pending settings
+were not saved or cleared. See `docs/auto-calibration-safety.md`.
+
+Local draft now explicitly rejects missing or invalid process identity. Three
+new regression tests cover the observed firmware shape, every invocation mode,
+and independent override/timer/pending-config refusal. All 45 calibration tests
+and 10 light-helper groups pass; independent review passed. No calibration
+deployment, runtime UI change, service restart or physical command occurred.
+The owner decision remains required; report-only policy approval alone would
+not certify this draft's maintenance mode on the current firmware.
+
 Owner now authorizes implementing fixes, with no functionality sacrificed.
 Goal: remove measured redundant/bursty reads, lower the light watchdog's
 startup cost while preserving automation, and review the separate hourly
