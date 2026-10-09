@@ -19,6 +19,7 @@
 import { useEffect, useState } from "react";
 import { calibrationFactor, type JobCalibration } from "./jobProgress";
 import { pickThumbnail, thumbnailUrlFor } from "./thumbnails";
+import { invalidateFileMetadata, requestFileMetadata, type MetadataRequest } from "./fileMetadata";
 
 /** Enough history to see a trend without dragging in a different filament era. */
 const HISTORY_LIMIT = 20;
@@ -28,6 +29,8 @@ const CALIBRATION_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8_000;
 
 export interface FileMetadata {
+  /** False after an unavailable read; null previews then mean unknown, not absent. */
+  available: boolean;
   /** The slicer's own estimate in seconds, or null. */
   slicerEstimate: number | null;
   /** URL of an embedded preview, or null when the file has none. */
@@ -37,9 +40,6 @@ export interface FileMetadata {
    *  wrote one size. */
   thumbnailSmallUrl: string | null;
 }
-
-/** A file's metadata never changes, so cache it forever by name. */
-const metadataCache = new Map<string, FileMetadata>();
 
 let calibrationCache: { at: number; value: JobCalibration | null } | null = null;
 let calibrationInFlight: Promise<JobCalibration | null> | null = null;
@@ -94,18 +94,14 @@ export async function fetchCalibration(): Promise<JobCalibration | null> {
  */
 export async function fetchFileMetadata(
   filename: string,
+  options?: MetadataRequest,
 ): Promise<FileMetadata> {
-  const cached = metadataCache.get(filename);
-  if (cached !== undefined) return cached;
-
-  const body = await getJson(
-    `/server/files/metadata?filename=${encodeURIComponent(filename)}`,
-  );
-  const result = (body as { result?: Record<string, unknown> } | null)?.result;
+  const result = await requestFileMetadata(filename, options);
   const raw = result?.estimated_time;
   const relative = pickThumbnail(result?.thumbnails);
   const relativeSmall = pickThumbnail(result?.thumbnails, 32);
   const value: FileMetadata = {
+    available: result !== null,
     slicerEstimate:
       typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null,
     thumbnailUrl: relative ? thumbnailUrlFor(filename, relative) : null,
@@ -113,7 +109,6 @@ export async function fetchFileMetadata(
       ? thumbnailUrlFor(filename, relativeSmall)
       : null,
   };
-  metadataCache.set(filename, value);
   return value;
 }
 
@@ -144,6 +139,7 @@ export function useJobHistory(filename: string | undefined): JobHistoryInputs {
       return;
     }
     let live = true;
+    const consumer = new AbortController();
     setInputs(EMPTY);
     // Two INDEPENDENT reads, applied as each lands. They were awaited
     // together, which made the slower one gate the faster: a Moonraker whose
@@ -151,7 +147,7 @@ export function useJobHistory(filename: string | undefined): JobHistoryInputs {
     // — including its embedded preview — hostage for the full 8s fetch
     // timeout. Nothing here depends on the other having arrived.
     void (async () => {
-      const metadata = await fetchFileMetadata(filename);
+      const metadata = await fetchFileMetadata(filename, { priority: "selected", signal: consumer.signal });
       if (live) setInputs((prev) => ({ ...prev, ...metadata }));
     })();
     void (async () => {
@@ -160,6 +156,7 @@ export function useJobHistory(filename: string | undefined): JobHistoryInputs {
     })();
     return () => {
       live = false;
+      consumer.abort();
     };
   }, [filename]);
 
@@ -168,7 +165,7 @@ export function useJobHistory(filename: string | undefined): JobHistoryInputs {
 
 /** Test seam: drop every cached read so a fresh probe is taken. */
 export function resetJobHistoryCache(): void {
-  metadataCache.clear();
+  invalidateFileMetadata();
   calibrationCache = null;
   calibrationInFlight = null;
 }

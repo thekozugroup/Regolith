@@ -6,6 +6,54 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Latest investigation — 2026-10-09
 
+### Active remediation goal
+
+Owner now authorizes implementing fixes, with no functionality sacrificed.
+Goal: remove measured redundant/bursty reads, lower the light watchdog's
+startup cost while preserving automation, and review the separate hourly
+calibration safety defects. Preserve the Instrument Cluster × Apple HIG UI.
+
+- Files: two-request shared metadata queue, visible previews, revision-aware
+  bounded cache, selected-file priority, refresh/error recovery drafted.
+- Settings: stable identity/version reads plus existing pushed memory/uptime,
+  bounded fallback and error recovery drafted. Independent review underway.
+- First local checks: 444 unit tests, lint and build pass. Focused mocked
+  browser tests running; full release acceptance and live deployment pending.
+- Fresh printer check at 15:36 UTC: ready/complete, inactive SD, Idle, hotend
+  26.63°C / bed 24.97°C, both targets and power zero. No commands sent.
+- Original live helpers copied read-only and hash-verified into ignored
+  `.a5c/runs/01KZ1XHAFCKSDQB4AAD966MX1R/artifacts/cpu/originals/`. User-owned local
+  `scripts/` remains unchanged. Helper replacements are local drafts only.
+- Calibration proposal requires an explicit maintenance approval before
+  movement; owner choice pending. Do not deploy that behavior change silently.
+- Every remote write still requires fresh accepted identity, idle/cool proof,
+  exact-target backup, verification and rollback. Never start a print, invoke
+  calibration, move, heat, or restart services for this optimization work.
+- Resumed the existing Babysitter run with a CPU remediation effect after
+  its historical release gate; old printer evidence is not current proof.
+- Fresh repeated baseline: three 60-second Settings visits each made 53
+  host reads (including connection bootstrap); three Files visits each made
+  24 metadata and 24 thumbnail reads. Zero outgoing writes/page errors.
+  This firmware pushes memory but not uptime; fallback must preserve uptime.
+- Exact-source read-only helper benchmark on device, five interleaved pairs:
+  median measured process CPU 0.8374s → 0.6978s (~17% lower), peak RSS
+  10,580 → 9,432kB (~11% lower). All ten status GETs succeeded. No normal
+  watchdog entry point ran. Harness timing is not a whole-system spike claim.
+- Initial focused browser runs caught fixture shape/order/routing and wording
+  errors. Runtime review also fixed missing uptime, overwritten error states,
+  stale data, hung sibling reads, and same-name metadata invalidation. Files'
+  five focused browser tests now pass; Settings final rerun and full suite pending.
+- Calibration draft: 42 offline fault-injection tests pass. Default has no
+  motion, explicit maintenance remains fail-closed on unknown firmware
+  contracts/pending saves. It is not deployed or physically certified.
+- The first Playwright run cleared its default `test-results/` directory,
+  including raw diagnostic scratch evidence. Summary measurements remain in
+  the committed diagnostic. Original helpers were re-copied and hash-verified;
+  new repeated baseline and subsequent artifacts live under the ignored run
+  directory. Every later test uses a dedicated output subdirectory.
+
+### Diagnostic baseline (superseded only where stated above)
+
 - Owner requested CPU diagnostics and optimization opportunities **without
   sacrificing functionality**. Read-only findings: `docs/cpu-diagnostic-2026-10-09.md`.
 - Reproduced brief CPU spikes: 93.47% near a scheduled minute boundary,

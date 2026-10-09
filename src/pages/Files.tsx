@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { PrintDialog, type GcodeMetadata } from "@/components/PrintDialog";
@@ -6,6 +6,7 @@ import { PrintHistory } from "@/components/PrintHistory";
 import { moonraker, type MoonrakerFile } from "@/lib/moonraker";
 import { pickThumbnail, thumbnailUrlFor } from "@/lib/thumbnails";
 import { fetchFileMetadata, type FileMetadata } from "@/lib/useJobHistory";
+import { invalidateFileMetadata, requestFileMetadata } from "@/lib/fileMetadata";
 import { usePrinter } from "@/lib/usePrinter";
 import { getSafetyState } from "@/lib/safety";
 import { formatBytes, cn } from "@/lib/utils";
@@ -29,40 +30,61 @@ export function Files() {
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<MoonrakerFile | null>(null);
-  const [metadata, setMetadata] = useState<GcodeMetadata | null>(null);
+  const [metadataRead, setMetadataRead] = useState<{
+    key: string;
+    value: GcodeMetadata | null;
+  } | null>(null);
+  const [metadataVersion, setMetadataVersion] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const closePrintDialog = useCallback(() => setDialogOpen(false), []);
 
-  const load = async () => {
+  const load = useCallback(async (refresh = false) => {
     setLoading(true);
     try {
       const f = await moonraker.listFiles();
       setFiles(f.sort((a, b) => b.modified - a.modified));
+      setSelected((current) => current ? f.find((file) => file.path === current.path) ?? null : null);
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
+      // Refresh the list identity and metadata together. Remounting previews
+      // before the listing lands would read the OLD revision unnecessarily.
+      // A failed listing still allows retrying metadata for the known files.
+      if (refresh) {
+        invalidateFileMetadata();
+        setMetadataVersion((version) => version + 1);
+      }
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
-  // Fetch detailed metadata when a file is selected
+  const selectedPath = selected?.path;
+  const selectedModified = selected?.modified;
+  const selectedSize = selected?.size;
+  const selectedKey = selected
+    ? JSON.stringify([selectedPath, selectedModified, selectedSize, metadataVersion])
+    : null;
+  // Derive from the matching identity during render too: a prior selection
+  // must never appear as THIS file's details, even before effect cleanup runs.
+  const metadata = metadataRead?.key === selectedKey ? metadataRead.value : null;
   useEffect(() => {
-    if (!selected) {
-      setMetadata(null);
-      return;
-    }
-    fetch(
-      `/server/files/metadata?filename=${encodeURIComponent(selected.path)}`,
-    )
-      .then((r) => r.json())
-      .then((d) => setMetadata(d.result))
-      .catch(() => setMetadata(null));
-  }, [selected]);
+    if (!selectedPath || selectedModified === undefined || selectedSize === undefined || !selectedKey) return;
+    let live = true;
+    const consumer = new AbortController();
+    void requestFileMetadata(selectedPath, {
+      revision: { modified: selectedModified, size: selectedSize },
+      priority: "selected",
+      signal: consumer.signal,
+    }).then((value) => {
+      if (live) setMetadataRead({ key: selectedKey, value });
+    });
+    return () => { live = false; consumer.abort(); };
+  }, [selectedPath, selectedModified, selectedSize, selectedKey]);
 
   const filtered = filter
     ? files.filter((f) =>
@@ -91,7 +113,7 @@ export function Files() {
         icon={<FileText />}
         className="md:col-span-3 lg:col-span-5"
         action={
-          <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+          <Button size="sm" variant="ghost" onClick={() => void load(true)} disabled={loading}>
             <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
             Refresh
           </Button>
@@ -171,7 +193,7 @@ export function Files() {
           </ul>
         )}
 
-        <ul className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
+        <ul data-testid="file-list" className="divide-y divide-[var(--color-border)] max-h-[60vh] overflow-y-auto bleed">
           {filtered.map((f) => (
             <li key={f.path}>
               <button
@@ -185,7 +207,10 @@ export function Files() {
                 )}
                 onClick={() => setSelected(f)}
               >
-                <ListThumb key={f.path} path={f.path} />
+                <ListThumb
+                  key={JSON.stringify([f.path, f.modified, f.size, metadataVersion])}
+                  file={f}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-medium truncate">
                     {f.path}
@@ -213,7 +238,7 @@ export function Files() {
             {/* Big thumbnail — or a designed placeholder. Keyed on the path
                 so the failure latch resets when another file is selected. */}
             <GcodePreview
-              key={selected.path}
+              key={selectedKey}
               path={selected.path}
               previewUrl={previewUrl}
             />
@@ -353,23 +378,48 @@ function resolveThumbnail(
  * unknown must never render as a "no preview" claim. Keyed on the file path
  * by the caller so the failure latch resets per file.
  */
-function ListThumb({ path }: { path: string }) {
+function ListThumb({ file }: { file: MoonrakerFile }) {
+  const { path, modified, size } = file;
+  const tile = useRef<HTMLSpanElement>(null);
   const [meta, setMeta] = useState<FileMetadata | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    void fetchFileMetadata(path).then((m) => {
-      if (live) setMeta(m);
-    });
+    const consumer = new AbortController();
+    let requested = false;
+    const loadPreview = () => {
+      if (requested) return;
+      requested = true;
+      void fetchFileMetadata(path, {
+        revision: { modified, size }, priority: "visible", signal: consumer.signal,
+      }).then((m) => {
+        if (live && m.available) setMeta(m);
+      });
+    };
+    const element = tile.current;
+    const observer = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadPreview();
+          observer?.disconnect();
+        }
+      },
+      { root: element?.closest("ul") ?? null, rootMargin: "32px" },
+    );
+    if (element && observer) observer.observe(element);
+    else loadPreview();
     return () => {
       live = false;
+      consumer.abort();
+      observer?.disconnect();
     };
-  }, [path]);
+  }, [path, modified, size]);
 
   if (meta === null) {
     // Metadata still unresolved — hold the space, claim nothing.
     return (
       <span
+        ref={tile}
         aria-hidden="true"
         className="h-8 w-8 shrink-0 rounded-inner border border-[var(--color-border)] bg-[var(--color-elevated)]"
       />

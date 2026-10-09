@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card } from "@/components/Card";
 import {
   Settings as Cog,
@@ -23,32 +23,18 @@ import {
   type PrinterAction,
 } from "@/lib/printerActions";
 import { formatBytes, formatDuration } from "@/lib/utils";
-
-interface SystemInfo {
-  cpu: string;
-  memUsed: number;
-  memTotal: number;
-  uptime: number;
-  // NO load average. Moonraker's /machine/proc_stats does not expose one —
-  // it returns moonraker_stats, throttled_state, cpu_temp, network,
-  // system_cpu_usage, system_uptime and system_memory, and nothing else.
-  // This page used to read `system_load_avg ?? [0, 0, 0]` and render the
-  // fallback, so it displayed "0.00 · 0.00 · 0.00" as though it were a
-  // measurement of a healthy machine. Same class of invention as the
-  // pressure-advance figure that was removed for the same reason: a number
-  // with no source is worse than an absent row, because it is believed.
-  diskTotal: number;
-  diskUsed: number;
-  klipper: string;
-  moonraker: string;
-}
+import { useSystemInfo } from "@/lib/useSystemInfo";
 
 export function SettingsPage() {
   const { state, connected, profile } = usePrinter();
   const [experienceMode] = useExperienceMode();
   const isExpert = experienceMode === "expert";
-  const [info, setInfo] = useState<Partial<SystemInfo>>({});
-  const [infoError, setInfoError] = useState<string | null>(null);
+  const systemInfo = useSystemInfo(
+    isExpert,
+    connected,
+    state.webhooks?.state === "ready" ? "ready" : "not-ready",
+  );
+  const info = systemInfo.info;
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -56,58 +42,6 @@ export function SettingsPage() {
   // thread and freezes the health watchdog for as long as it sits open —
   // exactly what must not happen around an emergency-stop decision.
   const { confirm, confirmDialog } = useActionConfirm();
-
-  useEffect(() => {
-    if (!isExpert) return;
-    const controller = new AbortController();
-    const load = async () => {
-      try {
-        const [sys, ver, jobs] = await Promise.all([
-          fetchJson("/machine/system_info", controller.signal),
-          fetchJson("/printer/info", controller.signal),
-          fetchJson("/server/info", controller.signal),
-        ]);
-        const si = sys.result?.system_info ?? {};
-        const proc = sys.result?.cpu_info ?? si.cpu_info ?? {};
-        const mem = si.distribution?.like ? null : null;
-        setInfo({
-          cpu:
-            proc.cpu_desc ?? proc.processor ?? proc.model ?? "—",
-          memTotal: si.cpu_temp ? 0 : (mem ?? 0),
-          uptime: si.last_boot
-            ? (Date.now() / 1000 - si.last_boot) | 0
-            : 0,
-          klipper: ver.result?.software_version ?? "—",
-          moonraker: jobs.result?.moonraker_version ?? "—",
-        });
-
-        // Memory + disk via /machine/proc_stats
-        const ps = await fetchJson("/machine/proc_stats", controller.signal);
-        const sysmem = ps.result?.system_memory ?? {};
-        const sysuptime = ps.result?.system_uptime ?? 0;
-        setInfo((prev) => ({
-          ...prev,
-          memUsed: (sysmem.total ?? 0) - (sysmem.available ?? 0),
-          memTotal: sysmem.total ?? 0,
-          uptime: sysuptime,
-        }));
-        setInfoError(null);
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setInfoError(
-          error instanceof Error
-            ? error.message
-            : "System details are temporarily unavailable.",
-        );
-      }
-    };
-    void load();
-    const id = setInterval(() => void load(), 5000);
-    return () => {
-      controller.abort();
-      clearInterval(id);
-    };
-  }, [isExpert]);
 
   const dispatch = async (action: PrinterAction, success: string) => {
     setBusyAction(action.type);
@@ -132,6 +66,13 @@ export function SettingsPage() {
     info.memTotal && info.memUsed
       ? (info.memUsed / info.memTotal) * 100
       : 0;
+  const ageLabel = (updatedAt: number | null) => {
+    if (updatedAt == null) return "unavailable";
+    const seconds = Math.max(0, Math.floor((systemInfo.now - updatedAt) / 1000));
+    if (seconds === 0) return "now";
+    if (seconds < 60) return `${seconds}s`;
+    return `${Math.floor(seconds / 60)}m`;
+  };
   return (
     <>
     <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-[var(--grid-gap)] p-[var(--page-gutter)] md:grid-cols-2 lg:grid-cols-3">
@@ -206,9 +147,9 @@ export function SettingsPage() {
 
       {isExpert && <Card title="Host" icon={<Cpu />} className="lg:col-span-1">
         <div className="space-y-[var(--stack-tight)] text-[12px]">
-          {infoError && (
+          {systemInfo.error && (
             <div role="status" className="rounded-inner border border-(--color-warning)/35 bg-(--color-warning)/8 p-3 text-[13px] text-[var(--color-warning)]">
-              Host details unavailable. {infoError}
+              Host details unavailable or stale. {systemInfo.error}
             </div>
           )}
           <Row label="CPU">{info.cpu ?? "—"}</Row>
@@ -236,9 +177,18 @@ export function SettingsPage() {
           </div>
           <Row label="Uptime">
             <span className="tabular-nums">
-              {info.uptime ? formatDuration(info.uptime) : "—"}
+              {info.uptime != null && systemInfo.uptimeUpdatedAt != null
+                ? formatDuration(info.uptime + (systemInfo.connected
+                    ? Math.max(0, Math.floor((systemInfo.now - systemInfo.uptimeUpdatedAt) / 1000))
+                    : 0))
+                : "—"}
             </span>
           </Row>
+          <p className="text-[11px] text-[var(--color-fg-muted)]" data-testid="host-data-freshness">
+            {!systemInfo.connected
+              ? `Offline · Last-known host data · memory ${ageLabel(systemInfo.memoryUpdatedAt)}, uptime ${ageLabel(systemInfo.uptimeUpdatedAt)}`
+              : `Memory ${systemInfo.memoryUpdatedAt != null && systemInfo.now - systemInfo.memoryUpdatedAt < 15_000 ? "live" : `last seen ${ageLabel(systemInfo.memoryUpdatedAt)}`} · Uptime ${systemInfo.uptimeUpdatedAt != null && systemInfo.now - systemInfo.uptimeUpdatedAt < 15_000 ? "live" : `last seen ${ageLabel(systemInfo.uptimeUpdatedAt)}`}`}
+          </p>
         </div>
       </Card>}
 
@@ -274,14 +224,6 @@ export function SettingsPage() {
     {confirmDialog}
     </>
   );
-}
-
-async function fetchJson(url: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    throw new Error(`Could not load ${url} (${response.status}).`);
-  }
-  return response.json();
 }
 
 function Row({

@@ -777,6 +777,11 @@ export class Moonraker {
     return summarizeHostLoad(this.hostSamples, now, windowMs);
   }
 
+  /** Latest unprompted host sample, if this server has sent one this session. */
+  getLatestHostSample(): ProcStatSample | null {
+    return this.hostSamples.at(-1) ?? null;
+  }
+
   /** Motion-buffer starvation verdict — lamp trigger B. */
   getBufferStarvation(): BufferStarvation {
     return this.bufferStarvation;
