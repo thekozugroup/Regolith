@@ -4,7 +4,26 @@
 
 Make Regolith safe and approachable for a nontechnical Apple user while preserving expert Klipper control. Design direction: 1980s digital instrument cluster × Apple HIG — glanceable real telemetry, aligned surfaces, clear states, accessible input, and calm hierarchy. Preserve the established Inter/neutral/segmented-instrument system. No Liquid Glass, glow, or decorative animation. Latest request permits UI polish and guarded static deployment, never activating a print or changing printer behavior.
 
-## Current status — 2026-10-03
+## Latest investigation — 2026-10-09
+
+- Owner requested CPU diagnostics and optimization opportunities **without
+  sacrificing functionality**. Read-only findings: `docs/cpu-diagnostic-2026-10-09.md`.
+- Reproduced brief CPU spikes: 93.47% near a scheduled minute boundary,
+  71.36% during Files' 24-metadata-request burst, and 74.37% with the UI
+  closed during the next light-watchdog tick. The latter's Python process
+  was the largest sampled consumer; not every spike is attributed to Regolith.
+- Priority: bound/share file metadata work, reuse pushed Settings telemetry
+  instead of 48 repeated reads/minute, then benchmark a cheaper light
+  watchdog preserving all behavior. No application/helper implementation,
+  deployment, service/configuration changes, or print commands in this visit.
+- Printer ended ready/complete, inactive SD, Idle, heaters off. All temporary
+  diagnostic sessions ended; no monitoring agent or cron was installed.
+- Separate existing hourly auto-calibration helper has incomplete claimed
+  idle/queue gates. Left untouched; exact finding and scope in the report.
+- The prior cosmetic Settings goal remains unshipped; CPU diagnosis is the
+  latest owner priority. Existing untracked files/watchdogs preserved.
+
+## Latest deployed release — 2026-10-03
 
 - UI polish from `a3a9c2d`, plus browser-test lifecycle correction `2aa4746`, is pushed on `main` and deployed. All 24 served files match the exact-current production build. Audit: `docs/ui-audit-2026-10-03.md`.
 - Fixed picker bounds/focus, touch-camera discoverability, layout-heavy indicator animations, and accessible progress/preference feedback. Release gates: 430 unit tests, 279 browser tests with zero escaped requests, deployment/setup/hardening shell tests, lint, build, and 42 guarded live views pass. Full evidence is in the latest dated entry below.
