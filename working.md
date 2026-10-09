@@ -8,6 +8,26 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ### Active remediation goal
 
+#### Current boundary — October 9, 16:35 UTC
+
+Blocked pending owner direction on unattended calibration. The same decision
+has remained unresolved across three goal turns; the preceding turn made
+concrete progress with the actual firmware capability check and refusal tests.
+The current audit confirms `d4136b1` is on remote `main`, the performance
+repairs are recorded as deployed, and the calibration replacement is still an
+offline draft. No additional printer contact or remote change occurred during
+this audit. Unrelated untracked files remain untouched.
+
+The requested feature-preserving end state is not achieved: deploying this
+draft would replace unattended movement with reports/refusals, and the current
+firmware cannot satisfy its maintenance contract. Do not weaken guards, clear
+pending mesh data, change cron, or run physical acceptance to bypass the block.
+Next owner decision: allow hourly checks only, retaining calibration through
+existing printer controls, or retain unattended calibration and separately
+scope the required firmware/interlock work and physical acceptance. Approval
+of checks-only behavior does not certify draft maintenance compatibility.
+The remaining system CPU peaks are not claimed fixed or caused by calibration.
+
 Continuation audit at 16:27 UTC: prior turn made progress (verified deployment
 and measured reductions). This turn checked the remaining calibration contract
 using four read-only API GETs, without invoking either helper. Actual K1 info
