@@ -30,3 +30,4 @@ dist-ssr
 .playwright-cli/
 playwright-report/
 test-results/
+__pycache__/

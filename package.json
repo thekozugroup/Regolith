@@ -12,6 +12,7 @@
     "test:deploy": "bash tests/deploy.test.sh",
     "test:setup": "bash tests/setup.test.sh",
     "test:harden": "bash tests/harden-k1.test.sh",
+    "test:printer-helpers": "python3 -B printer-helpers/test_light_watchdog.py && python3 -B -m unittest discover -s tests -p auto_optimize_test.py",
     "preview": "vite preview"
   },
   "dependencies": {
