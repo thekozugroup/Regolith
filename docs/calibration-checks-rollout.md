@@ -37,15 +37,19 @@ not proof of when a calibration occurred. An idle snapshot is not five minutes
 of observed inactivity or proof of a clear bed. All reports state maintenance
 is disabled and direct the operator to existing printer controls.
 
-The source is locally verified but **not installed**. On October 14 DNS could
-not resolve `forge.local`; HTTP/SSH to the previous `192.168.50.179` timed out,
-and ICMP reported the host down. The Mac has a route on the expected LAN.
-No authentication or remote write succeeded. October 9 printer state and
-firmware evidence are historical and cannot authorize today's deployment.
-A thread heartbeat, `finish-regolith-checks-only-rollout`, now checks every
-30 minutes and continues this already approved rollout when fresh gates pass.
-It stays quiet on unchanged unreachable/busy state and pauses after documented
-deployment plus natural-tick verification. No separate task was created.
+**Installed at 20:48:38 UTC on October 14.** The printer returned at
+`192.168.50.179`, with the accepted ECDSA identity. Staged and installed
+`--check` runs passed on `/opt/bin/python3` 3.13.9. Configuration, history,
+cron, wrappers, existing logs and previously deployed light helpers were
+unchanged at installation and immediate verification.
+
+Natural hourly-run verification remains pending. At 20:52:05 UTC there was no
+new report, as expected before the next minute-01 run. The next expected tick
+is 21:01 UTC (16:01 printer-local fixed EST). Never invoke normal mode or the
+wrapper to force acceptance. The existing thread heartbeat
+`finish-regolith-checks-only-rollout` will continue **verification only**, not
+redeploy, and pause after natural-tick evidence is documented and pushed.
+Unchanged unreachable/busy/pending-tick state stays quiet.
 
 ## Validation
 
@@ -62,13 +66,95 @@ history reporting and log-destination gaps; these were repaired and regression
 tested before release. An initial cross-process test used a duplex pipe which
 created a local socket and correctly tripped the network ban; changing it to
 a one-way OS pipe preserved the ban and allowed the lock test to pass.
-No UI runtime changed, so no new UI deployment or browser certification is
-claimed. Previously shipped performance results remain recorded separately.
+No UI runtime changed. A limited guarded live browser smoke now verifies
+desktop Home/Settings and phone Home; it is not a new full UI release or
+active-print certification. Previously shipped performance results remain
+recorded separately.
 Independent re-review found no remaining source blocker and independently
 reran all 22 checks-only and 46 maintenance-draft tests successfully. All 78
 groups/cases also passed through the updated package command. This establishes
-local readiness, not interpreter or runtime proof on the currently unreachable
-printer. Stage-only `--check` acceptance is still required on that device.
+local readiness. The live interpreter and read-only acceptance below now
+establish installed compatibility; the natural scheduled run is still pending.
+
+## Live rollout evidence
+
+- Source milestone: `8e508ee82747a958a21d419d8d7ab4da9e5b6568`;
+  deployment checkout: `6f2c716bb1ef7ec64398ef6beea4c4ed9199312f`.
+- Fresh authenticated session was created against a dedicated pinned ECDSA
+  known-host entry with strict checking. No borrowed/generic SSH master was
+  used for remote mutations. Password was provided interactively, not stored.
+- Every write phase renewed ready/standby, inactive SD, unpaused Idle,
+  exactly two heaters off/cool, empty paused queue, empty pending configuration
+  and no old helper/wrapper process. Firmware was `09faed31-dirty`.
+- Backup completed at 20:46:47 UTC. Exact target only:
+  `/usr/data/regolith-backups/auto-optimize-before-20261014T204000Z.py`.
+  Original/backup/off-device SHA-256:
+  `f8ad75c8057b4dd4c2f1c3d9625653c139b4a618717e65ed723a16430a16fc51`;
+  13,470 bytes, original root:root mode 700, off-device private mode 600.
+- Stage: `/usr/data/scripts/.auto-optimize-checks-20261014T204000Z.py`.
+  Its verified SHA-256 equals the candidate above; 14,819 bytes, root:root
+  mode 700. Stage-only `--check` passed at 20:48:18 UTC. Atomic replacement
+  consumed this stage; no staging file remains at that name.
+- Installed `--check` passed at 20:49:04 UTC, with the same hash/owner/mode.
+  Both reports had true idle/cool/empty-queue snapshots and exit 3, matching
+  exactly four expected limitations: absent maintenance process identity,
+  vendor homing override, vendor calibration macros and unproven scheduled
+  macro inactivity. The rolling seven-day cap is an advisory scheduling hint.
+  Maintenance is explicitly disabled; no physical action was attempted.
+- Configuration/history and deployed performance helpers match original
+  hashes. The legitimate light-cron symlink still points exactly to
+  `/usr/data/scripts/light-watchdog.sh`; its target remains unchanged.
+- Exact hourly wrapper command remains
+  `/opt/bin/python3 /usr/data/scripts/auto-optimize.py >> /usr/data/auto-optimize.cron.log 2>&1`.
+  Crontab contents read before/after replacement match; no cadence change.
+- Read-only browser guard was installed before printer navigation, permitting
+  only allowlisted GET/HEAD reads and object-subscription RPC. Three views
+  passed with zero overflow, page/console errors, blocked requests or writes.
+  Six 5-second camera samples stayed Live at 1280×720, zero reconnects.
+  Browser was closed afterward. All 24 served files hash-match `dist`.
+- Final pre-tick observation at 20:52:05 UTC: ready/standby, inactive SD,
+  unpaused Idle, hotend 28.06°C / bed 26.26°C, targets/power zero, empty queue
+  and empty pending configuration. Both existing logs remained byte-identical.
+- Generated artifacts and private original copy remain under ignored
+  `.a5c/runs/01KZ1XHAFCKSDQB4AAD966MX1R/artifacts/cpu/`:
+  `checks-rollout-{inspect,backup,stage,install,verify,tick}.json`,
+  `checks-rollout-live-assets.json`, `checks-rollout-browser.txt`,
+  `checks-rollout-*.png`, and the dated original `.py`.
+
+Protected SHA-256 values (unchanged through immediate verification):
+
+| File | SHA-256 |
+| --- | --- |
+| Hourly wrapper | `09a93e0aea7f9c80cd6305cd3d8bb6f73b226c84221bb19d1f8286ae56af44ae` |
+| Crontab | `8fe99361db0997e77db117044d41a3b64c87f26407e949b81c249f1fb3f8ce63` |
+| printer.cfg | `55d1533d8306b10f2c55eb5f01bd2af795e056e892c81d1d9a19a47769225fa6` |
+| Calibration history | `4005a286c678fd072962ade23eaa4df6c33680cc5f678113d26f45feb7837a52` |
+| Light Python helper | `84a8d0dc06ebf7c92c4a0094dbe72509700647248715b2f494516565e98401b5` |
+| Light shell wrapper | `eff9a0139a355eac61264391f1bfd33ea98f46352f446cbceee3aa58879e252d` |
+| Original helper-log prefix, 206,616 bytes | `45677e843661883c58043f0193ee78bb1cabf1a6a0a8728977f11dfb2df3e328` |
+| Original cron-log prefix, 205,211 bytes | `0e86b916e7d4ca8004baea564871bff06031455342c3cf451850ac80f8274669` |
+
+Deployment review tightened authenticated-session provenance, mandatory
+off-device recovery, unknown-outcome handling, nested request timeouts,
+strict report/exit-status validation and the expected issue allowlist. Final
+independent transaction review found no structural deployment blocker. No
+mutation was blindly retried. Earlier preflight corrected a long SSH command
+and recognized the existing light-cron symlink without relaxing helper-file
+guards. Browser smoke initially hit macOS's socket-path length limit; a shorter
+isolated session name repaired the harness, with no application changes.
+
+Before marking the live rollout complete, observe a natural report appended
+identically to both logs. Verify the pre-existing prefixes above, installed
+candidate, wrapper, cron, configuration/history and light-helper hashes;
+retain fresh identity/state proof. Do not overwrite/rebaseline the original
+`checks-rollout-inspect.json` after installation. No new approval is required
+for read-only verification of this approved policy.
+
+Update survival remains best-effort: the unchanged persistent path/cadence,
+dated remote backup and off-device source help recovery, but firmware may
+overwrite helpers, cron or `/usr/data`. Any later reinstallation needs fresh
+identity, state and exact-target gates; never blindly restore the old helper.
+This rollout does not prove that all whole-system CPU spikes are eliminated.
 
 ## Installation gates when the printer returns
 

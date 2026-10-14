@@ -6,12 +6,13 @@ Make Regolith safe and approachable for a nontechnical Apple user while preservi
 
 ## Current continuation — October 14
 
-The owner replied "Proceed" to the explicit checks-only policy question. That
-decision is approved; do not ask for the same approval again. The earlier
-policy blocker is resolved. The deployment is now waiting on connectivity:
-`forge.local` does not resolve, the previous `192.168.50.179` has no responding
-HTTP/SSH identity, and ICMP reports host down. No remote changes occurred.
-Existing goal scope and outstanding live acceptance remain intact.
+The approved checks-only helper is installed on the printer. Manual calibration
+controls remain available. The owner confirmed the printer was available;
+fresh identity and cold/idle/empty-queue gates passed. Only the existing helper
+file was replaced, after verified remote and off-device backups. No print,
+movement, heating, calibration, configuration save or service restart occurred.
+The earlier policy/connectivity blockers are resolved; do not ask for the same
+policy approval again. Automatic hourly-run verification remains outstanding.
 
 - Standalone production candidate `tools/printer/calibration-checks.py`
   contains only three literal loopback GETs and no printer-control dispatch.
@@ -25,19 +26,38 @@ Existing goal scope and outstanding live acceptance remain intact.
 - Also fixed lock ownership in the separate offline maintenance draft: a
   skipped caller cannot release another invocation's lock. Its 46 tests and
   all 10 light-helper groups pass. `test:printer-helpers` now includes all 78.
-- Deployment candidate is **calibration-checks.py**, to replace the existing
-  device `auto-optimize.py` only after fresh gates and backups. Do not deploy
-  the maintenance draft. No UI runtime change or new live browser QA claim.
+- Installed source is **calibration-checks.py**, not the maintenance draft.
+  Atomic replacement finished at 20:48:38 UTC; root:root, mode 700, 14,819
+  bytes. Both staged and installed `--check` runs passed on Python 3.13.9,
+  returning exit 3 for exactly four documented firmware limitations. This
+  means diagnostic attention, not an attempted calibration failure.
+- Original backup, remote and off-device:
+  `auto-optimize-before-20261014T204000Z.py`, 13,470 bytes, SHA-256
+  `f8ad75c8057b4dd4c2f1c3d9625653c139b4a618717e65ed723a16430a16fc51`.
+  Configuration, history, wrapper, cron and deployed light-helper hashes
+  remain unchanged. No backup was pruned and no cron entry was edited.
+- Guarded live browser smoke passed desktop Home/Settings and phone Home:
+  no overflow, page/console errors, blocked requests or attempted writes.
+  Camera stayed Live at 1280×720 for six samples over 30 seconds, without
+  reconnects. All 24 served web files match the existing production build.
+  No UI runtime change, active-print certification or new CPU-spike claim.
 - Exact installation, protected-file checks and rollback requirements:
   `docs/calibration-checks-rollout.md`. The October 9 device evidence below is
   historical, not a current deployment gate. No physical test is authorized.
 - Independent re-review passed and separately reran all 22/46 cases.
   Candidate SHA-256:
   `75b02b23fd2678dcfbaf4a4f9dfe27f570d08d33daa129506d501c317361f2a1`.
-  Active thread follow-up `finish-regolith-checks-only-rollout` retries every
-  30 minutes to finish the already approved rollout with fresh device gates.
-  Unchanged unreachable/busy state stays quiet; pause this follow-up after
-  the installed helper and a natural hourly tick are verified and recorded.
+- At 20:52:05 UTC the printer remained ready/standby, inactive SD, unpaused,
+  Idle, off/cool (28.06°C hotend / 26.26°C bed), empty paused queue and empty
+  pending configuration. Original log prefixes still match; no natural new
+  hourly report yet. Cron runs the wrapper at minute 01: next expected tick
+  is 21:01 UTC (printer uses fixed EST, 16:01 locally). Do not trigger it.
+- Next: read-only verification of that natural report in both logs, preserving
+  the old prefixes and configuration/history hashes. **Do not deploy again.**
+  Resume `finish-regolith-checks-only-rollout` as verification-only; stay quiet
+  while the tick/reachability/safe state is unchanged. Pause after confirmed
+  natural-tick evidence is committed and pushed. The broader performance goal
+  does not establish that every system CPU peak is fixed.
 
 ## Latest investigation — 2026-10-09
 
