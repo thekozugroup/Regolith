@@ -34,9 +34,10 @@ Existing goal scope and outstanding live acceptance remain intact.
 - Independent re-review passed and separately reran all 22/46 cases.
   Candidate SHA-256:
   `75b02b23fd2678dcfbaf4a4f9dfe27f570d08d33daa129506d501c317361f2a1`.
-  A quiet thread follow-up is being arranged to retry reachability and finish
-  the already approved rollout with fresh device gates; unchanged unreachable
-  or busy state should not generate repeated notifications.
+  Active thread follow-up `finish-regolith-checks-only-rollout` retries every
+  30 minutes to finish the already approved rollout with fresh device gates.
+  Unchanged unreachable/busy state stays quiet; pause this follow-up after
+  the installed helper and a natural hourly tick are verified and recorded.
 
 ## Latest investigation — 2026-10-09
 

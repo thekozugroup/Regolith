@@ -42,6 +42,10 @@ not resolve `forge.local`; HTTP/SSH to the previous `192.168.50.179` timed out,
 and ICMP reported the host down. The Mac has a route on the expected LAN.
 No authentication or remote write succeeded. October 9 printer state and
 firmware evidence are historical and cannot authorize today's deployment.
+A thread heartbeat, `finish-regolith-checks-only-rollout`, now checks every
+30 minutes and continues this already approved rollout when fresh gates pass.
+It stays quiet on unchanged unreachable/busy state and pauses after documented
+deployment plus natural-tick verification. No separate task was created.
 
 ## Validation
 
