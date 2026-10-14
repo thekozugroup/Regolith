@@ -12,7 +12,7 @@ fresh identity and cold/idle/empty-queue gates passed. Only the existing helper
 file was replaced, after verified remote and off-device backups. No print,
 movement, heating, calibration, configuration save or service restart occurred.
 The earlier policy/connectivity blockers are resolved; do not ask for the same
-policy approval again. Automatic hourly-run verification remains outstanding.
+policy approval again. Automatic hourly-run verification is now complete.
 
 - Standalone production candidate `tools/printer/calibration-checks.py`
   contains only three literal loopback GETs and no printer-control dispatch.
@@ -52,12 +52,18 @@ policy approval again. Automatic hourly-run verification remains outstanding.
   pending configuration. Original log prefixes still match; no natural new
   hourly report yet. Cron runs the wrapper at minute 01: next expected tick
   is 21:01 UTC (printer uses fixed EST, 16:01 locally). Do not trigger it.
-- Next: read-only verification of that natural report in both logs, preserving
-  the old prefixes and configuration/history hashes. **Do not deploy again.**
-  Resume `finish-regolith-checks-only-rollout` as verification-only; stay quiet
-  while the tick/reachability/safe state is unchanged. Pause after confirmed
-  natural-tick evidence is committed and pushed. The broader performance goal
-  does not establish that every system CPU peak is fixed.
+- Natural cron tick at 21:01:02 UTC (16:01:02 printer-local EST) appended one
+  identical 456-byte checks-only report to both logs. Old prefixes, candidate,
+  configuration/history, cron, wrappers and light-helper hashes verified.
+  The report explicitly disables maintenance and contains only the four
+  expected limitations. No helper/wrapper was manually triggered.
+- Final gate at 21:01:33 UTC: ready/standby, inactive SD, unpaused Idle,
+  hotend 28.08°C / bed 26.19°C, targets/power zero, empty queue, empty pending
+  configuration and no helper/wrapper process. Rollout acceptance is complete.
+- `finish-regolith-checks-only-rollout` is paused after completion; no repeat
+  deployment is needed. The separate maintenance draft stays offline.
+  Remaining system CPU peaks and the deferred Settings cosmetic pass remain
+  separate work, not claims made by this checks-only rollout.
 
 ## Latest investigation — 2026-10-09
 

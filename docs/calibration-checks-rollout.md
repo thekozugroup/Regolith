@@ -43,13 +43,13 @@ is disabled and direct the operator to existing printer controls.
 cron, wrappers, existing logs and previously deployed light helpers were
 unchanged at installation and immediate verification.
 
-Natural hourly-run verification remains pending. At 20:52:05 UTC there was no
-new report, as expected before the next minute-01 run. The next expected tick
-is 21:01 UTC (16:01 printer-local fixed EST). Never invoke normal mode or the
-wrapper to force acceptance. The existing thread heartbeat
-`finish-regolith-checks-only-rollout` will continue **verification only**, not
-redeploy, and pause after natural-tick evidence is documented and pushed.
-Unchanged unreachable/busy/pending-tick state stays quiet.
+**Natural hourly-run verification completed at 21:01:33 UTC.** The scheduled
+run wrote an identical checks-only report to both logs at 21:01:02 UTC
+(16:01:02 printer-local fixed EST). The original log prefixes and protected
+configuration/history/cron/helper hashes remain unchanged. No normal helper
+or wrapper invocation was manually triggered. The existing thread heartbeat
+`finish-regolith-checks-only-rollout` is paused after documented completion;
+do not redeploy this already installed candidate.
 
 ## Validation
 
@@ -74,7 +74,8 @@ Independent re-review found no remaining source blocker and independently
 reran all 22 checks-only and 46 maintenance-draft tests successfully. All 78
 groups/cases also passed through the updated package command. This establishes
 local readiness. The live interpreter and read-only acceptance below now
-establish installed compatibility; the natural scheduled run is still pending.
+establish installed compatibility. The natural scheduled run below completes
+the approved live rollout acceptance, not physical maintenance certification.
 
 ## Live rollout evidence
 
@@ -115,6 +116,16 @@ establish installed compatibility; the natural scheduled run is still pending.
 - Final pre-tick observation at 20:52:05 UTC: ready/standby, inactive SD,
   unpaused Idle, hotend 28.06°C / bed 26.26°C, targets/power zero, empty queue
   and empty pending configuration. Both existing logs remained byte-identical.
+- Natural tick at 21:01:02 UTC: one identical 456-byte report was appended to
+  both logs, explicitly `mode: checks-only` and maintenance disabled. It
+  reported true idle/cool/empty-queue snapshots, the rolling seven-day advisory
+  cap and the same four documented limitations. The pre-installation prefixes
+  were verified independently by size and SHA-256.
+- At 21:01:33 UTC the installed candidate, configuration/history, crontab,
+  hourly wrapper and light helpers still matched. Printer remained ready/
+  standby, inactive SD, unpaused Idle, hotend 28.08°C / bed 26.19°C, targets/
+  power zero, empty paused queue, empty pending configuration and no helper
+  or wrapper process. This is a checks-only rollout, not a physical print test.
 - Generated artifacts and private original copy remain under ignored
   `.a5c/runs/01KZ1XHAFCKSDQB4AAD966MX1R/artifacts/cpu/`:
   `checks-rollout-{inspect,backup,stage,install,verify,tick}.json`,
@@ -133,6 +144,8 @@ Protected SHA-256 values (unchanged through immediate verification):
 | Light shell wrapper | `eff9a0139a355eac61264391f1bfd33ea98f46352f446cbceee3aa58879e252d` |
 | Original helper-log prefix, 206,616 bytes | `45677e843661883c58043f0193ee78bb1cabf1a6a0a8728977f11dfb2df3e328` |
 | Original cron-log prefix, 205,211 bytes | `0e86b916e7d4ca8004baea564871bff06031455342c3cf451850ac80f8274669` |
+| Helper log after natural tick, 207,072 bytes | `27b067f05a360361922fc733c0524e888241b334d97e80abe8e487a089a06cb9` |
+| Cron log after natural tick, 205,667 bytes | `c3ee4147ac6b9efbb80646a0a1c0f3b68bbe94a301fca5d8d0f43166fe1ee8a9` |
 
 Deployment review tightened authenticated-session provenance, mandatory
 off-device recovery, unknown-outcome handling, nested request timeouts,
@@ -143,12 +156,19 @@ and recognized the existing light-cron symlink without relaxing helper-file
 guards. Browser smoke initially hit macOS's socket-path length limit; a shorter
 isolated session name repaired the harness, with no application changes.
 
-Before marking the live rollout complete, observe a natural report appended
-identically to both logs. Verify the pre-existing prefixes above, installed
-candidate, wrapper, cron, configuration/history and light-helper hashes;
-retain fresh identity/state proof. Do not overwrite/rebaseline the original
-`checks-rollout-inspect.json` after installation. No new approval is required
-for read-only verification of this approved policy.
+Independent natural-tick re-review found no remaining blocker. Its observer
+never executes the helper/wrapper, requires nonempty matching appended
+reports for completion, validates exact schema/disabled policy/boolean
+snapshot fields, and keeps unknown identity/hash/schema/state failures hard.
+Known busy/cooling/queued/pending/helper-running states return retry-later,
+not verification; valid earlier busy reports are not mistaken for failure.
+Eleven local report-validator and 22 mocked gate checks passed without network.
+
+The live rollout is complete. Preserve the original
+`checks-rollout-inspect.json`; do not rebaseline or repeat installation.
+The follow-up is paused. Any future read-only verification still needs fresh
+identity and honest state/error reporting; no new approval is required for
+the same checks-only policy.
 
 Update survival remains best-effort: the unchanged persistent path/cadence,
 dated remote backup and off-device source help recovery, but firmware may
