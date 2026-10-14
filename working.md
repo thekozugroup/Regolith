@@ -2,7 +2,41 @@
 
 ## Goal
 
-Make Regolith safe and approachable for a nontechnical Apple user while preserving expert Klipper control. Design direction: 1980s digital instrument cluster × Apple HIG — glanceable real telemetry, aligned surfaces, clear states, accessible input, and calm hierarchy. Preserve the established Inter/neutral/segmented-instrument system. No Liquid Glass, glow, or decorative animation. Latest request permits UI polish and guarded static deployment, never activating a print or changing printer behavior.
+Make Regolith safe and approachable for a nontechnical Apple user while preserving expert Klipper control. Design direction: 1980s digital instrument cluster × Apple HIG — glanceable real telemetry, aligned surfaces, clear states, accessible input, and calm hierarchy. Preserve the established Inter/neutral/segmented-instrument system. No Liquid Glass, glow, or decorative animation. The October 14 approval permits hourly checks only, retaining calibration in existing printer controls. Never activate a print or perform calibration, motion, heat, configuration saves or service restarts during development.
+
+## Current continuation — October 14
+
+The owner replied "Proceed" to the explicit checks-only policy question. That
+decision is approved; do not ask for the same approval again. The earlier
+policy blocker is resolved. The deployment is now waiting on connectivity:
+`forge.local` does not resolve, the previous `192.168.50.179` has no responding
+HTTP/SSH identity, and ICMP reports host down. No remote changes occurred.
+Existing goal scope and outstanding live acceptance remain intact.
+
+- Standalone production candidate `tools/printer/calibration-checks.py`
+  contains only three literal loopback GETs and no printer-control dispatch.
+  It reports scheduling hints and all observed limitations, preserves historic
+  state/configuration, uses a persistent lock and safely appends the existing
+  log. `--check` makes no file writes; maintenance flags are rejected.
+- All 22 new cases pass. Independent review found numeric/nesting, pending
+  history and log-path gaps; all were repaired and regression tested.
+  An initial cross-process fixture used a socket-backed duplex pipe and hit
+  the network ban; a one-way OS pipe fixed the test without relaxing the ban.
+- Also fixed lock ownership in the separate offline maintenance draft: a
+  skipped caller cannot release another invocation's lock. Its 46 tests and
+  all 10 light-helper groups pass. `test:printer-helpers` now includes all 78.
+- Deployment candidate is **calibration-checks.py**, to replace the existing
+  device `auto-optimize.py` only after fresh gates and backups. Do not deploy
+  the maintenance draft. No UI runtime change or new live browser QA claim.
+- Exact installation, protected-file checks and rollback requirements:
+  `docs/calibration-checks-rollout.md`. The October 9 device evidence below is
+  historical, not a current deployment gate. No physical test is authorized.
+- Independent re-review passed and separately reran all 22/46 cases.
+  Candidate SHA-256:
+  `75b02b23fd2678dcfbaf4a4f9dfe27f570d08d33daa129506d501c317361f2a1`.
+  A quiet thread follow-up is being arranged to retry reachability and finish
+  the already approved rollout with fresh device gates; unchanged unreachable
+  or busy state should not generate repeated notifications.
 
 ## Latest investigation — 2026-10-09
 

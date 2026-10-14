@@ -77,8 +77,10 @@ error names a timer, a digital out pin, or the probe — never the CPU.
 - **Leave `Monitor` and `log_main` alone.** They are Creality-owned, were
   deliberately not touched during the incident work, and their failure
   modes are unknown. Not worth the blast radius.
-- The hourly auto-optimize cron fires on the hour and self-guards; it is
-  not implicated and needs no action.
+- The hourly auto-optimize cron was not implicated in these historic CPU
+  measurements. Its safety gates were subsequently found incomplete. The
+  owner approved a checks-only replacement on October 14; see the
+  [current rollout record](calibration-checks-rollout.md) for deployment status.
 - The substrate, so the numbers make sense: 2 cores, ~1 GHz MIPS, 127 MB of
   swap **on eMMC**. Swap on eMMC is why memory pressure becomes iowait
   becomes a timer fault.

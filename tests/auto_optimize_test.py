@@ -154,6 +154,13 @@ class HTTPTests(OfflineCase):
 
 
 class GateTests(OfflineCase):
+    def test_skipped_invocation_keeps_another_invocations_lock(self):
+        self.assertTrue(optimizer.acquire_lock())
+        with patch.object(optimizer, 'snapshot') as snapshot:
+            self.assertEqual(optimizer.main([]), 0)
+            snapshot.assert_not_called()
+        self.assertFalse(optimizer.acquire_lock())
+
     def test_valid_idle_fixture(self):
         self.install_snapshot_fixture()
         self.assertEqual(optimizer.snapshot()['eventtime'], 1)

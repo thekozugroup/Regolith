@@ -608,8 +608,10 @@ def main(argv=None):
     parser.add_argument('--maintenance-approved', '--maintenance', action='store_true',
                         help='operator confirms clear bed, exclusive controls and no scheduled/external macros for this run')
     args = parser.parse_args(argv)
+    owns_lock = False
     try:
-        if not acquire_lock():
+        owns_lock = acquire_lock()
+        if not owns_lock:
             log('another helper holds the process lock; skipping')
             return 0
         operation, reason = eligible_operation(args.force)
@@ -628,7 +630,8 @@ def main(argv=None):
         log('blocked: local/transport failure (%s)' % type(exc).__name__)
         return 3
     finally:
-        release_lock()
+        if owns_lock:
+            release_lock()
 
 
 if __name__ == '__main__':

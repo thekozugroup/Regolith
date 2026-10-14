@@ -1,11 +1,18 @@
 # Calibration helper safety draft — 2026-10-09
 
-Status: offline implementation only. Not deployed. A separate GET-only firmware
-capability check was completed; the helper itself was not run on the printer.
-No physical calibration occurred. Owner approval is still required before
-changing unattended behavior.
+Current status — October 14: the owner approved hourly checks only in response
+to the policy question. A separate production helper,
+`tools/printer/calibration-checks.py`, implements that approved behavior and
+contains no printer-control dispatch. It is not deployed: neither `forge.local`
+nor the last known LAN address is currently reachable. Deployment and rollback
+requirements are in [the rollout record](calibration-checks-rollout.md).
 
-The hourly helper now reports eligibility without moving the printer. Calibration remains available only during an explicitly approved maintenance session. Idle does not mean the bed is clear.
+The remainder of this document describes the separate offline maintenance
+draft `tools/printer/auto-optimize.py`, not the production checks-only file.
+That draft remains undeployed and unsupported on the inspected firmware. Its
+default reports a schedule candidate, but refuses unsupported capabilities.
+No physical calibration occurred. Existing UI/vendor calibration controls
+remain available; idle does not establish that the bed is clear.
 
 ## Preserved behavior
 
@@ -72,8 +79,8 @@ was added. All 45 calibration tests pass; independent review found no defect in
 the identity validation change. Missing/non-positive/non-integer identities
 fail before object queries, backups, calibration state writes or commands.
 
-Owner approval of report-only hourly checks would change unattended policy;
-it would **not** make this draft's maintenance mode compatible or certified.
+Owner approval of report-only hourly checks now permits that policy change;
+it does **not** make this draft's maintenance mode compatible or certified.
 Existing UI/vendor calibration controls remain untouched. A supported helper
 maintenance path still needs firmware-specific identity, macro-completion and
 exclusive-control contracts, with separately authorized physical acceptance.
@@ -92,3 +99,11 @@ Pending failures are deliberately not auto-cleared. Operator must inspect printe
 ## Offline verification
 
 Run `python3 -m unittest discover -s tests -p auto_optimize_test.py -v` on a development machine. Tests prohibit real sockets, use fake state/time and isolated temporary files, inject busy/unknown/heating/queued/failed/timeout conditions, and verify locks and no-save-after-failure. Do not execute the helper's runtime entry point against a printer during tests. Import is side-effect free except definitions; runtime execution remains under the main guard.
+
+October 14 follow-up: the offline draft also retains the lock when a second
+invocation skips; a skipped caller cannot release another invocation's lock.
+All 46 draft tests pass. The separate checks-only suite covers 22 cases,
+including the observed vendor fields, read-only wire paths, malformed/slow
+responses, preserved history/configuration, pending-history attention,
+cross-process locking, lock ownership and safe log destinations.
+`bun run test:printer-helpers` runs these plus 10 light-helper test groups.
